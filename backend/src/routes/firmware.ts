@@ -66,7 +66,7 @@ export default function initFirmwareRoutes(app: express.Application) {
         const image = req.file?.buffer;
         const version = image ? appVersion(image) : undefined;
         if (!image || !version) {
-            return res.status(400).send('This is no ESP32 application image (build/HOME-MONITOR-FW.bin).');
+            return res.status(400).send('This is no Home Monitor firmware file.');
         }
 
         const token = crypto.randomBytes(16).toString('hex');
