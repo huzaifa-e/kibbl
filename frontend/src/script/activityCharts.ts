@@ -2,7 +2,7 @@ import ApexCharts from 'apexcharts';
 import type { ActivityBucket } from '../../../shared/protocol';
 import { isDarkMode, localDayKey } from './utils';
 
-const ACCENT = '#2fb344';
+const ACCENT = '#d9622b';
 
 function baseOptions() {
     const dark = isDarkMode();
@@ -15,7 +15,7 @@ function baseOptions() {
             parentHeightOffset: 0,
         },
         theme: { mode: dark ? 'dark' : 'light' },
-        grid: { borderColor: dark ? 'rgba(255,255,255,0.08)' : '#e6e7e9', strokeDashArray: 4 },
+        grid: { borderColor: dark ? 'rgba(243,230,207,0.12)' : 'rgba(42,26,18,0.14)', strokeDashArray: 4 },
         dataLabels: { enabled: false },
         tooltip: { theme: dark ? 'dark' : 'light' },
     };
@@ -32,7 +32,8 @@ export function hourlyChart(el: HTMLElement, buckets: ActivityBucket[], day: str
         chart: { ...baseOptions().chart, type: 'bar', height: 160 },
         series: [{ name: 'Motion events', data: counts }],
         colors: [ACCENT],
-        plotOptions: { bar: { columnWidth: '60%', borderRadius: 3 } },
+        plotOptions: { bar: { columnWidth: '70%', borderRadius: 2 } },
+        stroke: { show: true, width: 1, colors: [isDarkMode() ? '#0b0604' : '#2a1a12'] },
         xaxis: {
             categories: counts.map((_, h) => String(h).padStart(2, '0')),
             // every third hour labelled, the bars of a narrow card leave no room for 24
@@ -90,10 +91,10 @@ export function heatmapChart(el: HTMLElement, buckets: ActivityBucket[], days: n
                 radius: 3,
                 enableShades: true,
                 shadeIntensity: 0.6,
-                colorScale: { ranges: [{ from: 0, to: 0, color: isDarkMode() ? '#1f2a3d' : '#eef0f3', name: 'none' }] },
+                colorScale: { ranges: [{ from: 0, to: 0, color: isDarkMode() ? '#34221a' : '#efe0c3', name: 'none' }] },
             },
         },
-        stroke: { width: 2, colors: [isDarkMode() ? '#1a2234' : '#ffffff'] },
+        stroke: { width: 2, colors: [isDarkMode() ? '#2a1b13' : '#fbf4e6'] },
         legend: { show: false },
         xaxis: { tickAmount: 12, axisBorder: { show: false }, axisTicks: { show: false } },
         tooltip: { ...baseOptions().tooltip, y: { formatter: (v: number) => `${v} event${v === 1 ? '' : 's'}` } },

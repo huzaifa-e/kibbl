@@ -1,7 +1,11 @@
 import '@tabler/core/dist/css/tabler.min.css';
 import '@tabler/core/dist/js/tabler.min.js';
 import '@tabler/icons-webfont/tabler-icons.min.css';
+import '@fontsource/bungee/400.css';
+import '@fontsource/press-start-2p/400.css';
+import '@fontsource-variable/rubik';
 import '../style.css';
+import '../theme.css';
 import { version } from '../../../shared/version';
 import { isDarkMode, setTheme } from './utils';
 

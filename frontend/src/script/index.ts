@@ -54,15 +54,15 @@ function renderStats() {
     const today = events.filter((e) => e.start >= startOfDay());
     const last = events[0];
     const stat = (icon: string, color: string, value: string, label: string) => `<div class="col-6 col-lg-3">
-        <div class="card card-sm"><div class="card-body"><div class="row align-items-center">
-            <div class="col-auto"><span class="bg-${color} text-white avatar"><i class="ti ti-${icon}"></i></span></div>
-            <div class="col"><div class="stat-value">${value}</div><div class="text-secondary">${label}</div></div>
+        <div class="card card-sm hud-tile"><div class="card-body"><div class="row align-items-center g-2">
+            <div class="col-auto"><span class="hud-icon hud-${color}"><i class="ti ti-${icon}"></i></span></div>
+            <div class="col"><div class="stat-value">${value}</div><div class="hud-label text-secondary">${label}</div></div>
         </div></div></div></div>`;
     byId('stats').innerHTML =
-        stat('device-cctv', online === cams.length && cams.length ? 'green' : 'orange', `${online}/${cams.length}`, 'cameras online') +
-        stat('run', 'blue', String(today.length), 'motion events today') +
-        stat('clock', 'purple', last ? timeAgo(last.start) : '–', 'last activity') +
-        stat('eye', 'cyan', String(cams.reduce((n, d) => n + d.viewers, 0)), 'watching now');
+        stat('device-cctv', online === cams.length && cams.length ? 'olive' : 'rust', `${online}/${cams.length}`, 'cameras online') +
+        stat('paw', 'pumpkin', String(today.length), 'events today') +
+        stat('hourglass', 'mustard', last ? timeAgo(last.start) : '–', 'last activity') +
+        stat('eye', 'plum', String(cams.reduce((n, d) => n + d.viewers, 0)), 'watching now');
 
     const pending = devices.filter((d) => d.status === 'pending');
     byId('pending-alert').innerHTML = pending.length

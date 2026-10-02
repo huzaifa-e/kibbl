@@ -1,44 +1,26 @@
-/* ═══════════  Theme tokens  ═══════════ */
-:root {
-    --hm-accent: #2fb344;
-    --hm-stream-bg: #0b0f19;
-
-    /* One radius for every button and card in the app, as in the EMONI app */
-    --hm-radius: 11px;
-}
+/* Layout of the app; colours, type and the game look are in theme.css */
 
 /* Dark theme: prevent white flash on page load */
 html[data-bs-theme='dark'] {
-    background-color: #0c1220;
     color-scheme: dark;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', sans-serif;
     -webkit-font-smoothing: antialiased;
 }
 
-.btn,
-.form-control,
-.form-select {
-    border-radius: var(--hm-radius);
-}
-
-.card {
-    border-radius: var(--hm-radius);
-}
-
-/* Theme toggle: single element, CSS swaps icon + label */
+/* Theme toggle: single element, CSS swaps icon + label. Keyed to <html>: the
+ * sidebar carries data-bs-theme="dark" of its own in both themes. */
 .theme-icon-light,
 .theme-label-light {
     display: none !important;
 }
-[data-bs-theme='dark'] .theme-icon-light,
-[data-bs-theme='dark'] .theme-label-light {
+html[data-bs-theme='dark'] .theme-icon-light,
+html[data-bs-theme='dark'] .theme-label-light {
     display: inline !important;
 }
-[data-bs-theme='dark'] .theme-icon-dark,
-[data-bs-theme='dark'] .theme-label-dark {
+html[data-bs-theme='dark'] .theme-icon-dark,
+html[data-bs-theme='dark'] .theme-label-dark {
     display: none !important;
 }
 
@@ -96,7 +78,6 @@ body {
 }
 
 .badge-live {
-    background: rgba(214, 57, 57, 0.9);
     color: #fff;
 }
 
@@ -111,10 +92,6 @@ body {
     animation: hm-pulse 1.4s ease-in-out infinite;
 }
 
-.badge-overlay {
-    background: rgba(0, 0, 0, 0.55);
-    color: #fff;
-}
 
 @keyframes hm-pulse {
     50% {
@@ -128,11 +105,9 @@ body {
 
 .camera-tile {
     cursor: pointer;
-    transition: transform 0.15s ease;
-}
-
-.camera-tile:hover {
-    transform: translateY(-2px);
+    transition:
+        transform 0.1s ease,
+        box-shadow 0.1s ease;
 }
 
 /* ═══════════  Activity  ═══════════ */
@@ -164,20 +139,6 @@ body {
     padding: 18px 8px 6px;
     font-size: 12px;
     color: #fff;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
-}
-
-.event-new {
-    animation: hm-highlight 2s ease;
-}
-
-@keyframes hm-highlight {
-    from {
-        box-shadow: 0 0 0 3px var(--hm-accent);
-    }
-    to {
-        box-shadow: 0 0 0 0 transparent;
-    }
 }
 
 .stat-value {

@@ -36,7 +36,7 @@ function render() {
                     <div class="card-body">
                         <label class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="dark-mode" ${isDarkMode() ? 'checked' : ''} />
-                            <span class="form-check-label">Dark mode</span>
+                            <span class="form-check-label">Night mode</span>
                         </label>
                     </div>
                 </div>
