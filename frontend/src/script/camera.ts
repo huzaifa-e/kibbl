@@ -226,8 +226,9 @@ function renderPicture() {
             ${level('cam-saturation', 'Saturation', c.saturation)}
         </div>
         <div class="mb-3">
-            <label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cam-vflip" ${c.vflip ? 'checked' : ''} /><span class="form-check-label">Upside down</span></label>
-            <label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cam-hmirror" ${c.hmirror ? 'checked' : ''} /><span class="form-check-label">Mirror</span></label>
+            <label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cam-rotate" ${c.vflip ? 'checked' : ''} /><span class="form-check-label">Rotate 180°</span></label>
+            <label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cam-mirror" ${c.hmirror !== c.vflip ? 'checked' : ''} /><span class="form-check-label">Mirror</span></label>
+            <div class="form-hint">Rotate 180° for a camera mounted upside down.</div>
         </div>
         <button class="btn btn-primary w-100" id="cam-apply" ${d.online ? '' : 'disabled'}><i class="ti ti-check me-1"></i> Apply</button>
         <div id="cam-result" class="mt-2"></div>`;
@@ -245,8 +246,9 @@ function renderPicture() {
             brightness: Number(byId<HTMLSelectElement>('cam-brightness').value),
             contrast: Number(byId<HTMLSelectElement>('cam-contrast').value),
             saturation: Number(byId<HTMLSelectElement>('cam-saturation').value),
-            vflip: byId<HTMLInputElement>('cam-vflip').checked,
-            hmirror: byId<HTMLInputElement>('cam-hmirror').checked,
+            // a turn by 180° is both flips; mirror on top of it undoes the horizontal one
+            vflip: byId<HTMLInputElement>('cam-rotate').checked,
+            hmirror: byId<HTMLInputElement>('cam-rotate').checked !== byId<HTMLInputElement>('cam-mirror').checked,
         });
         button.classList.remove('btn-loading');
         byId('cam-result').innerHTML = resp.ok ? successAlert('Applied.') : errorAlert(resp.error ?? 'Not applied.');
