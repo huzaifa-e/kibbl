@@ -9,7 +9,7 @@ import sirv from 'sirv';
 import db from './core/db';
 import { ensureAdminUser } from './core/auth';
 import { log } from './core/logger';
-import { initMotionWatchdog } from './core/motion';
+import { closeStaleEvents, initMotionWatchdog } from './core/motion';
 import { initStorageCleanup } from './core/storage';
 import { initRoutes } from './routes';
 import { sendPage } from './routes/pages';
@@ -37,6 +37,7 @@ async function main() {
     await db.init();
     await ensureAdminUser();
     initStorageCleanup();
+    await closeStaleEvents();
     initMotionWatchdog();
 
     const app: express.Application = express();

@@ -174,6 +174,15 @@ export async function endMotion(deviceId: string) {
     }
 }
 
+/* Events still open from before a restart (a crash, a power cut) would read "ongoing"
+ * for ever: they end where they began, nothing more is known about them. */
+export async function closeStaleEvents() {
+    const res = await MotionEventModel.updateMany({ end: { $exists: false } }, [{ $set: { end: '$start' } }]);
+    if (res.modifiedCount) {
+        log('info', `Closed ${res.modifiedCount} motion events left open by the last run`);
+    }
+}
+
 // events of cameras that stopped sending frames (stream stopped, wifi lost) are closed here
 export function initMotionWatchdog() {
     setInterval(() => {
