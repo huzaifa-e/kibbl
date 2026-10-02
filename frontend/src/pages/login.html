@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>Log in · Home Monitor</title>
+        <meta name="theme-color" content="#2fb344" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/img/logo.svg" />
+    </head>
+
+    <body class="d-flex flex-column">
+        <div class="page page-center">
+            <div class="container container-tight py-4">
+                <div class="text-center mb-4">
+                    <a href="/" class="d-inline-flex align-items-center gap-2 text-reset text-decoration-none">
+                        <img src="/img/logo.svg" width="44" height="44" alt="" />
+                        <span class="h1 mb-0 navbar-brand-text">Home Monitor</span>
+                    </a>
+                </div>
+                <div class="card card-md">
+                    <div class="card-body">
+                        <h2 class="h2 text-center mb-4">Log in to your home</h2>
+                        <form id="loginForm" autocomplete="on" novalidate>
+                            <div class="mb-3">
+                                <label class="form-label" for="email">E-mail</label>
+                                <input type="email" class="form-control" id="email" placeholder="you@example.com" autocomplete="username" required />
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label" for="password">Password</label>
+                                <input type="password" class="form-control" id="password" autocomplete="current-password" required />
+                            </div>
+                            <div id="alertContainer" class="mt-3"></div>
+                            <div class="form-footer">
+                                <button type="submit" class="btn btn-primary w-100" id="loginBtn">Log in</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script type="module" src="/src/script/login.ts"></script>
+    </body>
+</html>
