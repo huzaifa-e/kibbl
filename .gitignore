@@ -22,6 +22,11 @@ dist
 CLAUDE.md
 AGENTS.md
 
+# python
+__pycache__/
+*.pyc
+.venv/
+
 # server data: snapshots, uploaded firmware, database
 backend/data/
 data/

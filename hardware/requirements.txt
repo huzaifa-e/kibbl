@@ -1,0 +1,4 @@
+build123d>=0.13
+shapely>=2.0
+trimesh>=4.0
+matplotlib>=3.8

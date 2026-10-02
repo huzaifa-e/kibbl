@@ -55,6 +55,8 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
     ├── frontend/                 web app (Vite, Tabler)
     │   └── src/pages, src/script
     ├── shared/                   protocol types used by both
+    ├── hardware/                 printed parts, parametric (build123d) with STEP and STL
+    │   └── feeder/iris/          NEMA 17 iris valve that portions the cat food
     ├── docs/                     architecture, protocol, deployment
     ├── deploy/deploy.sh          deployment to jhubuntu
     ├── Dockerfile, docker-compose.yml
@@ -123,3 +125,4 @@ The serial port (115200 baud) prints every module's output with time, file, line
 * [docs/architecture.md](docs/architecture.md): modules of firmware, server and app, and what comes next
 * [docs/protocol.md](docs/protocol.md): the device protocol, for new device types too
 * [docs/deployment.md](docs/deployment.md): jhubuntu, reaching it from home, firmware updates
+* [hardware/](hardware/README.md): printed parts; the feeder's [iris valve](hardware/feeder/iris/README.md)
