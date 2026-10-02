@@ -83,6 +83,10 @@ static void quick_reset_clear(void) {
 static bool camera_start(void) {
     for (int i = 0; i < CAMERA_INIT_TRIES; i++) {
         if (camera_init()) {
+            /* Settings written before the sensor delivered its first frame do not
+             * stick: the stream came up at UXGA, the size of the init, whatever was
+             * stored. One frame first, then the stored settings. */
+            camera_return(camera_take());
             camera_settings_t settings;
             config_camera_settings(&settings);
             camera_apply(&settings);
