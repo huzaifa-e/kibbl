@@ -81,6 +81,7 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
     }
     if (light_available()) {
         cJSON_AddItemToArray(caps, cJSON_CreateString("light"));
+        cJSON_AddItemToArray(caps, cJSON_CreateString("blink"));
     }
     cJSON_AddItemToArray(caps, cJSON_CreateString("ota"));
 
@@ -136,6 +137,22 @@ static const char *cmd_light(const cJSON *req, cJSON *resp) {
     }
     light_set((uint8_t)level->valueint);
     cJSON_AddNumberToObject(resp, "light", light_get());
+    return NULL;
+}
+
+// a short flash of the white light: the server sends it when it sees motion
+static const char *cmd_blink(const cJSON *req, cJSON *resp) {
+    const cJSON *count = cJSON_GetObjectItemCaseSensitive(req, "count");
+    const cJSON *level = cJSON_GetObjectItemCaseSensitive(req, "level");
+    if (!light_available()) {
+        return "no light on this board";
+    }
+    int n = cJSON_IsNumber(count) ? count->valueint : 2;
+    int l = cJSON_IsNumber(level) ? level->valueint : 30;
+    if (n < 1 || n > 10 || l < 1 || l > 100) {
+        return "count 1 to 10, level 1 to 100";
+    }
+    light_blink((uint8_t)n, (uint8_t)l);
     return NULL;
 }
 
@@ -234,6 +251,8 @@ cJSON *commands_handle(const cJSON *req, cmd_source_t source) {
         commands_add_info(resp, source);
     } else if (strcmp(cmd, "camera") == 0) {
         error = cmd_camera(req, resp);
+    } else if (strcmp(cmd, "blink") == 0) {
+        error = cmd_blink(req, resp);
     } else if (strcmp(cmd, "light") == 0) {
         error = cmd_light(req, resp);
     } else if (strcmp(cmd, "stream") == 0) {
