@@ -18,7 +18,9 @@ The upgrade request carries the identity in headers (never in the url, which end
 | `Authorization` | `Bearer <secret>`: 32 lower case hex characters, random, made once per device and kept in its nvs |
 | `User-Agent`    | `HomeMonitorHW`                                                        |
 
-**Pairing is trust on first use.** An unknown id is stored with the hash of its secret as a *pending* device and appears in the app under Devices, where it is approved or rejected. A pending device stays connected but nothing it sends reaches anybody. From then on the server refuses the id with any other secret (HTTP 401): a factory reset makes a new secret, so the device must be removed in the app and approved again. At most 5 devices can wait for approval at once (HTTP 429 beyond).
+**Setup over USB** (Devices → *Set up over USB*, Chrome or Edge on https or localhost): the app opens the device's serial port with Web Serial, scans for networks, and writes the Wi-Fi and the server address (`DEVICE_SOCKET_URL`, else derived from `DEVICE_BASE_URL`) with the serial commands below. Before that it tells the server to expect the id: its next connection is approved with the name given in the app, and a device that was reset (new secret) is paired again instead of refused. The Wi-Fi password goes from the browser over the cable only.
+
+**Otherwise pairing is trust on first use.** An unknown id is stored with the hash of its secret as a *pending* device and appears in the app under Devices, where it is approved or rejected. A pending device stays connected but nothing it sends reaches anybody. From then on the server refuses the id with any other secret (HTTP 401): a factory reset makes a new secret, so the device must be removed in the app and approved again. At most 5 devices can wait for approval at once (HTTP 429 beyond).
 
 The device pings every 10 s; the server closes a connection that was silent for 35 s. A device reconnects 5 s after any disconnect.
 
@@ -37,6 +39,8 @@ The device pings every 10 s; the server closes a connection that was silent for 
     "hostname": "home-monitor-cfa8",
     "ip": "192.168.0.57",
     "ssid": "home",
+    "provisioned": true,
+    "wifiChangeFailed": "home-5g",
     "rssi": -61,
     "uptime": 12,
     "heap": 157083,
@@ -48,7 +52,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
 }
 ```
 
-`caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`).
+`caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`). `wifiChangeFailed` is only present after a `wifi` change from the app that did not work: the device went back to `ssid`.
 
 ### `telemetry` (every 10 s)
 
@@ -75,6 +79,8 @@ Every command has a numeric `id` that the response repeats.
 | ------------- | ---------- | ---------------------------------------------------------------------------- | ------------- |
 | `info`        | all        | –                                                                            | the hello fields |
 | `reboot`      | all        | –                                                                            | – (restarts 1 s later) |
+| `wifi_scan`   | all        | –                                                                            | `networks`: `[{ssid, rssi, secure}]`, strongest first, one per ssid |
+| `wifi`        | all        | `ssid` 1–32, `password` 8–63 or empty                                        | `pending`, `fallbackSeconds`: switches in the background, back to the old network without an ip in 30 s |
 | `stream`      | camera     | `fps` 0–255 (capped by the device, 15 on the ESP32-CAM); 0 stops             | – |
 | `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2 | `camera`: all settings |
 | `light`       | light      | `level` 0–100                                                                | `light` |
@@ -92,7 +98,7 @@ The same json, one per line, plus the ones only someone holding the device may s
 | Command                                                  | Effect |
 | -------------------------------------------------------- | ------ |
 | `{"cmd":"info"}`                                         | everything above, plus the server url and the local stream url with its key |
-| `{"cmd":"wifi","ssid":"…","password":"…"}`               | joins that network (also ends provisioning) |
+| `{"cmd":"wifi","ssid":"…","password":"…"}`               | joins that network at once, no fallback (also ends provisioning) |
 | `{"cmd":"wifi_reset"}`                                   | forgets the network, restarts into provisioning |
 | `{"cmd":"server","url":"wss://…/device/socket"}`          | stores the server url, restarts |
 | `{"cmd":"debug"}`                                        | debug output on/off (kept in nvs) |

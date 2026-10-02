@@ -81,11 +81,9 @@ In a folder whose path contains parentheses, add `-B <build dir outside of it>` 
 
 ### Connecting the camera
 
-1. After the first flash the red led blinks slowly and the camera opens the Wi-Fi **HM-xxxxxx**.
-2. Connect it to the home Wi-Fi with the *ESP SoftAP Prov* app (proof of possession `hm-setup`), or over USB:
-   `{"cmd":"wifi","ssid":"<network>","password":"<password>"}`
-3. Point it at the server once: `{"cmd":"server","url":"wss://<server>/device/socket"}` (the default is `ws://10.0.1.99:8790/device/socket`).
-4. The led blips every 3 s when it is connected. Approve it in the app under **Devices**.
+**In the app** (Chrome or Edge on a computer): plug the camera in by USB, open **Devices → Set up over USB**, pick the port, name it, choose the Wi-Fi from the scan and enter the password. The app writes the network and the server address over the cable, the server approves the device on its first connection, and the dialog waits until it is online. Later Wi-Fi changes: Devices → Actions → **Wi-Fi network**; a network that does not work is undone after 30 s.
+
+Without a computer: after the first flash the red led blinks slowly and the camera opens the Wi-Fi **HM-xxxxxx**; connect it with the *ESP SoftAP Prov* app (proof of possession `hm-setup`), then approve it under Devices. The led blips every 3 s while it is connected.
 
 Power cycling the camera three times within 10 s each forgets the Wi-Fi and starts provisioning again.
 

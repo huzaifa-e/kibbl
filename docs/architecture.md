@@ -23,7 +23,7 @@ Modules follow ESW0009: one encapsulated task per `IC_*.c` file, `DEBUG*` macros
 | `IC_stream`     | websocket to the server: hello, telemetry, commands, frames at the server's rate |
 | `IC_local_http` | page and mjpeg stream on the home network (port 80/81, local key) |
 | `IC_commands`   | the command set of serial and server (`docs/protocol.md`) |
-| `IC_wifi_prov`  | SoftAP provisioning (`HM-xxxxxx`, security 1), reconnect with back-off |
+| `IC_wifi_prov`  | SoftAP provisioning (`HM-xxxxxx`, security 1), reconnect with back-off, scan, network change with fallback |
 | `IC_config`     | server url, device secret, local key, camera settings |
 | `IC_ota`        | https/http ota into the other slot; kept once it reached the server or ran 5 min, else rolled back |
 | `IC_light`      | flash led pwm, capped at `CONFIG_HM_LIGHT_MAX_PERCENT` |
@@ -51,7 +51,7 @@ Multi-page like the enny-cloud-app-service: `src/pages/*.html` with the navbar p
 | `/`           | cameras with their latest picture, today's activity by hour, latest events, controls of non-camera devices |
 | `/camera/:id` | live view (pauses when the tab is hidden), snapshot, full screen, status, light, motion settings with quiet hours, picture settings, 14-day heatmap |
 | `/activity`   | 14-day heatmap (days × hours), day statistics, snapshot timeline |
-| `/devices`    | approve/reject, rename, restart, firmware update, remove |
+| `/devices`    | setup over USB (Web Serial: Wi-Fi scan, network, name, server address), Wi-Fi change with fallback, approve/reject, rename, restart, firmware update, remove |
 | `/settings`   | password, theme, privacy |
 
 ## Next steps

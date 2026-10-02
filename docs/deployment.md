@@ -11,7 +11,7 @@ The server runs on **jhubuntu** (`ssh jhubuntu`, `jh@10.0.1.99:4711`, on Tailsca
 The first run copies the repository and creates `~/home-monitor/.env` with a random `JWT_SECRET`, then stops. On the server, set:
 
 * `ADMIN_EMAIL`, `ADMIN_PASSWORD`: the first account (only created while there is none)
-* `DEVICE_BASE_URL`: the server as the cameras reach it, for firmware downloads
+* `DEVICE_BASE_URL`: the server as the cameras reach it, for firmware downloads and as the address the app writes into a device set up over USB (`DEVICE_SOCKET_URL` overrides the latter)
 * `COOKIE_SECURE=true` once the app is served over https
 
 Then run `./deploy/deploy.sh` again. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
@@ -20,7 +20,7 @@ Then run `./deploy/deploy.sh` again. Every later run updates the code and restar
 
 The camera opens the connection itself, so the server only has to be **reachable from the home network**. 10.0.1.99 is the office LAN and is not. Choose one:
 
-1. **Cloudflare named tunnel** (recommended): a fixed `https://home.<your-domain>`; set the camera's server to `wss://home.<your-domain>/device/socket` with `{"cmd":"server","url":"…"}` over USB. The certificate is checked against the ESP-IDF bundle. Set `DEVICE_BASE_URL` to the same https origin and `COOKIE_SECURE=true`.
+1. **Cloudflare named tunnel** (recommended): a fixed `https://home.<your-domain>`; with `DEVICE_BASE_URL=https://home.<your-domain>` the app's USB setup writes `wss://home.<your-domain>/device/socket` into every camera. Setup over USB also needs the app itself on https (Web Serial), which the tunnel gives. The certificate is checked against the ESP-IDF bundle. Set `DEVICE_BASE_URL` to the same https origin and `COOKIE_SECURE=true`.
 2. **Port forward** of the office router to 10.0.1.99:8790, best with a reverse proxy doing TLS in front.
 3. **Testing at home**: run the server on the laptop (`npm run build`, then `node backend/dist/app.js` with a `backend/.env`) and point the camera at `ws://<laptop-ip>:8790/device/socket`.
 
