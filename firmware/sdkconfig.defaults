@@ -1,0 +1,35 @@
+# flash and partitions
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="hm_partition_tbl.csv"
+CONFIG_PARTITION_TABLE_FILENAME="hm_partition_tbl.csv"
+
+# an update that never reaches the server is rolled back on the next reset
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# the server may run without TLS on a home or office LAN
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# the camera frame buffers live in PSRAM
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
+# stream throughput: bigger tcp windows and lwip buffers
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+CONFIG_LWIP_TCP_WND_DEFAULT=11520
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_RX_BA_WIN=8
+
+# the stream port (81) runs next to the page port (80)
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+
+# a frame upload holds only the tx lock: commands and pings are read meanwhile
+CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK=y
+CONFIG_ESP_WS_CLIENT_TX_LOCK_TIMEOUT_MS=5000

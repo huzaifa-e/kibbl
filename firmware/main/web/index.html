@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Home Monitor</title>
+        <style>
+            :root {
+                color-scheme: light dark;
+                --bg: #f4f6fa;
+                --card: #ffffff;
+                --text: #1d273b;
+                --muted: #667382;
+                --accent: #2fb344;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #0c1220;
+                    --card: #1a2234;
+                    --text: #f8fafc;
+                    --muted: #9ba9be;
+                }
+            }
+            body {
+                margin: 0;
+                padding: 16px;
+                background: var(--bg);
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            }
+            main {
+                max-width: 960px;
+                margin: 0 auto;
+            }
+            .card {
+                background: var(--card);
+                border-radius: 11px;
+                padding: 16px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+            }
+            img {
+                display: block;
+                width: 100%;
+                border-radius: 8px;
+                background: #000;
+                aspect-ratio: 4 / 3;
+                object-fit: contain;
+            }
+            .row {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                margin-top: 12px;
+            }
+            a.btn {
+                padding: 8px 14px;
+                border-radius: 11px;
+                background: var(--accent);
+                color: #fff;
+                text-decoration: none;
+            }
+            #status {
+                color: var(--muted);
+                font-size: 13px;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h2>Home Monitor <small id="name"></small></h2>
+            <div class="card">
+                <img id="stream" alt="live stream" />
+                <div class="row">
+                    <a class="btn" id="capture" target="_blank" rel="noopener">Snapshot</a>
+                    <span id="status"></span>
+                </div>
+            </div>
+        </main>
+        <script>
+            const key = new URLSearchParams(location.search).get('key') || '';
+            const q = '?key=' + encodeURIComponent(key);
+            document.getElementById('stream').src = location.protocol + '//' + location.hostname + ':81/stream' + q;
+            document.getElementById('capture').href = '/capture' + q;
+
+            async function refresh() {
+                try {
+                    const s = await (await fetch('/status' + q)).json();
+                    document.getElementById('name').textContent = s.hostname;
+                    document.getElementById('status').textContent =
+                        `${s.sensor} · ${s.camera.framesize} · ${s.rssi ?? '?'} dBm · up ${Math.round(s.uptime / 60)} min · ${s.fw}`;
+                } catch (e) {
+                    document.getElementById('status').textContent = 'no status';
+                }
+            }
+            refresh();
+            setInterval(refresh, 10000);
+        </script>
+    </body>
+</html>
