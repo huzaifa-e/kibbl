@@ -69,6 +69,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         caps: doc.caps ?? [],
         camera: doc.camera,
         cameraError: str('cameraError'),
+        wifiChangeFailed: str('wifiChangeFailed'),
         light: typeof info.light === 'number' ? info.light : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         telemetry: dev?.telemetry,

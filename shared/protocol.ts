@@ -16,8 +16,8 @@ export const capabilityCommands: Record<string, string[]> = {
     thermostat: ['thermostat'],
 };
 
-// any device may get these
-export const commonCommands = ['info', 'reboot'];
+// any device may get these: every device is on the Wi-Fi
+export const commonCommands = ['info', 'reboot', 'wifi', 'wifi_scan'];
 
 export const framesizes = ['QVGA', 'CIF', 'HVGA', 'VGA', 'SVGA', 'XGA', 'HD', 'SXGA', 'UXGA'] as const;
 export type Framesize = (typeof framesizes)[number];
@@ -68,6 +68,7 @@ export interface DeviceSummary {
     caps: string[];
     camera?: CameraSettings;
     cameraError?: string;
+    wifiChangeFailed?: string; // the network a change from the app could not join; the device went back
     light?: number;
     motion: MotionSettings;
     telemetry?: DeviceTelemetry;
@@ -84,6 +85,16 @@ export interface MotionEvent {
     peakScore: number; // share of the picture that changed, 0-1
     frames: number;
     hasSnapshot: boolean;
+}
+
+export interface WifiNetwork {
+    ssid: string;
+    rssi: number;
+    secure: boolean;
+}
+
+export interface SetupInfo {
+    deviceSocketUrl?: string; // what a device set up over USB connects to
 }
 
 export interface ActivityBucket {

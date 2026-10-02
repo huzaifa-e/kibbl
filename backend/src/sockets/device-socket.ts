@@ -16,6 +16,22 @@ type DeviceSocket = WebSocket & { deviceId: string; lastSeen: number; approved: 
 
 let wss: WebSocketServer;
 
+/* Devices being set up over USB in the app right now. The person doing it holds the
+ * device and is logged in: its first connection is approved without a second step,
+ * and a device that was reset (new secret) is paired again instead of refused. */
+const EXPECT_MS = 15 * 60 * 1000;
+const expected = new Map<string, { name: string; until: number }>();
+
+export function expectDevice(deviceId: string, name: string) {
+    expected.set(deviceId, { name, until: Date.now() + EXPECT_MS });
+}
+
+function takeExpected(deviceId: string) {
+    const e = expected.get(deviceId);
+    expected.delete(deviceId);
+    return e && e.until > Date.now() ? e : undefined;
+}
+
 function reject(socket: Duplex, status: number, text: string) {
     socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     socket.destroy();
@@ -41,6 +57,17 @@ async function authenticate(req: IncomingMessage): Promise<{ deviceId: string; a
 
     const hash = hashSecret(secret);
     const doc = await Device.findById(deviceId).lean();
+    // set up over USB: new, reset or already known, it is approved with the name given there
+    const setUp = takeExpected(deviceId);
+    if (setUp) {
+        await Device.updateOne(
+            { _id: deviceId },
+            { $set: { secretHash: hash, status: 'approved', name: setUp.name }, $setOnInsert: { caps: [], createdAt: Date.now() } },
+            { upsert: true },
+        );
+        log('info', `${deviceId}: set up over USB as "${setUp.name}", approved`);
+        return { deviceId, approved: true };
+    }
     if (doc) {
         if (!sameHash(doc.secretHash, hash)) {
             log('warn', `${deviceId}: refused, the secret does not match (factory reset or a copied id)`);

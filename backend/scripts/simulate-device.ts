@@ -24,6 +24,8 @@ writeFileSync(identityFile, JSON.stringify(identity));
 
 const camera = { framesize: 'VGA', quality: 12, vflip: false, hmirror: false, brightness: 0, contrast: 0, saturation: 0 };
 let light = 0;
+let ssid = 'home';
+let wifiChangeFailed: string | undefined;
 let fps = 0;
 let sent = 0;
 const start = Date.now();
@@ -82,7 +84,8 @@ function connect() {
                 sensor: caps.includes('camera') ? 'SIM' : undefined,
                 hostname: 'simulator',
                 ip: '127.0.0.1',
-                ssid: 'none',
+                ssid,
+                wifiChangeFailed,
                 caps,
                 camera: caps.includes('camera') ? camera : undefined,
                 light,
@@ -125,6 +128,31 @@ function connect() {
                 light = msg.level;
                 reply({ light });
                 break;
+            case 'wifi_scan':
+                setTimeout(
+                    () =>
+                        reply({
+                            networks: [
+                                { ssid: 'home', rssi: -52, secure: true },
+                                { ssid: 'home-guest', rssi: -67, secure: true },
+                                { ssid: 'cafe', rssi: -84, secure: false },
+                            ],
+                        }),
+                    2000,
+                );
+                break;
+            case 'wifi':
+                // as the firmware: answer, drop the connection, come back on the new network
+                // or, with the password "wrong-password", on the old one
+                reply({ pending: true, fallbackSeconds: 30 });
+                setTimeout(() => {
+                    const ok = msg.password !== 'wrong-password';
+                    wifiChangeFailed = ok ? undefined : msg.ssid;
+                    if (ok) ssid = msg.ssid;
+                    console.log(ok ? `switched to ${ssid}` : `could not join ${msg.ssid}, back on ${ssid}`);
+                    ws.terminate();
+                }, 1000);
+                break;
             case 'feed':
                 console.log(`feeding ${msg.portions} portion(s)`);
                 reply();
@@ -138,8 +166,8 @@ function connect() {
     ws.on('close', () => {
         clearTimeout(timer);
         clearInterval(telemetry);
-        console.log('disconnected, again in 5 s');
-        setTimeout(connect, 5000);
+        console.log('disconnected, again in 3 s');
+        setTimeout(connect, 3000);
     });
     ws.on('error', (err) => console.log(err.message));
 }

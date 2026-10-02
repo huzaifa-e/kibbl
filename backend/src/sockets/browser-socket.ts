@@ -1,6 +1,14 @@
 import { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
-import { framesizes, type ActivityBucket, type DeviceSummary, type DeviceTelemetry, type MotionEvent, type MotionSettings } from '../../../shared/protocol';
+import {
+    framesizes,
+    type ActivityBucket,
+    type DeviceSummary,
+    type DeviceTelemetry,
+    type MotionEvent,
+    type MotionSettings,
+    type SetupInfo,
+} from '../../../shared/protocol';
 import { AUTH_COOKIE, checkAuthToken, readCookie } from '../core/auth';
 import { Device, MotionEventModel } from '../core/db';
 import { applyCommandResult, closeConnection, commandAllowed, getSummaries, publishDevice, sendCommand, updateDemand, type DeviceResponse } from '../core/devices';
@@ -9,7 +17,7 @@ import { hub } from '../core/hub';
 import { log } from '../core/logger';
 import { endMotion, invalidateMotionSettings, toMotionEvent } from '../core/motion';
 import { deleteDeviceImages, deleteSnapshot } from '../core/storage';
-import { setDeviceApproved } from './device-socket';
+import { expectDevice, setDeviceApproved } from './device-socket';
 
 type Callback<T> = (result: T) => void;
 type Result = { ok: boolean; error?: string };
@@ -38,6 +46,8 @@ interface ClientToServerEvents {
     getEvents: (query: EventQuery, cb: Callback<MotionEvent[]>) => void;
     deleteEvent: (eventId: string, cb: Callback<Result>) => void;
     getActivity: (query: { deviceId?: string; days: number }, cb: Callback<ActivityBucket[]>) => void;
+    getSetupInfo: (cb: Callback<SetupInfo>) => void;
+    expectDevice: (deviceId: string, name: string, cb: Callback<Result>) => void;
 }
 
 type BrowserSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, { session: SessionInfo }>;
@@ -58,7 +68,16 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
     switch (cmd) {
         case 'info':
         case 'reboot':
+        case 'wifi_scan':
             return { cmd };
+        case 'wifi': {
+            // the password passes through to the device and is neither stored nor logged
+            const ssid = command.ssid;
+            const password = command.password ?? '';
+            if (typeof ssid !== 'string' || ssid.length < 1 || ssid.length > 32 || typeof password !== 'string') return undefined;
+            if (password.length !== 0 && (password.length < 8 || password.length > 63)) return undefined;
+            return { cmd, ssid, password };
+        }
         case 'light':
             return int(command.level, 0, 100) ? { cmd, level: command.level } : undefined;
         case 'camera': {
@@ -116,7 +135,8 @@ function registerEvents(socket: BrowserSocket) {
             cb({ ok: false, error: 'command not allowed for this device' });
             return;
         }
-        const resp = await sendCommand(deviceId, clean);
+        // a scan holds the radio for a few seconds, longer than other commands
+        const resp = await sendCommand(deviceId, clean, clean.cmd === 'wifi_scan' ? 15000 : undefined);
         await applyCommandResult(deviceId, clean.cmd as string, resp);
         log('info', `${socket.data.session.email}: ${deviceId} ${clean.cmd} -> ${resp.ok ? 'ok' : resp.error}`);
         cb(resp);
@@ -225,6 +245,35 @@ function registerEvents(socket: BrowserSocket) {
     });
 }
 
+/* The url devices connect to: DEVICE_SOCKET_URL, else derived from DEVICE_BASE_URL.
+ * Never the address the browser used: localhost or a tunnel name may not be what a
+ * device on the home network reaches. */
+function deviceSocketUrl() {
+    if (process.env.DEVICE_SOCKET_URL) {
+        return process.env.DEVICE_SOCKET_URL;
+    }
+    const base = process.env.DEVICE_BASE_URL?.replace(/\/+$/, '');
+    return base ? base.replace(/^http/, 'ws') + '/device/socket' : undefined;
+}
+
+function registerSetupEvents(socket: BrowserSocket) {
+    socket.on('getSetupInfo', (cb) => {
+        if (!isCallback(cb)) return;
+        cb({ deviceSocketUrl: deviceSocketUrl() });
+    });
+
+    socket.on('expectDevice', (deviceId, name, cb) => {
+        if (!isCallback(cb)) return;
+        if (!isDeviceID(deviceId) || !isString(name?.trim?.(), 40)) {
+            cb({ ok: false, error: 'device id or name invalid' });
+            return;
+        }
+        expectDevice(deviceId, name.trim());
+        log('info', `${socket.data.session.email}: setting up ${deviceId} over USB`);
+        cb({ ok: true });
+    });
+}
+
 export function initBrowserSocket(http: HttpServer) {
     const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, { session: SessionInfo }>(http, {
         path: '/browser/socket',
@@ -247,6 +296,7 @@ export function initBrowserSocket(http: HttpServer) {
     io.on('connection', (socket) => {
         socket.join('users');
         registerEvents(socket);
+        registerSetupEvents(socket);
     });
 
     hub.on('deviceUpdate', (device) => io.to('users').emit('deviceUpdate', device));
