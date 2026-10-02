@@ -1,0 +1,33 @@
+{
+    "name": "home-monitor",
+    "version": "0.1.0",
+    "description": "Home monitor: ESP32 camera, server and web app",
+    "author": "Huzaifa Ejaz",
+    "private": true,
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "workspaces": [
+        "backend",
+        "frontend"
+    ],
+    "scripts": {
+        "dev": "turbo dev",
+        "lint": "eslint .",
+        "lint:fix": "eslint --fix .",
+        "format": "prettier --write .",
+        "build": "turbo build",
+        "test": "turbo test"
+    },
+    "devDependencies": {
+        "@types/node": "^20.8.2",
+        "@typescript-eslint/eslint-plugin": "^7.0.1",
+        "@typescript-eslint/parser": "^7.0.1",
+        "eslint": "^8.50.0",
+        "eslint-plugin-security-node": "^1.1.1",
+        "prettier": "^3.0.3",
+        "turbo": "^2.9.18",
+        "typescript": "^5.2.2"
+    },
+    "packageManager": "npm@10.8.2"
+}

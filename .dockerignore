@@ -1,0 +1,9 @@
+node_modules/
+backend/node_modules/
+backend/dist/
+backend/data/
+frontend/node_modules/
+firmware/
+data/
+.git/
+.env
