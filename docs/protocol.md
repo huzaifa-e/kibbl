@@ -1,0 +1,105 @@
+# Device protocol
+
+Every device of the home monitor (the ESP32-CAM today; a pet feeder, switches and heating later) talks to the server over **one websocket that the device opens itself**. The device works behind the home router without a port forward, and the server needs no access to the home network.
+
+```
+device ──── wss://<server>/device/socket ────▶ server ◀──── socket.io ──── app
+         text: json (hello, telemetry, responses, commands)
+         binary: jpeg frames (cameras only)
+```
+
+## Connecting
+
+The upgrade request carries the identity in headers (never in the url, which ends up in proxy logs):
+
+| Header          | Value                                                                  |
+| --------------- | ---------------------------------------------------------------------- |
+| `X-Device-Id`   | the Wi-Fi station MAC, 12 upper case hex characters (`C82E1824CFA8`)   |
+| `Authorization` | `Bearer <secret>`: 32 lower case hex characters, random, made once per device and kept in its nvs |
+| `User-Agent`    | `HomeMonitorHW`                                                        |
+
+**Pairing is trust on first use.** An unknown id is stored with the hash of its secret as a *pending* device and appears in the app under Devices, where it is approved or rejected. A pending device stays connected but nothing it sends reaches anybody. From then on the server refuses the id with any other secret (HTTP 401): a factory reset makes a new secret, so the device must be removed in the app and approved again. At most 5 devices can wait for approval at once (HTTP 429 beyond).
+
+The device pings every 10 s; the server closes a connection that was silent for 35 s. A device reconnects 5 s after any disconnect.
+
+## Device → server
+
+### `hello` (first message after every connect)
+
+```json
+{
+    "type": "hello",
+    "fw": "HM-1a2b3c4d",
+    "id": "C82E1824CFA8",
+    "model": "esp32-cam",
+    "board": "ai-thinker-esp32-cam",
+    "sensor": "OV2640",
+    "hostname": "home-monitor-cfa8",
+    "ip": "192.168.0.57",
+    "ssid": "home",
+    "rssi": -61,
+    "uptime": 12,
+    "heap": 157083,
+    "psram": 3423068,
+    "resetReason": 1,
+    "caps": ["camera", "light", "ota"],
+    "camera": { "framesize": "VGA", "quality": 12, "vflip": false, "hmirror": false, "brightness": 0, "contrast": 0, "saturation": 0 },
+    "light": 0
+}
+```
+
+`caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`).
+
+### `telemetry` (every 10 s)
+
+```json
+{ "type": "telemetry", "uptime": 3600, "rssi": -61, "heap": 150000, "psram": 3300000, "cameraFps": 2, "fps": 2, "frameBytes": 24500 }
+```
+
+### `response` (to every command)
+
+```json
+{ "type": "response", "id": 7, "ok": true, "camera": { "framesize": "SVGA", "...": "..." } }
+{ "type": "response", "id": 8, "ok": false, "error": "level must be 0 to 100" }
+```
+
+### Frames (cameras)
+
+Binary messages, each one complete jpeg (`FF D8 …`), at most 1 MB. The device sends frames only at the rate the server asked for with `stream`.
+
+## Server → device: commands
+
+Every command has a numeric `id` that the response repeats.
+
+| Command       | Capability | Fields                                                                       | Response data |
+| ------------- | ---------- | ---------------------------------------------------------------------------- | ------------- |
+| `info`        | all        | –                                                                            | the hello fields |
+| `reboot`      | all        | –                                                                            | – (restarts 1 s later) |
+| `stream`      | camera     | `fps` 0–255 (capped by the device, 15 on the ESP32-CAM); 0 stops             | – |
+| `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2 | `camera`: all settings |
+| `light`       | light      | `level` 0–100                                                                | `light` |
+| `ota`         | ota        | `url`: http(s) url of an application image                                   | – (downloads, restarts) |
+| `switch`      | switch     | `channel` (string), `on` (bool)                                              | – |
+| `feed`        | feeder     | `portions` 1–10                                                              | – |
+| `thermostat`  | thermostat | `target` 5–30 (°C)                                                           | – |
+
+The server asks a camera for frames only when needed: the live rate (`STREAM_FPS`, 10) while someone watches or a snapshot is due, the motion rate (`MOTION_FPS`, 2) while motion detection is on, otherwise 0.
+
+## Serial commands (USB, 115200 baud)
+
+The same json, one per line, plus the ones only someone holding the device may send:
+
+| Command                                                  | Effect |
+| -------------------------------------------------------- | ------ |
+| `{"cmd":"info"}`                                         | everything above, plus the server url and the local stream url with its key |
+| `{"cmd":"wifi","ssid":"…","password":"…"}`               | joins that network (also ends provisioning) |
+| `{"cmd":"wifi_reset"}`                                   | forgets the network, restarts into provisioning |
+| `{"cmd":"server","url":"wss://…/device/socket"}`          | stores the server url, restarts |
+| `{"cmd":"debug"}`                                        | debug output on/off (kept in nvs) |
+| `{"cmd":"factory_reset"}`                                | new device secret, no network, default server |
+
+## Adding a device type
+
+1. Implement the connection, `hello` with your `caps`, `telemetry` and `response` as above; `backend/scripts/simulate-device.ts` is a working reference in 150 lines.
+2. Add the capability and its commands to `shared/protocol.ts` and the field check to `cleanCommand()` in `backend/src/sockets/browser-socket.ts`.
+3. Add its controls to `frontend/src/script/controls.ts`.
