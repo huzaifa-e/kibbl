@@ -84,10 +84,16 @@ export async function getSummaries() {
     return docs.map(summarize);
 }
 
+/* Called without waiting from connects, disconnects and viewers: a database that is
+ * away for a moment must not end the process, the next update brings the app up to date. */
 export async function publishDevice(deviceId: string) {
-    const doc = await Device.findById(deviceId).lean();
-    if (doc) {
-        hub.emit('deviceUpdate', summarize(doc));
+    try {
+        const doc = await Device.findById(deviceId).lean();
+        if (doc) {
+            hub.emit('deviceUpdate', summarize(doc));
+        }
+    } catch (err) {
+        log('warn', `${deviceId}: device update not sent (${(err as Error).message})`);
     }
 }
 
@@ -101,7 +107,13 @@ export async function updateDemand(deviceId: string) {
     if (!dev) {
         return;
     }
-    const doc = await Device.findById(deviceId).lean();
+    let doc: DeviceDoc | null;
+    try {
+        doc = await Device.findById(deviceId).lean();
+    } catch (err) {
+        log('warn', `${deviceId}: stream rate not updated (${(err as Error).message})`);
+        return; // the next change asks again
+    }
     let fps = 0;
     if (doc?.status === 'approved' && doc.caps.includes('camera')) {
         if ((viewers.get(deviceId) ?? 0) > 0 || (snapshotWaiters.get(deviceId) ?? 0) > 0) {

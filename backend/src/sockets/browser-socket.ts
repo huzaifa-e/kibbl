@@ -287,7 +287,13 @@ export function initBrowserSocket(http: HttpServer) {
     });
 
     io.use(async (socket, next) => {
-        const session = await checkAuthToken(readCookie(socket.handshake.headers.cookie, AUTH_COOKIE));
+        let session: SessionInfo | undefined;
+        try {
+            session = await checkAuthToken(readCookie(socket.handshake.headers.cookie, AUTH_COOKIE));
+        } catch (err) {
+            next(new Error('Server unavailable')); // the database is away: refused, the app retries
+            return;
+        }
         if (!session) {
             next(new Error('Unauthorized'));
             return;

@@ -94,6 +94,13 @@ async function main() {
     });
 }
 
+/* The device and browser sockets start database calls nobody waits for. One that fails
+ * while the database is away (restart, network) is logged; the process keeps its
+ * device connections and mongoose reconnects. */
+process.on('unhandledRejection', (err) => {
+    log('error', `Unhandled: ${err instanceof Error ? err.message : String(err)}`);
+});
+
 main().catch((err) => {
     log('error', `Start failed: ${err.message}`);
     process.exit(1);
