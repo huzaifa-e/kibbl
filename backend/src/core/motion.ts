@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import sharp from 'sharp';
 import type { MotionEvent } from '../../../shared/protocol';
 import { Device, MotionEventModel } from './db';
-import { motionFps } from './devices';
+import { motionFps, sendCommand } from './devices';
 import { hub } from './hub';
 import { log } from './logger';
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, MotionDetector, inQuietHours } from './motionDetector';
@@ -12,6 +12,13 @@ const EVENT_GAP_MS = 10_000; // calm this long ends an event
 const EVENT_MAX_MS = 10 * 60_000; // a longer visit is split, so the timeline keeps a picture of it
 const SNAPSHOT_MIN_GAP_MS = 2000; // the event picture is replaced by a better one at most this often
 const SETTINGS_TTL_MS = 5000; // motion settings are read from the database at most this often
+
+/* The white light flashes when something moves. Frames taken while it flashes are
+ * brighter: they are not analysed, or the flash itself would look like motion and
+ * flash it again. */
+const BLINK_GAP_MS = 3000; // at most one flash this often while the motion goes on
+const BLINK_BLIND_MS = 1200; // frames not analysed after a flash: 2 flashes take 400 ms, plus the delay of the link
+const BLINK = { cmd: 'blink', count: 2, level: 30 };
 
 interface CurrentEvent {
     doc: MotionEventDoc;
@@ -26,7 +33,9 @@ interface DeviceMotion {
     lastAnalysis: number;
     current?: CurrentEvent;
     settings?: DeviceDoc['motion'];
+    canBlink: boolean;
     settingsTime: number;
+    lastBlink: number;
 }
 
 const devices = new Map<string, DeviceMotion>();
@@ -46,7 +55,7 @@ export function toMotionEvent(doc: MotionEventDoc): MotionEvent {
 function state(deviceId: string) {
     let s = devices.get(deviceId);
     if (!s) {
-        s = { detector: new MotionDetector(), busy: false, lastAnalysis: 0, settingsTime: 0 };
+        s = { detector: new MotionDetector(), busy: false, lastAnalysis: 0, settingsTime: 0, canBlink: false, lastBlink: 0 };
         devices.set(deviceId, s);
     }
     return s;
@@ -54,8 +63,9 @@ function state(deviceId: string) {
 
 async function settingsOf(deviceId: string, s: DeviceMotion) {
     if (!s.settings || Date.now() - s.settingsTime > SETTINGS_TTL_MS) {
-        const doc = await Device.findById(deviceId, { motion: 1, status: 1 }).lean();
+        const doc = await Device.findById(deviceId, { motion: 1, status: 1, caps: 1 }).lean();
         s.settings = doc?.status === 'approved' ? doc.motion : undefined;
+        s.canBlink = !!doc?.caps?.includes('blink');
         s.settingsTime = Date.now();
     }
     return s.settings;
@@ -92,6 +102,13 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
 
     const quiet = inQuietHours(new Date(time).getHours(), settings.quietFrom, settings.quietTo);
     if (result.motion && !quiet) {
+        // settings stored before the option existed have no blink: they blink, as new ones do
+        if ((settings.blink ?? true) && s.canBlink && time - s.lastBlink > BLINK_GAP_MS) {
+            s.lastBlink = time;
+            sendCommand(deviceId, BLINK).then((resp) => {
+                if (!resp.ok) log('debug', `${deviceId}: blink not taken (${resp.error})`);
+            });
+        }
         let current = s.current;
         if (current && time - current.doc.start > EVENT_MAX_MS) {
             await closeEvent(deviceId, s);
@@ -130,7 +147,7 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
 export function onFrameForMotion(deviceId: string, jpeg: Buffer) {
     const s = state(deviceId);
     const now = Date.now();
-    if (s.busy || now - s.lastAnalysis < 1000 / motionFps() - 20) {
+    if (s.busy || now - s.lastAnalysis < 1000 / motionFps() - 20 || now - s.lastBlink < BLINK_BLIND_MS) {
         return;
     }
     s.busy = true;

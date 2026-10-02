@@ -3,7 +3,7 @@
  *
  *   npx tsx backend/scripts/simulate-device.ts ws://localhost:8790/device/socket [caps]
  *
- * caps defaults to "camera,light,ota". A camera sends generated frames with a box
+ * caps defaults to "camera,light,blink,ota". A camera sends generated frames with a box
  * that wanders through the picture every 30 s (motion), "feeder" or "switch" answer
  * their commands. The id and secret are kept in .simulated-device.json, so a restart
  * is the same device.
@@ -14,7 +14,7 @@ import sharp from 'sharp';
 import { WebSocket } from 'ws';
 
 const url = process.argv[2] ?? 'ws://localhost:8790/device/socket';
-const caps = (process.argv[3] ?? 'camera,light,ota').split(',');
+const caps = (process.argv[3] ?? 'camera,light,blink,ota').split(',');
 const identityFile = '.simulated-device.json';
 
 const identity: { id: string; secret: string } = existsSync(identityFile)
@@ -152,6 +152,10 @@ function connect() {
                     console.log(ok ? `switched to ${ssid}` : `could not join ${msg.ssid}, back on ${ssid}`);
                     ws.terminate();
                 }, 1000);
+                break;
+            case 'blink':
+                console.log(`blink ${msg.count} x at ${msg.level} %`);
+                reply();
                 break;
             case 'feed':
                 console.log(`feeding ${msg.portions} portion(s)`);

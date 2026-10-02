@@ -9,6 +9,7 @@ export type Capability = 'camera' | 'light' | 'ota' | 'switch' | 'feeder' | 'the
 export const capabilityCommands: Record<string, string[]> = {
     camera: ['camera'],
     light: ['light'],
+    blink: ['blink'], // a short flash of the white light
     ota: [],
     // for the devices that are still to come: relay outputs, a pet feeder, a heating valve
     switch: ['switch'],
@@ -56,6 +57,7 @@ export interface MotionSettings {
     // ignore motion between these hours (0-23, local time); equal values: never ignore
     quietFrom: number;
     quietTo: number;
+    blink: boolean; // flash the white light when something moves (devices with the blink capability)
 }
 
 export interface DeviceTelemetry {

@@ -109,6 +109,8 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
             return isString(command.channel, 16) && typeof command.on === 'boolean' ? { cmd, channel: command.channel, on: command.on } : undefined;
         case 'feed':
             return int(command.portions, 1, 10) ? { cmd, portions: command.portions } : undefined;
+        case 'blink':
+            return int(command.count ?? 2, 1, 10) && int(command.level ?? 30, 1, 100) ? { cmd, count: command.count ?? 2, level: command.level ?? 30 } : undefined;
         case 'thermostat':
             return typeof command.target === 'number' && command.target >= 5 && command.target <= 30 ? { cmd, target: command.target } : undefined;
         default:
@@ -193,6 +195,7 @@ function registerEvents(socket: BrowserSocket) {
         if (settings?.sensitivity && ['low', 'medium', 'high'].includes(settings.sensitivity)) motion.sensitivity = settings.sensitivity;
         if (hour(settings?.quietFrom)) motion.quietFrom = settings.quietFrom as number;
         if (hour(settings?.quietTo)) motion.quietTo = settings.quietTo as number;
+        if (typeof settings?.blink === 'boolean') motion.blink = settings.blink;
         await Device.updateOne({ _id: deviceId }, { motion });
         invalidateMotionSettings(deviceId);
         await updateDemand(deviceId);
