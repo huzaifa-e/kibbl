@@ -5,11 +5,13 @@ Printed parts and mechanics of the devices of kibbl.
 ```
 hardware/
 ├── requirements.txt       python packages for the CAD scripts
+├── camera/
+│   └── case/              case of the kibbl. cam, with clip-ons and a keyhole hanger
 └── feeder/                cat feeder
     └── iris/              NEMA 17 iris valve that portions the kibble
 ```
 
-Planned next to it: the feeder hopper and stand, the electronics enclosure (ESP32 + TMC2209), a camera mount for the ESP32-CAM, and the parts of the heating control.
+Planned next to it: the feeder hopper and stand, the electronics enclosure (ESP32 + TMC2209), and the parts of the heating control.
 
 ## How the designs are kept
 
