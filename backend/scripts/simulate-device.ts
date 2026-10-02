@@ -78,7 +78,7 @@ function connect() {
             JSON.stringify({
                 type: 'hello',
                 fw: 'KIBBL-SIMULATED',
-                id: identity.id,
+                deviceId: identity.id,
                 model: 'simulator',
                 board: 'none',
                 sensor: caps.includes('camera') ? 'SIM' : undefined,

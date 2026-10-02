@@ -32,7 +32,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
 {
     "type": "hello",
     "fw": "KIBBL-1a2b3c4d",
-    "id": "C82E1824CFA8",
+    "deviceId": "C82E1824CFA8",
     "model": "kibbl-cam",
     "board": "ai-thinker-esp32-cam",
     "sensor": "OV2640",
@@ -73,7 +73,7 @@ Binary messages, each one complete jpeg (`FF D8 …`), at most 1 MB. The device 
 
 ## Server → device: commands
 
-Every command has a numeric `id` that the response repeats.
+Every command has a numeric `id` that the response repeats; the device's own id is `deviceId`, so the two never collide.
 
 | Command       | Capability | Fields                                                                       | Response data |
 | ------------- | ---------- | ---------------------------------------------------------------------------- | ------------- |

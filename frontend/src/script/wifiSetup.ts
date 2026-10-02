@@ -129,7 +129,7 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
         return;
     }
 
-    const id = String(info.id ?? '');
+    const id = String(info.deviceId ?? '');
     const known = devices().find((d) => d._id === id);
     const setup = await request<SetupInfo>('getSetupInfo');
     const serverUrl = setup.deviceSocketUrl ?? String(info.server ?? '');
