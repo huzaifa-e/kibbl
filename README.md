@@ -117,6 +117,8 @@ The serial port (115200 baud) prints every module's output with time, file, line
 | slow blink (1 Hz)    | waiting for Wi-Fi provisioning |
 | fast blink (5 Hz)    | connecting to Wi-Fi or server |
 | three quick blinks   | Wi-Fi connected              |
+
+The white flash led flashes twice when the server sees something move (switch it off per camera under *Motion detection*), and five times for *Blink to find it* under Devices.
 | short blip every 3 s | connected to the server      |
 | double blink         | no camera found              |
 

@@ -84,6 +84,7 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `stream`      | camera     | `fps` 0–255 (capped by the device, 15 on the ESP32-CAM); 0 stops             | – |
 | `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2 | `camera`: all settings |
 | `light`       | light      | `level` 0–100                                                                | `light` |
+| `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level | – |
 | `ota`         | ota        | `url`: http(s) url of an application image                                   | – (downloads, restarts) |
 | `switch`      | switch     | `channel` (string), `on` (bool)                                              | – |
 | `feed`        | feeder     | `portions` 1–10                                                              | – |
