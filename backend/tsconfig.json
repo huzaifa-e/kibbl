@@ -1,0 +1,17 @@
+{
+    "include": ["src/**/*.ts", "../shared/**/*.ts"],
+    "exclude": ["node_modules/"],
+    "compilerOptions": {
+        "rootDir": "..",
+        "allowSyntheticDefaultImports": true,
+        "target": "ES2022",
+        "moduleResolution": "Node",
+        "outDir": "dist",
+        "module": "CommonJS",
+        "esModuleInterop": true,
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "resolveJsonModule": true
+    }
+}
