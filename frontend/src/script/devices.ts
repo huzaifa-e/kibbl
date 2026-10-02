@@ -1,7 +1,9 @@
 import './main';
 import type { DeviceSummary } from '../../../shared/protocol';
 import { request, socket } from './socket';
+import { knownPorts, onUsbPlugged, usbSupported, usbUnsupportedReason } from './usbSerial';
 import { byId, emptyState, errorAlert, escapeHtml, successAlert, timeAgo } from './utils';
+import { changeWifiRemotely, setupOverUsb } from './wifiSetup';
 
 let devices: DeviceSummary[] = [];
 
@@ -48,7 +50,8 @@ function deviceRow(d: DeviceSummary) {
                 </div>
             </div>
         </td>
-        <td>${d.online ? '<span class="status status-green"><span class="status-dot status-dot-animated"></span> online</span>' : `<span class="status status-secondary">offline</span><div class="text-secondary small">${d.lastSeen ? timeAgo(d.lastSeen) : ''}</div>`}</td>
+        <td>${d.online ? `<span class="status status-green"><span class="status-dot status-dot-animated"></span> online</span><div class="text-secondary small"><i class="ti ti-wifi"></i> ${escapeHtml(d.ssid ?? '')}</div>` : `<span class="status status-secondary">offline</span><div class="text-secondary small">${d.lastSeen ? timeAgo(d.lastSeen) : ''}</div>`}
+            ${d.wifiChangeFailed ? `<div class="text-orange small"><i class="ti ti-alert-triangle"></i> could not join ${escapeHtml(d.wifiChangeFailed)}, went back</div>` : ''}</td>
         <td class="d-none d-md-table-cell">${caps}</td>
         <td class="d-none d-lg-table-cell text-mono small">${escapeHtml(d.fw ?? '–')}</td>
         <td class="text-end">
@@ -57,6 +60,7 @@ function deviceRow(d: DeviceSummary) {
                 <div class="dropdown-menu dropdown-menu-end">
                     ${d.caps.includes('camera') ? `<a class="dropdown-item" href="/camera/${d._id}"><i class="ti ti-video me-2"></i> Live view</a>` : ''}
                     <a class="dropdown-item" href="#" data-action="rename" data-device="${d._id}"><i class="ti ti-pencil me-2"></i> Rename</a>
+                    <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="wifi" data-device="${d._id}"><i class="ti ti-wifi me-2"></i> Wi-Fi network</a>
                     <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="reboot" data-device="${d._id}"><i class="ti ti-refresh me-2"></i> Restart</a>
                     ${d.caps.includes('ota') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="update" data-device="${d._id}"><i class="ti ti-upload me-2"></i> Update firmware</a>` : ''}
                     <div class="dropdown-divider"></div>
@@ -71,8 +75,22 @@ function render() {
     const pending = devices.filter((d) => d.status === 'pending');
     const approved = devices.filter((d) => d.status === 'approved');
 
+    const usb = usbSupported()
+        ? `<button class="btn btn-primary" data-action="usb"><i class="ti ti-usb me-1"></i> Set up over USB</button>`
+        : `<div class="text-secondary small">${escapeHtml(usbUnsupportedReason())}</div>`;
     byId('container').innerHTML = `
         <div id="result"></div>
+        <div id="usb-plugged"></div>
+        <div class="card mb-4">
+            <div class="card-body d-flex flex-wrap align-items-center gap-3">
+                <span class="hud-icon hud-pine"><i class="ti ti-plug-connected"></i></span>
+                <div class="flex-fill">
+                    <div class="fw-bold">Add or move a device</div>
+                    <div class="text-secondary small">Plug it into this computer: choose its Wi-Fi and name here, and it joins your home by itself.</div>
+                </div>
+                ${usb}
+            </div>
+        </div>
         ${pending.length ? `<h3 class="mb-2">Waiting for approval</h3><div class="row row-cards mb-4">${pending.map(pendingCard).join('')}</div>` : ''}
         <div class="card mb-4">
             <div class="card-header"><h3 class="card-title">Your devices</h3></div>
@@ -87,13 +105,12 @@ function render() {
         <div class="row row-cards">
             <div class="col-lg-7">
                 <div class="card">
-                    <div class="card-header"><h3 class="card-title">Add a camera</h3></div>
+                    <div class="card-header"><h3 class="card-title">Without a computer at hand</h3></div>
                     <div class="card-body">
                         <ol class="mb-0">
-                            <li class="mb-2">Flash the firmware (<span class="text-mono">firmware/</span> in the repository) and power the ESP32-CAM.</li>
-                            <li class="mb-2">It opens the Wi-Fi <b>HM-xxxxxx</b>. Connect it to your home Wi-Fi with the <b>ESP SoftAP Prov</b> app (proof of possession <span class="text-mono">hm-setup</span>), or over USB with <span class="text-mono">{"cmd":"wifi","ssid":"…","password":"…"}</span>.</li>
-                            <li class="mb-2">The camera connects to this server and appears here under <i>Waiting for approval</i>.</li>
-                            <li>Approve it. Power it off and on three times within ten seconds each to connect it to another Wi-Fi.</li>
+                            <li class="mb-2">A device without Wi-Fi opens the network <b>HM-xxxxxx</b>. Connect it to your home Wi-Fi with the <b>ESP SoftAP Prov</b> app (proof of possession <span class="text-mono">hm-setup</span>).</li>
+                            <li class="mb-2">It connects to this server and appears above under <i>Waiting for approval</i>: approve it.</li>
+                            <li>Power it off and on three times within ten seconds each to make it forget its Wi-Fi.</li>
                         </ol>
                     </div>
                 </div>
@@ -119,8 +136,17 @@ function result(html: string) {
 }
 
 async function onAction(action: string, deviceId: string) {
+    if (action === 'usb') {
+        setupOverUsb(() => devices);
+        return;
+    }
     const d = devices.find((x) => x._id === deviceId);
     if (!d) return;
+
+    if (action === 'wifi') {
+        changeWifiRemotely(d);
+        return;
+    }
 
     if (action === 'approve') {
         const res = await request<{ ok: boolean; error?: string }>('approveDevice', deviceId);
@@ -162,6 +188,22 @@ async function onAction(action: string, deviceId: string) {
 async function load() {
     devices = await request<DeviceSummary[]>('getDevices');
     render();
+    if (usbSupported()) offerPluggedDevice();
+}
+
+/* A device plugged in on a port this site may already use: offered right away. A new
+ * kind of adapter needs the button once (the browser asks which port). */
+async function offerPluggedDevice() {
+    const ports = await knownPorts();
+    const slot = document.getElementById('usb-plugged');
+    if (!slot || ports.length === 0) return;
+    slot.innerHTML = `<div class="alert alert-info d-flex align-items-center">
+        <i class="ti ti-usb me-2"></i><div class="flex-fill">A device is plugged into this computer.</div>
+        <button class="btn btn-sm btn-primary" id="usb-plugged-setup">Set it up</button></div>`;
+    document.getElementById('usb-plugged-setup')!.addEventListener('click', () => {
+        slot.innerHTML = '';
+        setupOverUsb(() => devices, ports[ports.length - 1]);
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -174,6 +216,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 socket.on('connect', load);
+if (usbSupported()) {
+    onUsbPlugged(() => offerPluggedDevice());
+}
 socket.on('deviceUpdate', (device: DeviceSummary) => {
     const i = devices.findIndex((d) => d._id === device._id);
     if (i >= 0) devices[i] = device;

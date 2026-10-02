@@ -675,3 +675,9 @@ body:not(.title-screen)::after {
     font-size: 1.05rem;
     white-space: normal;
 }
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
