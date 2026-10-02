@@ -7,6 +7,9 @@ extern "C" {
 
 #include "sdkconfig.h"
 
+// the product this firmware makes of the board; the app shows it by this id (shared/protocol.ts)
+#define PRODUCT_MODEL "hm-cam"
+
 /*
  * LEDC (=PWM) CHANNELS:
  */

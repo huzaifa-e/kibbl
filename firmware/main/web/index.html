@@ -88,7 +88,7 @@
                     const s = await (await fetch('/status' + q)).json();
                     document.getElementById('name').textContent = s.hostname;
                     document.getElementById('status').textContent =
-                        `${s.sensor} · ${s.camera.framesize} · ${s.rssi ?? '?'} dBm · up ${Math.round(s.uptime / 60)} min · ${s.fw}`;
+                        `${s.camera.framesize} · ${s.rssi ?? '?'} dBm · up ${Math.round(s.uptime / 60)} min · ${s.fw}`;
                 } catch (e) {
                     document.getElementById('status').textContent = 'no status';
                 }

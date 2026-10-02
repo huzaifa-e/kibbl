@@ -50,7 +50,7 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
 
     cJSON_AddStringToObject(json, "fw", FW_VERSION);
     cJSON_AddStringToObject(json, "id", config_device_id());
-    cJSON_AddStringToObject(json, "model", "esp32-cam");
+    cJSON_AddStringToObject(json, "model", PRODUCT_MODEL); // the product, as the app names it
     cJSON_AddStringToObject(json, "board", BOARD_NAME);
     cJSON_AddStringToObject(json, "sensor", camera_sensor_name());
     if (!camera_ready()) {
