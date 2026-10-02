@@ -61,6 +61,7 @@ function deviceRow(d: DeviceSummary) {
                     ${d.caps.includes('camera') ? `<a class="dropdown-item" href="/camera/${d._id}"><i class="ti ti-video me-2"></i> Live view</a>` : ''}
                     <a class="dropdown-item" href="#" data-action="rename" data-device="${d._id}"><i class="ti ti-pencil me-2"></i> Rename</a>
                     <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="wifi" data-device="${d._id}"><i class="ti ti-wifi me-2"></i> Wi-Fi network</a>
+                    ${d.caps.includes('blink') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="blink" data-device="${d._id}"><i class="ti ti-bulb me-2"></i> Blink to find it</a>` : ''}
                     <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="reboot" data-device="${d._id}"><i class="ti ti-refresh me-2"></i> Restart</a>
                     ${d.caps.includes('ota') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="update" data-device="${d._id}"><i class="ti ti-upload me-2"></i> Update firmware</a>` : ''}
                     <div class="dropdown-divider"></div>
@@ -156,6 +157,9 @@ async function onAction(action: string, deviceId: string) {
         if (!name) return;
         const res = await request<{ ok: boolean; error?: string }>('renameDevice', deviceId, name);
         if (!res.ok) result(errorAlert(res.error ?? 'Not renamed.'));
+    } else if (action === 'blink') {
+        const res = await request<{ ok: boolean; error?: string }>('deviceCommand', deviceId, { cmd: 'blink', count: 5, level: 60 });
+        if (!res.ok) result(errorAlert(res.error ?? 'No blink.'));
     } else if (action === 'reboot') {
         const res = await request<{ ok: boolean; error?: string }>('deviceCommand', deviceId, { cmd: 'reboot' });
         result(res.ok ? successAlert(`${d.name} restarts.`) : errorAlert(res.error ?? 'No restart.'));

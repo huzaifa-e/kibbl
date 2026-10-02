@@ -160,6 +160,14 @@ function renderMotion() {
             <input class="form-check-input" type="checkbox" id="motion-enabled" ${m.enabled ? 'checked' : ''} />
             <span class="form-check-label">Record motion as activity</span>
         </label>
+        ${
+            device!.caps.includes('blink')
+                ? `<label class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="motion-blink" ${m.blink !== false ? 'checked' : ''} />
+            <span class="form-check-label">Blink the white light when something moves</span>
+        </label>`
+                : ''
+        }
         <div class="mb-3">
             <label class="form-label">Sensitivity</label>
             <div class="btn-group w-100" role="group">
@@ -187,6 +195,7 @@ function renderMotion() {
     byId('motion-save').addEventListener('click', async () => {
         const settings = {
             enabled: byId<HTMLInputElement>('motion-enabled').checked,
+            blink: document.querySelector<HTMLInputElement>('#motion-blink')?.checked,
             sensitivity: document.querySelector<HTMLInputElement>('input[name="motion-sensitivity"]:checked')?.value,
             quietFrom: Number(byId<HTMLSelectElement>('quiet-from').value),
             quietTo: Number(byId<HTMLSelectElement>('quiet-to').value),
