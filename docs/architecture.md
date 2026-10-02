@@ -27,7 +27,7 @@ Modules follow ESW0009: one encapsulated task per `KL_*.c` file (the prefix ESW0
 | `KL_config`     | server url, device secret, local key, camera settings |
 | `KL_ota`        | https/http ota into the other slot; kept once it reached the server or ran 5 min, else rolled back |
 | `KL_light`      | flash led pwm, capped at `CONFIG_KIBBL_LIGHT_MAX_PERCENT` |
-| `KL_status_led` | red led: slow = provisioning, fast = connecting, blip = online, double = no camera |
+| `KL_status_led` | red led: slow = provisioning, fast = connecting, three blinks = Wi-Fi connected, blip = online, double = no camera |
 
 Memory: frames live in PSRAM (4 MB on the ESP32-CAM); the driver keeps two UXGA-sized jpeg buffers, the hub and each consumer one copy that grows with the frame.
 
