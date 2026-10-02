@@ -5,7 +5,7 @@ import { hourlyChart } from './activityCharts';
 import { controlsHtml, bindControls } from './controls';
 import { bindEventViewer, eventCardHtml } from './events';
 import { request, socket } from './socket';
-import { byId, emptyState, escapeHtml, localDayKey, signalQuality, startOfDay, timeAgo } from './utils';
+import { byId, cameraProblem, emptyState, escapeHtml, localDayKey, signalQuality, startOfDay, timeAgo } from './utils';
 
 const TILE_REFRESH_MS = 4000;
 
@@ -75,7 +75,10 @@ function renderStats() {
 function cameraTileHtml(d: DeviceSummary) {
     const signal = signalQuality(d.telemetry?.rssi);
     const todayCount = events.filter((e) => e.deviceId === d._id && e.start >= startOfDay()).length;
-    const picture = d.online
+    const problem = d.online ? cameraProblem(d.cameraError) : undefined;
+    const picture = problem
+        ? `<div class="stream-placeholder"><i class="ti ti-camera-off"></i><span>Camera not responding</span></div>`
+        : d.online
         ? `<img data-tile-img="${d._id}" alt="${escapeHtml(d.name)}" style="display:none" />
            <div class="stream-placeholder" data-tile-placeholder="${d._id}"><i class="ti ti-player-play"></i><span>${d.motion.enabled ? 'Waiting for a picture' : 'Open the live view'}</span></div>`
         : `<div class="stream-placeholder"><i class="ti ti-wifi-off"></i><span>Offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</span></div>`;
@@ -92,7 +95,7 @@ function cameraTileHtml(d: DeviceSummary) {
                 <div class="d-flex align-items-center">
                     <div class="flex-fill">
                         <div class="fw-bold">${escapeHtml(d.name)}</div>
-                        <div class="text-secondary small">${todayCount} event${todayCount === 1 ? '' : 's'} today · motion ${d.motion.enabled ? d.motion.sensitivity : 'off'}</div>
+                        <div class="text-secondary small">${problem ? escapeHtml(problem) : `${todayCount} event${todayCount === 1 ? '' : 's'} today · motion ${d.motion.enabled ? d.motion.sensitivity : 'off'}`}</div>
                     </div>
                     <span class="text-${signal.color}" title="Wi-Fi ${signal.label}${d.telemetry?.rssi ? ` (${d.telemetry.rssi} dBm)` : ''}"><i class="ti ti-${signal.icon}"></i></span>
                 </div>

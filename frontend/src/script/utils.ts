@@ -100,6 +100,16 @@ export function localDayKey(time: number) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/* What a device's cameraError means for the person looking at the app. "init 0x105"
+ * and "init 0x106" are the driver finding no camera on its cable. */
+export function cameraProblem(error: string | undefined) {
+    if (!error) return undefined;
+    if (/init 0x10[56]/.test(error)) {
+        return 'The camera module does not answer. Check that its ribbon cable sits fully in the connector, then unplug the power and plug it in again.';
+    }
+    return `The camera reports an error (${error}). Unplug the power and plug it in again.`;
+}
+
 export function byId<T extends HTMLElement = HTMLElement>(id: string) {
     return document.getElementById(id) as T;
 }

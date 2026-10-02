@@ -5,7 +5,7 @@ import { heatmapChart } from './activityCharts';
 import { bindControls, controlsHtml } from './controls';
 import { bindEventViewer, eventCardHtml } from './events';
 import { request, socket } from './socket';
-import { byId, emptyState, errorAlert, escapeHtml, formatBytes, formatUptime, signalQuality, successAlert, timeAgo } from './utils';
+import { byId, cameraProblem, emptyState, errorAlert, escapeHtml, formatBytes, formatUptime, signalQuality, successAlert, timeAgo } from './utils';
 
 const deviceId = window.location.pathname.split('/')[2]?.toUpperCase() ?? '';
 const framesizeLabels: Record<string, string> = {
@@ -101,7 +101,8 @@ function layout(d: DeviceSummary) {
 function updateStream() {
     const img = byId<HTMLImageElement>('stream');
     const placeholder = byId('stream-placeholder');
-    const want = !!device?.online && !paused && document.visibilityState === 'visible';
+    const problem = device?.online ? cameraProblem(device.cameraError) : undefined;
+    const want = !!device?.online && !problem && !paused && document.visibilityState === 'visible';
     const src = `/api/devices/${deviceId}/stream`;
 
     if (want && !img.src.endsWith(src)) {
@@ -113,18 +114,22 @@ function updateStream() {
     placeholder.style.display = want ? 'none' : '';
     placeholder.innerHTML = !device?.online
         ? `<i class="ti ti-wifi-off"></i><span>The camera is offline${device?.lastSeen ? `, last seen ${timeAgo(device.lastSeen)}` : ''}.</span>`
-        : '<i class="ti ti-player-pause"></i><span>Paused</span>';
+        : problem
+          ? `<i class="ti ti-camera-off"></i><span>${escapeHtml(problem)}</span>`
+          : '<i class="ti ti-player-pause"></i><span>Paused</span>';
 }
 
 function renderBadges() {
     const d = device!;
     const t = d.telemetry;
-    byId('stream-badges').innerHTML = d.online
-        ? `<span class="badge badge-live">LIVE</span>
+    byId('stream-badges').innerHTML = !d.online
+        ? '<span class="badge badge-overlay">offline</span>'
+        : cameraProblem(d.cameraError)
+          ? '<span class="badge badge-overlay">no picture</span>'
+          : `<span class="badge badge-live">LIVE</span>
            ${d.camera ? `<span class="badge badge-overlay">${framesizeLabels[d.camera.framesize] ?? d.camera.framesize}</span>` : ''}
            ${t ? `<span class="badge badge-overlay">${t.fps} fps</span>` : ''}
-           ${d.viewers > 1 ? `<span class="badge badge-overlay"><i class="ti ti-eye"></i> ${d.viewers}</span>` : ''}`
-        : '<span class="badge badge-overlay">offline</span>';
+           ${d.viewers > 1 ? `<span class="badge badge-overlay"><i class="ti ti-eye"></i> ${d.viewers}</span>` : ''}`;
 }
 
 function renderStatus() {
@@ -142,7 +147,7 @@ function renderStatus() {
         ${row('Firmware', `<span class="text-mono small">${escapeHtml(d.fw ?? '–')}</span>`)}
         ${row('Device id', `<span class="text-mono small">${escapeHtml(d._id)}</span>`)}
     </div>
-    ${d.cameraError ? `<div class="mt-3">${errorAlert(`Camera error: ${d.cameraError}`)}</div>` : ''}`;
+    ${d.online && d.cameraError ? `<div class="mt-3">${errorAlert(cameraProblem(d.cameraError)!)}</div>` : ''}`;
 }
 
 function renderControls() {
