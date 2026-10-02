@@ -1,4 +1,4 @@
-#include "IC_config.h"
+#include "KL_config.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -10,8 +10,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#include "IC_nvs.h"
-#include "IC_serial.h"
+#include "KL_nvs.h"
+#include "KL_serial.h"
 
 #define NVS_SERVER_URL    "SERVER_URL"
 #define NVS_DEVICE_SECRET "DEV_SECRET"
@@ -104,7 +104,7 @@ void config_load(void) {
     load_or_create(NVS_LOCAL_KEY, local_key, LOCAL_KEY_LEN);
 
     if (!nvs_queue_job(NVS_SERVER_URL, server_url, sizeof(server_url), STRING, READ) || server_url[0] == '\0') {
-        strlcpy(server_url, CONFIG_HM_SERVER_URL, sizeof(server_url));
+        strlcpy(server_url, CONFIG_KIBBL_SERVER_URL, sizeof(server_url));
     }
 
     if (!nvs_queue_job(NVS_CAMERA, &camera_settings, sizeof(camera_settings), BLOB, READ)) {

@@ -1,4 +1,4 @@
-#include "IC_wifi_prov.h"
+#include "KL_wifi_prov.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,9 +13,9 @@
 #include <wifi_provisioning/manager.h>
 #include <wifi_provisioning/scheme_softap.h>
 
-#include "IC_serial.h"
-#include "IC_status_led.h"
-#include "IC_time.h"
+#include "KL_serial.h"
+#include "KL_status_led.h"
+#include "KL_time.h"
 
 EventGroupHandle_t wifi_event_group;
 
@@ -112,7 +112,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 static void get_device_service_name(char *service_name, size_t max) {
     uint8_t eth_mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, eth_mac);
-    snprintf(service_name, max, "HM-%02X%02X%02X", eth_mac[3], eth_mac[4], eth_mac[5]);
+    snprintf(service_name, max, "KIBBL-%02X%02X%02X", eth_mac[3], eth_mac[4], eth_mac[5]);
 }
 
 void wifi_start(void) {
@@ -132,7 +132,7 @@ void wifi_start(void) {
 
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
-    snprintf(hostname, sizeof(hostname), "home-monitor-%02x%02x", mac[4], mac[5]);
+    snprintf(hostname, sizeof(hostname), "kibbl-%02x%02x", mac[4], mac[5]);
     esp_netif_set_hostname(sta_netif, hostname);
 
     const esp_timer_create_args_t timer_args = {
@@ -160,11 +160,11 @@ void wifi_start(void) {
 
         /* Security 1: the app and the device agree on a session key with the proof
          * of possession, so the password never crosses the open access point in clear */
-        ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, (const void *)CONFIG_HM_PROV_POP, service_name, NULL));
+        ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, (const void *)CONFIG_KIBBL_PROV_POP, service_name, NULL));
 
-        DEBUG_F("not provisioned: join the access point %s with the ESP SoftAP Prov app (pop \"%s\"),\n", service_name, CONFIG_HM_PROV_POP);
+        DEBUG_F("not provisioned: join the access point %s with the ESP SoftAP Prov app (pop \"%s\"),\n", service_name, CONFIG_KIBBL_PROV_POP);
         DEBUG_F("or send {\"cmd\":\"wifi\",\"ssid\":\"...\",\"password\":\"...\"} over serial\n");
-        DEBUG_F_PLAIN("{\"ver\":\"v1\",\"name\":\"%s\",\"pop\":\"%s\",\"transport\":\"softap\"}\n", service_name, CONFIG_HM_PROV_POP);
+        DEBUG_F_PLAIN("{\"ver\":\"v1\",\"name\":\"%s\",\"pop\":\"%s\",\"transport\":\"softap\"}\n", service_name, CONFIG_KIBBL_PROV_POP);
     } else {
         // the manager is only needed for provisioning
         wifi_prov_mgr_deinit();

@@ -8,7 +8,7 @@ import { sendCommand } from '../core/devices';
 import { log } from '../core/logger';
 import { firmwareRoot, resolveInside } from '../core/storage';
 
-const MAX_IMAGE_BYTES = 0x1e0000; // one app slot of hm_partition_tbl.csv
+const MAX_IMAGE_BYTES = 0x1e0000; // one app slot of kibbl_partition_tbl.csv
 const LINK_LIFETIME_MS = 15 * 60 * 1000;
 
 const ESP_IMAGE_MAGIC = 0xe9;
@@ -66,7 +66,7 @@ export default function initFirmwareRoutes(app: express.Application) {
         const image = req.file?.buffer;
         const version = image ? appVersion(image) : undefined;
         if (!image || !version) {
-            return res.status(400).send('This is no Home Monitor firmware file.');
+            return res.status(400).send('This is no kibbl. firmware file.');
         }
 
         const token = crypto.randomBytes(16).toString('hex');

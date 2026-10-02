@@ -1,4 +1,4 @@
-#include "IC_serial.h"
+#include "KL_serial.h"
 
 #include "driver/uart.h"
 #include <stdarg.h>
@@ -8,8 +8,8 @@
 #include "cJSON.h"
 #include "esp_log.h"
 
-#include "IC_nvs.h"
-#include "IC_time.h"
+#include "KL_nvs.h"
+#include "KL_time.h"
 
 #define RX_BUF_SIZE   1024
 #define UART_PORT_NUM UART_NUM_0

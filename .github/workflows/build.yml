@@ -24,12 +24,12 @@ jobs:
                   idf.py set-target esp32
                   idf.py build
                   mkdir -p artifacts
-                  cp build/HOME-MONITOR-FW.bin "artifacts/HM-${GITHUB_SHA::8}$branch.bin"
+                  cp build/KIBBL-FW.bin "artifacts/KIBBL-${GITHUB_SHA::8}$branch.bin"
                   # decodes crash addresses the device prints
-                  cp build/HOME-MONITOR-FW.elf "artifacts/HM-${GITHUB_SHA::8}$branch.elf"
-                  cp build/bootloader/bootloader.bin artifacts/HM-bootloader.bin
-                  cp build/partition_table/partition-table.bin artifacts/HM-partition-table.bin
-                  cp build/ota_data_initial.bin artifacts/HM-ota-data-initial.bin
+                  cp build/KIBBL-FW.elf "artifacts/KIBBL-${GITHUB_SHA::8}$branch.elf"
+                  cp build/bootloader/bootloader.bin artifacts/KIBBL-bootloader.bin
+                  cp build/partition_table/partition-table.bin artifacts/KIBBL-partition-table.bin
+                  cp build/ota_data_initial.bin artifacts/KIBBL-ota-data-initial.bin
             - uses: actions/upload-artifact@v4
               with:
                   name: firmware-${{ github.sha }}
@@ -46,4 +46,4 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm test
-            - run: docker build -t home-monitor:ci .
+            - run: docker build -t kibbl:ci .

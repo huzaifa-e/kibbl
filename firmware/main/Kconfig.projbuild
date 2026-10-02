@@ -1,21 +1,21 @@
-menu "Home Monitor"
+menu "kibbl."
 
-    choice HM_BOARD
+    choice KIBBL_BOARD
         prompt "Camera board"
-        default HM_BOARD_AI_THINKER if IDF_TARGET_ESP32
-        default HM_BOARD_FREENOVE_S3 if IDF_TARGET_ESP32S3
+        default KIBBL_BOARD_AI_THINKER if IDF_TARGET_ESP32
+        default KIBBL_BOARD_FREENOVE_S3 if IDF_TARGET_ESP32S3
         help
-            Selects the camera, led and flash pins in IC_hm_hw.h.
+            Selects the camera, led and flash pins in KL_hw.h.
 
-        config HM_BOARD_AI_THINKER
+        config KIBBL_BOARD_AI_THINKER
             bool "AI-Thinker ESP32-CAM (ESP32-S, OV2640)"
             depends on IDF_TARGET_ESP32
-        config HM_BOARD_FREENOVE_S3
+        config KIBBL_BOARD_FREENOVE_S3
             bool "Freenove ESP32-S3-WROOM CAM"
             depends on IDF_TARGET_ESP32S3
     endchoice
 
-    config HM_SERVER_URL
+    config KIBBL_SERVER_URL
         string "Server websocket url"
         default "ws://10.0.1.99:8790/device/socket"
         help
@@ -23,25 +23,25 @@ menu "Home Monitor"
             checked against the ESP-IDF certificate bundle. The serial command
             {"cmd":"server","url":"..."} overrides it and keeps the value in nvs.
 
-    config HM_PROV_POP
+    config KIBBL_PROV_POP
         string "Wi-Fi provisioning proof of possession"
-        default "hm-setup"
+        default "kibbl-setup"
         help
             Asked by the ESP SoftAP Prov app while the device is unprovisioned.
 
-    config HM_LOCAL_HTTP
+    config KIBBL_LOCAL_HTTP
         bool "Local stream on the home network"
         default y
         help
             http://<device>/ shows the stream without the server. Every request needs
             the local key the device prints with {"cmd":"info"}.
 
-    config HM_STREAM_MAX_FPS
+    config KIBBL_STREAM_MAX_FPS
         int "Highest frame rate the server may ask for"
         range 1 30
         default 15
 
-    config HM_LIGHT_MAX_PERCENT
+    config KIBBL_LIGHT_MAX_PERCENT
         int "Flash led duty cycle at level 100, in percent"
         range 1 100
         default 40

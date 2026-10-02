@@ -54,7 +54,7 @@ async function frame() {
 
 function connect() {
     const ws = new WebSocket(url, {
-        headers: { 'X-Device-Id': identity.id, Authorization: `Bearer ${identity.secret}`, 'User-Agent': 'HomeMonitorHW' },
+        headers: { 'X-Device-Id': identity.id, Authorization: `Bearer ${identity.secret}`, 'User-Agent': 'KibblHW' },
     });
     let timer: NodeJS.Timeout | undefined;
     let telemetry: NodeJS.Timeout | undefined;
@@ -77,7 +77,7 @@ function connect() {
         ws.send(
             JSON.stringify({
                 type: 'hello',
-                fw: 'HM-SIMULATED',
+                fw: 'KIBBL-SIMULATED',
                 id: identity.id,
                 model: 'simulator',
                 board: 'none',

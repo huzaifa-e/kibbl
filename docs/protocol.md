@@ -1,6 +1,6 @@
 # Device protocol
 
-Every device of the home monitor (the ESP32-CAM today; a pet feeder, switches and heating later) talks to the server over **one websocket that the device opens itself**. The device works behind the home router without a port forward, and the server needs no access to the home network.
+Every device of kibbl. (the ESP32-CAM today; a pet feeder, switches and heating later) talks to the server over **one websocket that the device opens itself**. The device works behind the home router without a port forward, and the server needs no access to the home network.
 
 ```
 device ──── wss://<server>/device/socket ────▶ server ◀──── socket.io ──── app
@@ -16,7 +16,7 @@ The upgrade request carries the identity in headers (never in the url, which end
 | --------------- | ---------------------------------------------------------------------- |
 | `X-Device-Id`   | the Wi-Fi station MAC, 12 upper case hex characters (`C82E1824CFA8`)   |
 | `Authorization` | `Bearer <secret>`: 32 lower case hex characters, random, made once per device and kept in its nvs |
-| `User-Agent`    | `HomeMonitorHW`                                                        |
+| `User-Agent`    | `KibblHW`                                                        |
 
 **Setup over USB** (Devices → *Set up over USB*, Chrome or Edge on https or localhost): the app opens the device's serial port with Web Serial, scans for networks, and writes the Wi-Fi and the server address (`DEVICE_SOCKET_URL`, else derived from `DEVICE_BASE_URL`) with the serial commands below. Before that it tells the server to expect the id: its next connection is approved with the name given in the app, and a device that was reset (new secret) is paired again instead of refused. The Wi-Fi password goes from the browser over the cable only.
 
@@ -31,12 +31,12 @@ The device pings every 10 s; the server closes a connection that was silent for 
 ```json
 {
     "type": "hello",
-    "fw": "HM-1a2b3c4d",
+    "fw": "KIBBL-1a2b3c4d",
     "id": "C82E1824CFA8",
-    "model": "hm-cam",
+    "model": "kibbl-cam",
     "board": "ai-thinker-esp32-cam",
     "sensor": "OV2640",
-    "hostname": "home-monitor-cfa8",
+    "hostname": "kibbl-cfa8",
     "ip": "192.168.0.57",
     "ssid": "home",
     "provisioned": true,
@@ -52,7 +52,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
 }
 ```
 
-`model` is the product (`hm-cam`, `hm-feeder`, …): the app names a device by it (`productNames` in `shared/protocol.ts`) and never shows `board` or `sensor`, which are there for diagnosis. `caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`). `wifiChangeFailed` is only present after a `wifi` change from the app that did not work: the device went back to `ssid`.
+`model` is the product (`kibbl-cam`, `kibbl-feeder`, …): the app names a device by it (`productNames` in `shared/protocol.ts`) and never shows `board` or `sensor`, which are there for diagnosis. `caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`). `wifiChangeFailed` is only present after a `wifi` change from the app that did not work: the device went back to `ssid`.
 
 ### `telemetry` (every 10 s)
 

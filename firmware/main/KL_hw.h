@@ -1,5 +1,5 @@
-#ifndef IC_HM_HW_H
-#define IC_HM_HW_H
+#ifndef KL_HW_H
+#define KL_HW_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -8,7 +8,7 @@ extern "C" {
 #include "sdkconfig.h"
 
 // the product this firmware makes of the board; the app shows it by this id (shared/protocol.ts)
-#define PRODUCT_MODEL "hm-cam"
+#define PRODUCT_MODEL "kibbl-cam"
 
 /*
  * LEDC (=PWM) CHANNELS:
@@ -20,7 +20,7 @@ extern "C" {
 #define LIGHT_CHANNEL LEDC_CHANNEL_1
 #define LIGHT_TIMER   LEDC_TIMER_1
 
-#if CONFIG_HM_BOARD_AI_THINKER
+#if CONFIG_KIBBL_BOARD_AI_THINKER
 
 #define BOARD_NAME "ai-thinker-esp32-cam"
 
@@ -53,7 +53,7 @@ extern "C" {
 #define CAM_PIN_HREF  23
 #define CAM_PIN_PCLK  22
 
-#elif CONFIG_HM_BOARD_FREENOVE_S3
+#elif CONFIG_KIBBL_BOARD_FREENOVE_S3
 
 #define BOARD_NAME "freenove-esp32s3-cam"
 
@@ -87,11 +87,11 @@ extern "C" {
 #define CAM_PIN_PCLK  13
 
 #else
-#error "no camera board selected (idf.py menuconfig -> Home Monitor)"
+#error "no camera board selected (idf.py menuconfig -> kibbl.)"
 #endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* IC_HM_HW_H */
+#endif /* KL_HW_H */

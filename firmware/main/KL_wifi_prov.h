@@ -1,5 +1,5 @@
-#ifndef IC_WIFI_PROV_H
-#define IC_WIFI_PROV_H
+#ifndef KL_WIFI_PROV_H
+#define KL_WIFI_PROV_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,8 +26,8 @@ typedef enum {
 
 extern EventGroupHandle_t wifi_event_group;
 
-/* Starts station mode with the stored network, or SoftAP provisioning ("HM-xxxxxx",
- * ESP SoftAP Prov app, proof of possession CONFIG_HM_PROV_POP) when none is stored.
+/* Starts station mode with the stored network, or SoftAP provisioning ("KIBBL-xxxxxx",
+ * ESP SoftAP Prov app, proof of possession CONFIG_KIBBL_PROV_POP) when none is stored.
  * Needs the default event loop. */
 void wifi_start(void);
 
@@ -60,4 +60,4 @@ bool wifi_rssi(int *rssi);
 }
 #endif
 
-#endif /* IC_WIFI_PROV_H */
+#endif /* KL_WIFI_PROV_H */

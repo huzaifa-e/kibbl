@@ -1,6 +1,6 @@
 # Hardware
 
-Printed parts and mechanics of the devices around the home monitor.
+Printed parts and mechanics of the devices of kibbl.
 
 ```
 hardware/

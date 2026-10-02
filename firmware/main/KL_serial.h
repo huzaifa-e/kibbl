@@ -1,5 +1,5 @@
-#ifndef IC_SERIAL_H
-#define IC_SERIAL_H
+#ifndef KL_SERIAL_H
+#define KL_SERIAL_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,4 +44,4 @@ cJSON *get_serial_req(void);
 }
 #endif
 
-#endif /* IC_SERIAL_H */
+#endif /* KL_SERIAL_H */

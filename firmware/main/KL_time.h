@@ -1,5 +1,5 @@
-#ifndef IC_TIME_H
-#define IC_TIME_H
+#ifndef KL_TIME_H
+#define KL_TIME_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,4 +15,4 @@ void delay_ms(uint64_t pause_time);
 }
 #endif
 
-#endif /* IC_TIME_H */
+#endif /* KL_TIME_H */

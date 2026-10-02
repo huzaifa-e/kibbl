@@ -22,17 +22,17 @@ export const commonCommands = ['info', 'reboot', 'wifi', 'wifi_scan'];
 /* What a device is called in the app: the product, never the parts inside it. A
  * device reports its product as `model` in its hello message. */
 export const productNames: Record<string, string> = {
-    'hm-cam': 'Home Monitor Cam',
-    'hm-feeder': 'Home Monitor Feeder',
-    'hm-switch': 'Home Monitor Switch',
-    'hm-thermostat': 'Home Monitor Thermostat',
+    'kibbl-cam': 'kibbl. cam',
+    'kibbl-feeder': 'kibbl. feeder',
+    'kibbl-switch': 'kibbl. switch',
+    'kibbl-thermostat': 'kibbl. thermostat',
 };
 
 export function productName(model: string | undefined, caps: string[] = []) {
     if (model && productNames[model]) return productNames[model];
-    if (caps.includes('camera')) return 'Home Monitor Cam';
-    if (caps.includes('feeder')) return 'Home Monitor Feeder';
-    return 'Home Monitor device';
+    if (caps.includes('camera')) return 'kibbl. cam';
+    if (caps.includes('feeder')) return 'kibbl. feeder';
+    return 'kibbl. device';
 }
 
 export const framesizes = ['QVGA', 'CIF', 'HVGA', 'VGA', 'SVGA', 'XGA', 'HD', 'SXGA', 'UXGA'] as const;

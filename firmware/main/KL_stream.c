@@ -1,4 +1,4 @@
-#include "IC_stream.h"
+#include "KL_stream.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,14 +13,14 @@
 
 #include "cJSON.h"
 
-#include "IC_commands.h"
-#include "IC_config.h"
-#include "IC_frame.h"
-#include "IC_ota.h"
-#include "IC_serial.h"
-#include "IC_status_led.h"
-#include "IC_time.h"
-#include "IC_wifi_prov.h"
+#include "KL_commands.h"
+#include "KL_config.h"
+#include "KL_frame.h"
+#include "KL_ota.h"
+#include "KL_serial.h"
+#include "KL_status_led.h"
+#include "KL_time.h"
+#include "KL_wifi_prov.h"
 
 #define STREAM_STACK_SIZE     6144
 #define WS_TASK_STACK_SIZE    6144
@@ -254,7 +254,7 @@ void stream_start(void) {
         .ping_interval_sec    = 10,
         .pingpong_timeout_sec = 30,
         .crt_bundle_attach    = esp_crt_bundle_attach,
-        .user_agent           = "HomeMonitorHW",
+        .user_agent           = "KibblHW",
     };
 
     client = esp_websocket_client_init(&ws_cfg);

@@ -1,4 +1,4 @@
-#include "IC_ota.h"
+#include "KL_ota.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -11,9 +11,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "IC_frame.h"
-#include "IC_serial.h"
-#include "IC_time.h"
+#include "KL_frame.h"
+#include "KL_serial.h"
+#include "KL_time.h"
 
 #define OTA_STACK_SIZE   8192
 #define OTA_URL_MAX      256

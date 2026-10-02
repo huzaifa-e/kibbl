@@ -81,7 +81,7 @@ function cameraTileHtml(d: DeviceSummary) {
         : `<div class="stream-placeholder"><i class="ti ti-wifi-off"></i><span>Offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</span></div>`;
     return `<div class="col-md-6 col-xl-4">
         <div class="card camera-tile" data-camera="${d._id}">
-            <div class="stream-frame" style="border-radius: var(--hm-radius) var(--hm-radius) 0 0">
+            <div class="stream-frame" style="border-radius: var(--kb-radius) var(--kb-radius) 0 0">
                 <div class="stream-badges">
                     ${d.online ? '<span class="badge badge-overlay"><i class="ti ti-point-filled text-green"></i> online</span>' : '<span class="badge badge-overlay">offline</span>'}
                     ${d.viewers > 0 ? `<span class="badge badge-live">LIVE · ${d.viewers}</span>` : ''}
@@ -108,7 +108,7 @@ function renderCameras() {
         grid.innerHTML = `<div class="col-12"><div class="card"><div class="card-body">${emptyState(
             'device-cctv',
             'No camera yet',
-            'Plug your Home Monitor Cam into this computer and set it up under Devices.',
+            'Plug your kibbl. cam into this computer and set it up under Devices.',
             '<a href="/devices" class="btn btn-primary">Devices</a>',
         )}</div></div></div>`;
         return;

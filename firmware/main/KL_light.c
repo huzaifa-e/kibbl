@@ -1,9 +1,9 @@
-#include "IC_light.h"
+#include "KL_light.h"
 
 #include "driver/ledc.h"
 
-#include "IC_hm_hw.h"
-#include "IC_serial.h"
+#include "KL_hw.h"
+#include "KL_serial.h"
 
 #define LIGHT_FREQ_HZ  5000
 #define LIGHT_DUTY_RES LEDC_TIMER_8_BIT
@@ -52,7 +52,7 @@ void light_set(uint8_t level) {
     if (level > 100) {
         level = 100;
     }
-    uint32_t duty = (uint32_t)LIGHT_DUTY_MAX * level * CONFIG_HM_LIGHT_MAX_PERCENT / (100 * 100);
+    uint32_t duty = (uint32_t)LIGHT_DUTY_MAX * level * CONFIG_KIBBL_LIGHT_MAX_PERCENT / (100 * 100);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LIGHT_CHANNEL, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LIGHT_CHANNEL);
     level_now = level;

@@ -1,4 +1,4 @@
-#include "IC_commands.h"
+#include "KL_commands.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,15 +10,15 @@
 #include "esp_wifi.h"
 
 #include "BUILD_INFO.h"
-#include "IC_camera.h"
-#include "IC_config.h"
-#include "IC_frame.h"
-#include "IC_hm_hw.h"
-#include "IC_light.h"
-#include "IC_ota.h"
-#include "IC_serial.h"
-#include "IC_time.h"
-#include "IC_wifi_prov.h"
+#include "KL_camera.h"
+#include "KL_config.h"
+#include "KL_frame.h"
+#include "KL_hw.h"
+#include "KL_light.h"
+#include "KL_ota.h"
+#include "KL_serial.h"
+#include "KL_time.h"
+#include "KL_wifi_prov.h"
 
 #define RESTART_DELAY_US (1000 * 1000) // the response goes out first
 
@@ -92,7 +92,7 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
         // the secrets of the local page and the server url go to the person holding the device only
         cJSON_AddStringToObject(json, "server", config_server_url());
         cJSON_AddStringToObject(json, "localKey", config_local_key());
-#if CONFIG_HM_LOCAL_HTTP
+#if CONFIG_KIBBL_LOCAL_HTTP
         if (ip[0] != '\0') {
             char url[64];
             snprintf(url, sizeof(url), "http://%s/?key=%s", ip, config_local_key());
@@ -143,7 +143,7 @@ static const char *cmd_stream(const cJSON *req, cJSON *resp) {
     if (!cJSON_IsNumber(fps) || fps->valueint < 0 || fps->valueint > 255) {
         return "fps must be 0 to 255";
     }
-    // capped by CONFIG_HM_STREAM_MAX_FPS in the frame hub
+    // capped by CONFIG_KIBBL_STREAM_MAX_FPS in the frame hub
     frame_set_demand(FRAME_CONSUMER_SERVER, (uint8_t)fps->valueint);
     return NULL;
 }

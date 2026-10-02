@@ -1,5 +1,5 @@
-#ifndef IC_FRAME_H
-#define IC_FRAME_H
+#ifndef KL_FRAME_H
+#define KL_FRAME_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,4 +51,4 @@ size_t frame_last_size(void);
 }
 #endif
 
-#endif /* IC_FRAME_H */
+#endif /* KL_FRAME_H */

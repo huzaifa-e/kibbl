@@ -23,7 +23,7 @@ echo "#ifndef BUILD_INFO_H" >> $build_info_file
 echo "#define BUILD_INFO_H" >> $build_info_file
 
 # add dynamic information
-echo "#define FW_VERSION \"HM-$1$2\"" >> $build_info_file
+echo "#define FW_VERSION \"KIBBL-$1$2\"" >> $build_info_file
 
 # end of include guard
 echo "#endif" >> $build_info_file

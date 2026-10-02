@@ -9,7 +9,7 @@ import '../theme.css';
 import { version } from '../../../shared/version';
 import { isDarkMode, setTheme } from './utils';
 
-const bc = new BroadcastChannel('home-monitor');
+const bc = new BroadcastChannel('kibbl');
 
 bc.addEventListener('message', (event) => {
     if (event.data === 'logout') {

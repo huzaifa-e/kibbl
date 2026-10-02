@@ -1,5 +1,5 @@
-#ifndef IC_CAMERA_H
-#define IC_CAMERA_H
+#ifndef KL_CAMERA_H
+#define KL_CAMERA_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,7 +11,7 @@ extern "C" {
 
 #include "esp_camera.h"
 
-#include "IC_config.h"
+#include "KL_config.h"
 
 // powers the sensor and starts the driver; false when no sensor answers
 bool camera_init(void);
@@ -36,4 +36,4 @@ const char *camera_last_error(void);
 }
 #endif
 
-#endif /* IC_CAMERA_H */
+#endif /* KL_CAMERA_H */

@@ -1,6 +1,6 @@
 # Deployment
 
-The server runs on **jhubuntu** (`ssh jhubuntu`, `jh@10.0.1.99:4711`, on Tailscale `100.84.217.119`) with docker compose: the app on port **8790** and MongoDB without a published port. Data stays in `~/home-monitor/data/` on the server.
+The server runs on **jhubuntu** (`ssh jhubuntu`, `jh@10.0.1.99:4711`, on Tailscale `100.84.217.119`) with docker compose: the app on port **8790** and MongoDB without a published port. Data stays in `~/kibbl/data/` on the server.
 
 ## First deployment
 
@@ -8,7 +8,7 @@ The server runs on **jhubuntu** (`ssh jhubuntu`, `jh@10.0.1.99:4711`, on Tailsca
 ./deploy/deploy.sh
 ```
 
-The first run copies the repository and creates `~/home-monitor/.env` with a random `JWT_SECRET`, then stops. On the server, set:
+The first run copies the repository and creates `~/kibbl/.env` with a random `JWT_SECRET`, then stops. On the server, set:
 
 * `ADMIN_EMAIL`, `ADMIN_PASSWORD`: the first account (only created while there is none)
 * `DEVICE_BASE_URL`: the server as the cameras reach it, for firmware downloads and as the address the app writes into a device set up over USB (`DEVICE_SOCKET_URL` overrides the latter)
@@ -31,10 +31,10 @@ A quick cloudflared tunnel (random `trycloudflare.com` url, changes on every res
 ```bash
 cd firmware
 source env.sh
-idf.py -B ~/esp/builds/home-monitor-fw set-target esp32
-idf.py -B ~/esp/builds/home-monitor-fw -p /dev/cu.usbserial-XXXX -b 460800 flash monitor
+idf.py -B ~/esp/builds/kibbl-fw set-target esp32
+idf.py -B ~/esp/builds/kibbl-fw -p /dev/cu.usbserial-XXXX -b 460800 flash monitor
 ```
 
 `-B` puts the build outside the repository folder: ESP-IDF 5.1 cannot build in a path with parentheses (`(39) home-monitor`). In a checkout without them `idf.py build` works as usual. 921600 baud is too fast for the ESP32-CAM-MB adapter.
 
-Updates after the first flash: Devices → Actions → Update firmware with `build/HOME-MONITOR-FW.bin`. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+Updates after the first flash: Devices → Actions → Update firmware with `build/KIBBL-FW.bin`. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.

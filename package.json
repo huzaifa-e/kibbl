@@ -1,7 +1,7 @@
 {
-    "name": "home-monitor",
+    "name": "kibbl",
     "version": "0.1.0",
-    "description": "Home monitor: ESP32 camera, server and web app",
+    "description": "kibbl.: pet camera, feeder and home devices, with server and web app",
     "author": "Huzaifa Ejaz",
     "private": true,
     "engines": {

@@ -1,4 +1,4 @@
-#include "IC_local_http.h"
+#include "KL_local_http.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,11 +8,11 @@
 
 #include "cJSON.h"
 
-#include "IC_commands.h"
-#include "IC_config.h"
-#include "IC_frame.h"
-#include "IC_serial.h"
-#include "IC_time.h"
+#include "KL_commands.h"
+#include "KL_config.h"
+#include "KL_frame.h"
+#include "KL_serial.h"
+#include "KL_time.h"
 
 #define LOCAL_STREAM_FPS 10
 #define SNAPSHOT_FPS     5

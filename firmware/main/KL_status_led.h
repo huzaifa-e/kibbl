@@ -1,5 +1,5 @@
-#ifndef IC_STATUS_LED_H
-#define IC_STATUS_LED_H
+#ifndef KL_STATUS_LED_H
+#define KL_STATUS_LED_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,4 +21,4 @@ void set_status_led(status_led_state state);
 }
 #endif
 
-#endif /* IC_STATUS_LED_H */
+#endif /* KL_STATUS_LED_H */

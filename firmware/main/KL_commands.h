@@ -1,5 +1,5 @@
-#ifndef IC_COMMANDS_H
-#define IC_COMMANDS_H
+#ifndef KL_COMMANDS_H
+#define KL_COMMANDS_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,4 +25,4 @@ void commands_add_info(cJSON *json, cmd_source_t source);
 }
 #endif
 
-#endif /* IC_COMMANDS_H */
+#endif /* KL_COMMANDS_H */

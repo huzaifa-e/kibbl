@@ -1,5 +1,5 @@
-#ifndef IC_LIGHT_H
-#define IC_LIGHT_H
+#ifndef KL_LIGHT_H
+#define KL_LIGHT_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +12,7 @@ extern "C" {
 bool light_setup(void);
 bool light_available(void);
 
-// 0 (off) to 100 (CONFIG_HM_LIGHT_MAX_PERCENT duty)
+// 0 (off) to 100 (CONFIG_KIBBL_LIGHT_MAX_PERCENT duty)
 void light_set(uint8_t level);
 uint8_t light_get(void);
 
@@ -20,4 +20,4 @@ uint8_t light_get(void);
 }
 #endif
 
-#endif /* IC_LIGHT_H */
+#endif /* KL_LIGHT_H */

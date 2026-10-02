@@ -1,5 +1,5 @@
 /*
- * HOME-MONITOR-FW: live camera of the home monitor (docs/architecture.md)
+ * KIBBL-FW: live camera of kibbl. (docs/architecture.md)
  *
  * The device joins the home wifi, opens a websocket to the server and sends jpeg
  * frames at the rate the server asks for; the server relays them to the app.
@@ -20,19 +20,19 @@
 #include "cJSON.h"
 
 #include "BUILD_INFO.h"
-#include "IC_camera.h"
-#include "IC_commands.h"
-#include "IC_config.h"
-#include "IC_frame.h"
-#include "IC_light.h"
-#include "IC_local_http.h"
-#include "IC_nvs.h"
-#include "IC_ota.h"
-#include "IC_serial.h"
-#include "IC_status_led.h"
-#include "IC_stream.h"
-#include "IC_time.h"
-#include "IC_wifi_prov.h"
+#include "KL_camera.h"
+#include "KL_commands.h"
+#include "KL_config.h"
+#include "KL_frame.h"
+#include "KL_light.h"
+#include "KL_local_http.h"
+#include "KL_nvs.h"
+#include "KL_ota.h"
+#include "KL_serial.h"
+#include "KL_status_led.h"
+#include "KL_stream.h"
+#include "KL_time.h"
+#include "KL_wifi_prov.h"
 
 #define SERIAL_STACK_SIZE  4096
 #define NETWORK_STACK_SIZE 4096
@@ -145,11 +145,11 @@ void network_task(void *pvParams) {
 
     if (mdns_init() == ESP_OK) {
         mdns_hostname_set(wifi_hostname());
-        mdns_instance_name_set("Home Monitor camera");
+        mdns_instance_name_set("kibbl. cam");
         mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
     }
 
-#if CONFIG_HM_LOCAL_HTTP
+#if CONFIG_KIBBL_LOCAL_HTTP
     local_http_start();
 #endif
 

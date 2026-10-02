@@ -1,10 +1,10 @@
-#include "IC_nvs.h"
+#include "KL_nvs.h"
 
 #include "nvs.h"
 #include "nvs_flash.h"
 #include <esp_err.h>
 
-#include "IC_serial.h"
+#include "KL_serial.h"
 
 #define NVS_NAMESPACE "storage"
 

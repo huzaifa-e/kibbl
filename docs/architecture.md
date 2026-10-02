@@ -13,21 +13,21 @@
 
 ## Firmware (`firmware/`, ESP-IDF v5.1.6, C)
 
-Modules follow ESW0009: one encapsulated task per `IC_*.c` file, `DEBUG*` macros for the serial output, settings in nvs through `IC_nvs`.
+Modules follow ESW0009: one encapsulated task per `KL_*.c` file (the prefix ESW0009 spells `IC_`), `DEBUG*` macros for the serial output, settings in nvs through `KL_nvs`.
 
 | Module          | Task |
 | --------------- | ---- |
 | `main.c`        | boot order, network start, serial commands, three-power-cycle Wi-Fi reset |
-| `IC_camera`     | esp32-camera driver, jpeg, settings applied to the sensor |
-| `IC_frame`      | one camera task at the highest rate any consumer asks for; the latest frame is copied out per consumer, so a slow upload never holds a driver buffer |
-| `IC_stream`     | websocket to the server: hello, telemetry, commands, frames at the server's rate |
-| `IC_local_http` | page and mjpeg stream on the home network (port 80/81, local key) |
-| `IC_commands`   | the command set of serial and server (`docs/protocol.md`) |
-| `IC_wifi_prov`  | SoftAP provisioning (`HM-xxxxxx`, security 1), reconnect with back-off, scan, network change with fallback |
-| `IC_config`     | server url, device secret, local key, camera settings |
-| `IC_ota`        | https/http ota into the other slot; kept once it reached the server or ran 5 min, else rolled back |
-| `IC_light`      | flash led pwm, capped at `CONFIG_HM_LIGHT_MAX_PERCENT` |
-| `IC_status_led` | red led: slow = provisioning, fast = connecting, blip = online, double = no camera |
+| `KL_camera`     | esp32-camera driver, jpeg, settings applied to the sensor |
+| `KL_frame`      | one camera task at the highest rate any consumer asks for; the latest frame is copied out per consumer, so a slow upload never holds a driver buffer |
+| `KL_stream`     | websocket to the server: hello, telemetry, commands, frames at the server's rate |
+| `KL_local_http` | page and mjpeg stream on the home network (port 80/81, local key) |
+| `KL_commands`   | the command set of serial and server (`docs/protocol.md`) |
+| `KL_wifi_prov`  | SoftAP provisioning (`KIBBL-xxxxxx`, security 1), reconnect with back-off, scan, network change with fallback |
+| `KL_config`     | server url, device secret, local key, camera settings |
+| `KL_ota`        | https/http ota into the other slot; kept once it reached the server or ran 5 min, else rolled back |
+| `KL_light`      | flash led pwm, capped at `CONFIG_KIBBL_LIGHT_MAX_PERCENT` |
+| `KL_status_led` | red led: slow = provisioning, fast = connecting, blip = online, double = no camera |
 
 Memory: frames live in PSRAM (4 MB on the ESP32-CAM); the driver keeps two UXGA-sized jpeg buffers, the hub and each consumer one copy that grows with the frame.
 

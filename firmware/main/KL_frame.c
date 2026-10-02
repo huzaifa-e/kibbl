@@ -1,4 +1,4 @@
-#include "IC_frame.h"
+#include "KL_frame.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -9,9 +9,9 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "IC_camera.h"
-#include "IC_serial.h"
-#include "IC_time.h"
+#include "KL_camera.h"
+#include "KL_serial.h"
+#include "KL_time.h"
 
 #define CAMERA_STACK_SIZE 4096
 #define NEW_FRAME_BIT     BIT0
@@ -124,8 +124,8 @@ void frame_set_demand(frame_consumer_t consumer, uint8_t fps) {
     if (consumer >= FRAME_CONSUMERS) {
         return;
     }
-    if (fps > CONFIG_HM_STREAM_MAX_FPS) {
-        fps = CONFIG_HM_STREAM_MAX_FPS;
+    if (fps > CONFIG_KIBBL_STREAM_MAX_FPS) {
+        fps = CONFIG_KIBBL_STREAM_MAX_FPS;
     }
     uint8_t before   = demand[consumer];
     demand[consumer] = fps;

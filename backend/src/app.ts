@@ -72,7 +72,7 @@ async function main() {
     );
 
     app.use((req, res) => {
-        if (req.path.startsWith('/api') || req.header('user-agent')?.includes('HomeMonitorHW')) {
+        if (req.path.startsWith('/api') || req.header('user-agent')?.includes('KibblHW')) {
             res.sendStatus(404);
             return;
         }

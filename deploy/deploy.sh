@@ -8,7 +8,7 @@
 set -euo pipefail
 
 HOST="${HOST:-jhubuntu}"
-REMOTE_DIR="${REMOTE_DIR:-home-monitor}"
+REMOTE_DIR="${REMOTE_DIR:-kibbl}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "Copying to $HOST:$REMOTE_DIR"

@@ -1,4 +1,4 @@
-#include "IC_camera.h"
+#include "KL_camera.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -6,8 +6,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#include "IC_hm_hw.h"
-#include "IC_serial.h"
+#include "KL_hw.h"
+#include "KL_serial.h"
 
 static SemaphoreHandle_t cam_mutex;
 

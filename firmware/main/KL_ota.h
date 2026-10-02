@@ -1,5 +1,5 @@
-#ifndef IC_OTA_H
-#define IC_OTA_H
+#ifndef KL_OTA_H
+#define KL_OTA_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,4 +21,4 @@ void ota_confirm_image(void);
 }
 #endif
 
-#endif /* IC_OTA_H */
+#endif /* KL_OTA_H */

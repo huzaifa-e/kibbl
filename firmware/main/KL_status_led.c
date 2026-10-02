@@ -1,4 +1,4 @@
-#include "IC_status_led.h"
+#include "KL_status_led.h"
 
 #include <stdbool.h>
 
@@ -6,7 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "IC_hm_hw.h"
+#include "KL_hw.h"
 
 #define STATUS_LED_STACK_SIZE 2048
 

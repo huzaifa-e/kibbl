@@ -1,5 +1,5 @@
-#ifndef IC_NVS_H
-#define IC_NVS_H
+#ifndef KL_NVS_H
+#define KL_NVS_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,4 +35,4 @@ bool nvs_remove_key(const char *key);
 }
 #endif
 
-#endif /* IC_NVS_H */
+#endif /* KL_NVS_H */

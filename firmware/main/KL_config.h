@@ -1,5 +1,5 @@
-#ifndef IC_CONFIG_H
-#define IC_CONFIG_H
+#ifndef KL_CONFIG_H
+#define KL_CONFIG_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,4 +51,4 @@ void config_camera_to_json(const camera_settings_t *settings, cJSON *json);
 }
 #endif
 
-#endif /* IC_CONFIG_H */
+#endif /* KL_CONFIG_H */

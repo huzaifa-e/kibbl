@@ -1,5 +1,5 @@
 <p align="center">
-    <h1 align="center">HOME-MONITOR</h1>
+    <h1 align="center">kibbl.</h1>
 </p>
 <p align="center">
     <em>Live camera, pet and people activity, and the home devices to come.</em>
@@ -36,14 +36,14 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
 ## Repository Structure
 
 ```sh
-└── home-monitor/
+└── kibbl/
     ├── firmware/                 ESP-IDF project (C)
     │   ├── main/
     │   │   ├── main.c            entry point app_main()
-    │   │   ├── IC_*.c / IC_*.h   modules, one task each (see docs/architecture.md)
+    │   │   ├── KL_*.c / KL_*.h   modules, one task each (see docs/architecture.md)
     │   │   ├── Kconfig.projbuild board, server url, provisioning pop
     │   │   └── web/index.html    local stream page
-    │   ├── hm_partition_tbl.csv  two OTA slots on 4 MB flash
+    │   ├── kibbl_partition_tbl.csv  two OTA slots on 4 MB flash
     │   ├── sdkconfig.defaults
     │   ├── create_build_info.sh  FW_VERSION for CI builds
     │   └── env.sh                ESP-IDF v5.1.6 environment
@@ -63,7 +63,7 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
     └── .github/workflows/        firmware and app builds
 ```
 
-Module files start with IC_ (for ISIS-IC) to distinguish them from ESP-IDF and component sources.
+Module files start with KL_ (for kibbl.) to distinguish them from ESP-IDF and component sources.
 
 ## Getting Started
 
@@ -73,7 +73,7 @@ Module files start with IC_ (for ISIS-IC) to distinguish them from ESP-IDF and c
 cd firmware
 source env.sh                                    # ESP-IDF v5.1.6
 idf.py set-target esp32                          # esp32s3 for the Freenove board
-idf.py menuconfig                                # Home Monitor: board, server url, pop
+idf.py menuconfig                                # kibbl.: board, server url, pop
 idf.py -p /dev/cu.usbserial-XXXX -b 460800 flash monitor
 ```
 
@@ -83,7 +83,7 @@ In a folder whose path contains parentheses, add `-B <build dir outside of it>` 
 
 **In the app** (Chrome or Edge on a computer): plug the camera in by USB, open **Devices → Set up over USB**, pick the port, name it, choose the Wi-Fi from the scan and enter the password. The app writes the network and the server address over the cable, the server approves the device on its first connection, and the dialog waits until it is online. Later Wi-Fi changes: Devices → Actions → **Wi-Fi network**; a network that does not work is undone after 30 s.
 
-Without a computer: after the first flash the red led blinks slowly and the camera opens the Wi-Fi **HM-xxxxxx**; connect it with the *ESP SoftAP Prov* app (proof of possession `hm-setup`), then approve it under Devices. The led blips every 3 s while it is connected.
+Without a computer: after the first flash the red led blinks slowly and the camera opens the Wi-Fi **KIBBL-xxxxxx**; connect it with the *ESP SoftAP Prov* app (proof of possession `kibbl-setup`), then approve it under Devices. The led blips every 3 s while it is connected.
 
 Power cycling the camera three times within 10 s each forgets the Wi-Fi and starts provisioning again.
 
@@ -106,7 +106,7 @@ Deployment to jhubuntu: [docs/deployment.md](docs/deployment.md).
 The serial port (115200 baud) prints every module's output with time, file, line and task:
 
 ```
-    0.229 |      IC_camera.c:83  |       main | camera: OV2640 ready
+    0.229 |      KL_camera.c:83  |       main | camera: OV2640 ready
 ```
 
 `{"cmd":"debug"}` switches it off and on (kept across restarts), `{"cmd":"info"}` prints the device state, including the url of the local stream page with its key. All commands: [docs/protocol.md](docs/protocol.md#serial-commands-usb-115200-baud).

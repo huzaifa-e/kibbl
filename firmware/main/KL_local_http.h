@@ -1,5 +1,5 @@
-#ifndef IC_LOCAL_HTTP_H
-#define IC_LOCAL_HTTP_H
+#ifndef KL_LOCAL_HTTP_H
+#define KL_LOCAL_HTTP_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,4 +17,4 @@ bool local_http_start(void);
 }
 #endif
 
-#endif /* IC_LOCAL_HTTP_H */
+#endif /* KL_LOCAL_HTTP_H */

@@ -1,5 +1,5 @@
-#ifndef IC_STREAM_H
-#define IC_STREAM_H
+#ifndef KL_STREAM_H
+#define KL_STREAM_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,4 +18,4 @@ bool stream_connected(void);
 }
 #endif
 
-#endif /* IC_STREAM_H */
+#endif /* KL_STREAM_H */
