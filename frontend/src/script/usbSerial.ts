@@ -59,8 +59,8 @@ export class UsbDevice {
 
     static async open(port: SerialPortLike) {
         await port.open({ baudRate: 115200 });
-        /* The ESP32-CAM-MB adapter wires RTS to EN and DTR to IO0: both released, the
-         * board runs its firmware instead of sitting in reset or in the bootloader. */
+        /* The device's USB adapter drives its reset and boot lines with RTS and DTR:
+         * both released, it runs normally instead of sitting in reset. */
         await port.setSignals({ dataTerminalReady: false, requestToSend: false });
         const device = new UsbDevice(port);
         device.readLoop();

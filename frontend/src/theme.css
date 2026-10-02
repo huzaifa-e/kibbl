@@ -681,3 +681,8 @@ body:not(.title-screen)::after {
         transform: rotate(360deg);
     }
 }
+
+/* main.ts sets the height of an open menu to the room below it; the rest scrolls */
+.dropdown-menu {
+    overflow-y: auto;
+}

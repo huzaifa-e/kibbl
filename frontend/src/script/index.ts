@@ -108,7 +108,7 @@ function renderCameras() {
         grid.innerHTML = `<div class="col-12"><div class="card"><div class="card-body">${emptyState(
             'device-cctv',
             'No camera yet',
-            'Power the ESP32-CAM, connect it to your Wi-Fi and approve it under Devices.',
+            'Plug your Home Monitor Cam into this computer and set it up under Devices.',
             '<a href="/devices" class="btn btn-primary">Devices</a>',
         )}</div></div></div>`;
         return;

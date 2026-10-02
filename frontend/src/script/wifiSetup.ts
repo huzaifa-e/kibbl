@@ -1,4 +1,4 @@
-import type { DeviceSummary, SetupInfo, WifiNetwork } from '../../../shared/protocol';
+import { productName, type DeviceSummary, type SetupInfo, type WifiNetwork } from '../../../shared/protocol';
 import { request, socket } from './socket';
 import { UsbDevice, type DeviceResponse } from './usbSerial';
 import { errorAlert, escapeHtml, signalQuality } from './utils';
@@ -60,7 +60,7 @@ function networkPickerHtml(networks: WifiNetwork[] | undefined, current?: string
                 <input type="password" class="form-control" data-wifi-password maxlength="63" autocomplete="new-password" placeholder="8 to 63 characters, empty for an open network" />
                 <button class="btn" type="button" data-wifi-show title="Show the password"><i class="ti ti-eye"></i></button>
             </div>
-            <div class="form-hint">Goes straight to the device; the server never stores it. The ESP32 only sees 2.4 GHz networks.</div>
+            <div class="form-hint">Goes straight to the device; the server never stores it. The device connects to 2.4 GHz networks.</div>
         </div>`;
 }
 
@@ -105,7 +105,7 @@ function stepHtml(state: 'wait' | 'run' | 'ok' | 'fail', text: string) {
  * except over the cable. */
 export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parameters<typeof UsbDevice.open>[0]) {
     const body = modal('Set up a device over USB');
-    body.innerHTML = `<p>Plug the device into this computer with a USB data cable, then choose its port (often <i>USB Serial</i> or <i>CP2102</i>/<i>CH340</i>).</p>
+    body.innerHTML = `<p>Plug the device into this computer with its USB cable, then choose it in the list your browser shows.</p>
         <div class="text-secondary small">Opening the port restarts the device; it answers after a few seconds.</div>`;
 
     let device: UsbDevice;
@@ -125,7 +125,7 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
     const info = await device.info();
     if (finished) return;
     if (!info) {
-        body.innerHTML = errorAlert('The device does not answer. Is it running the Home Monitor firmware? Press its reset button and try again.');
+        body.innerHTML = errorAlert('The device does not answer. Unplug it, plug it in again and retry.');
         return;
     }
 
@@ -140,7 +140,7 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
             <div class="d-flex align-items-center mb-3">
                 <span class="hud-icon hud-pumpkin me-3"><i class="ti ti-device-cctv"></i></span>
                 <div>
-                    <div class="fw-bold">${escapeHtml(info.model ?? 'device')} · ${escapeHtml(info.sensor ?? '')}</div>
+                    <div class="fw-bold">${escapeHtml(productName(info.model as string | undefined, (info.caps as string[]) ?? []))}</div>
                     <div class="text-secondary small"><span class="text-mono">${escapeHtml(id)}</span> · ${escapeHtml(info.fw ?? '')}</div>
                     <div class="text-secondary small">${info.ip ? `on <b>${escapeHtml(info.ssid)}</b> (${escapeHtml(info.ip)})` : info.ssid ? `set to <b>${escapeHtml(info.ssid)}</b>, not connected` : 'no Wi-Fi yet'}${known ? ` · known as <b>${escapeHtml(known.name)}</b>` : ''}</div>
                 </div>

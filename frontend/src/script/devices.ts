@@ -1,5 +1,5 @@
 import './main';
-import type { DeviceSummary } from '../../../shared/protocol';
+import { productName, type DeviceSummary } from '../../../shared/protocol';
 import { request, socket } from './socket';
 import { knownPorts, onUsbPlugged, usbSupported, usbUnsupportedReason } from './usbSerial';
 import { byId, emptyState, errorAlert, escapeHtml, successAlert, timeAgo } from './utils';
@@ -23,12 +23,12 @@ function pendingCard(d: DeviceSummary) {
                 <div class="d-flex align-items-center mb-2">
                     <span class="avatar bg-orange-lt me-3"><i class="ti ti-plug-connected"></i></span>
                     <div class="flex-fill">
-                        <div class="fw-bold">${escapeHtml(d.model ?? 'New device')} ${d.sensor ? `· ${escapeHtml(d.sensor)}` : ''}</div>
+                        <div class="fw-bold">${escapeHtml(productName(d.model, d.caps))}</div>
                         <div class="text-secondary small">id <span class="text-mono">${escapeHtml(d._id)}</span> · first seen ${timeAgo(d.createdAt)}</div>
                     </div>
                     <span class="badge ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}">${d.online ? 'online' : 'offline'}</span>
                 </div>
-                <div class="text-secondary small mb-3">Approve only a device you set up yourself: compare the id with the one the device prints on its serial port.</div>
+                <div class="text-secondary small mb-3">Approve only a device you set up yourself: its id is on the label and in the setup over USB.</div>
                 <div class="btn-list">
                     <button class="btn btn-success" data-action="approve" data-device="${d._id}"><i class="ti ti-check me-1"></i> Approve</button>
                     <button class="btn btn-outline-danger" data-action="remove" data-device="${d._id}"><i class="ti ti-x me-1"></i> Reject</button>
@@ -46,7 +46,7 @@ function deviceRow(d: DeviceSummary) {
                 <span class="avatar me-2 ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}"><i class="ti ti-${d.caps.includes('camera') ? 'device-cctv' : 'cpu'}"></i></span>
                 <div>
                     <div class="fw-bold">${escapeHtml(d.name)}</div>
-                    <div class="text-secondary small text-mono">${escapeHtml(d._id)}</div>
+                    <div class="text-secondary small">${escapeHtml(productName(d.model, d.caps))} · <span class="text-mono">${escapeHtml(d._id)}</span></div>
                 </div>
             </div>
         </td>
@@ -56,7 +56,7 @@ function deviceRow(d: DeviceSummary) {
         <td class="d-none d-lg-table-cell text-mono small">${escapeHtml(d.fw ?? '–')}</td>
         <td class="text-end">
             <div class="dropdown">
-                <button class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+                <button class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}'>Actions</button>
                 <div class="dropdown-menu dropdown-menu-end">
                     ${d.caps.includes('camera') ? `<a class="dropdown-item" href="/camera/${d._id}"><i class="ti ti-video me-2"></i> Live view</a>` : ''}
                     <a class="dropdown-item" href="#" data-action="rename" data-device="${d._id}"><i class="ti ti-pencil me-2"></i> Rename</a>
@@ -105,13 +105,13 @@ function render() {
         <div class="row row-cards">
             <div class="col-lg-7">
                 <div class="card">
-                    <div class="card-header"><h3 class="card-title">Without a computer at hand</h3></div>
+                    <div class="card-header"><h3 class="card-title">Good to know</h3></div>
                     <div class="card-body">
-                        <ol class="mb-0">
-                            <li class="mb-2">A device without Wi-Fi opens the network <b>HM-xxxxxx</b>. Connect it to your home Wi-Fi with the <b>ESP SoftAP Prov</b> app (proof of possession <span class="text-mono">hm-setup</span>).</li>
-                            <li class="mb-2">It connects to this server and appears above under <i>Waiting for approval</i>: approve it.</li>
+                        <ul class="mb-0">
+                            <li class="mb-2">A device that reaches your home on its own appears above under <i>Waiting for approval</i>. Approve only one you set up yourself.</li>
+                            <li class="mb-2">Moving to another Wi-Fi: <i>Actions → Wi-Fi network</i> while it is online, or set it up over USB again.</li>
                             <li>Power it off and on three times within ten seconds each to make it forget its Wi-Fi.</li>
-                        </ol>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -215,6 +215,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+/* The table scrolls sideways on a phone (.table-responsive): its overflow would cut
+ * off the Actions menu, so the menu is positioned fixed (data-bs-popper-config). A
+ * device update re-renders the list; while a menu is open that waits until it closes. */
+let renderWhenClosed = false;
+
+function renderUnlessMenuOpen() {
+    const kept = byId('result')?.innerHTML ?? '';
+    if (document.querySelector('#container .dropdown-menu.show')) {
+        renderWhenClosed = true;
+        return;
+    }
+    render();
+    byId('result').innerHTML = kept;
+}
+
+document.addEventListener('hidden.bs.dropdown', () => {
+    if (renderWhenClosed) {
+        renderWhenClosed = false;
+        renderUnlessMenuOpen();
+    }
+});
+
 socket.on('connect', load);
 if (usbSupported()) {
     onUsbPlugged(() => offerPluggedDevice());
@@ -223,14 +245,9 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
     const i = devices.findIndex((d) => d._id === device._id);
     if (i >= 0) devices[i] = device;
     else devices.push(device);
-    // keep a message the user is reading
-    const kept = byId('result')?.innerHTML ?? '';
-    render();
-    byId('result').innerHTML = kept;
+    renderUnlessMenuOpen(); // keeps a message the user is reading
 });
 socket.on('deviceRemoved', (deviceId: string) => {
     devices = devices.filter((d) => d._id !== deviceId);
-    const kept = byId('result')?.innerHTML ?? '';
-    render();
-    byId('result').innerHTML = kept;
+    renderUnlessMenuOpen();
 });

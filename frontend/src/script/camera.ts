@@ -1,6 +1,6 @@
 import './main';
 import type ApexCharts from 'apexcharts';
-import { framesizes, type ActivityBucket, type CameraSettings, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
+import { framesizes, productName, type ActivityBucket, type CameraSettings, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { heatmapChart } from './activityCharts';
 import { bindControls, controlsHtml } from './controls';
 import { bindEventViewer, eventCardHtml } from './events';
@@ -28,7 +28,7 @@ let paused = false;
 
 function layout(d: DeviceSummary) {
     byId('page-title').textContent = d.name;
-    byId('page-pretitle').textContent = d.sensor ? `${d.sensor} camera` : 'Camera';
+    byId('page-pretitle').textContent = productName(d.model, d.caps);
     byId('container').innerHTML = `
         <div class="row row-cards">
             <div class="col-lg-8">

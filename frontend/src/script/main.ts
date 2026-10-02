@@ -42,6 +42,19 @@ function highlightNav() {
     }
 }
 
+/* A menu is at most as tall as the larger room, below or above its button, and
+ * scrolls the rest; set before it opens, so the placement can flip it to that side.
+ * In a short window (a phone held sideways) its last items stay reachable. */
+document.addEventListener('show.bs.dropdown', (e) => {
+    const toggle = e.target as HTMLElement;
+    const menu = toggle.parentElement?.querySelector<HTMLElement>('.dropdown-menu');
+    if (menu) {
+        const r = toggle.getBoundingClientRect();
+        const room = Math.max(window.innerHeight - r.bottom, r.top) - 12;
+        menu.style.maxHeight = `${Math.max(120, room)}px`;
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     checkLoggedIn();
     highlightNav();
