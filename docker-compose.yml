@@ -1,0 +1,28 @@
+services:
+    app:
+        build: .
+        image: home-monitor:latest
+        container_name: home-monitor-app
+        restart: always
+        env_file: .env
+        environment:
+            - TZ=Europe/Berlin
+            - PORT=8790
+            - MONGODB_URI=mongodb://mongo:27017/home-monitor
+            - IMAGE_DATA_PATH=/data/images
+            - FIRMWARE_DATA_PATH=/data/firmware
+        ports:
+            - '8790:8790'
+        volumes:
+            - './data/app:/data'
+        depends_on:
+            - mongo
+    mongo:
+        image: mongo:7
+        container_name: home-monitor-mongo
+        restart: always
+        environment:
+            - TZ=Europe/Berlin
+        # only the app reaches the database, no port leaves the host
+        volumes:
+            - './data/mongo:/data/db'
