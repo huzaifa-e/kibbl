@@ -1,6 +1,7 @@
 #include "IC_wifi_prov.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <esp_event.h>
@@ -14,6 +15,7 @@
 
 #include "IC_serial.h"
 #include "IC_status_led.h"
+#include "IC_time.h"
 
 EventGroupHandle_t wifi_event_group;
 
@@ -214,6 +216,126 @@ bool wifi_set_credentials(const char *ssid, const char *password) {
         connect_state = WIFI_DISCONNECTED;
     }
     return err == ESP_OK;
+}
+
+/* ----------------------------------------------------------------------- */
+
+#define WIFI_CHANGE_STACK_SIZE 4096
+
+static volatile bool change_running = false;
+static char change_ssid[33];
+static char change_password[65];
+static char change_failed[33];
+
+static void wifi_change_task(void *pvParams) {
+    delay_ms(1000); // the response to the server leaves before the connection drops
+
+    wifi_config_t old = {0};
+    esp_wifi_get_config(WIFI_IF_STA, &old);
+
+    wifi_config_t cfg = {0};
+    memcpy(cfg.sta.ssid, change_ssid, strnlen(change_ssid, sizeof(cfg.sta.ssid)));
+    strlcpy((char *)cfg.sta.password, change_password, sizeof(cfg.sta.password));
+    cfg.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    memset(change_password, 0, sizeof(change_password));
+
+    DEBUG_F("wifi: switching to \"%s\", back to \"%.*s\" without an ip in %d s\n", change_ssid,
+            (int)sizeof(old.sta.ssid), (const char *)old.sta.ssid, WIFI_CHANGE_TIMEOUT_MS / 1000);
+
+    esp_timer_stop(reconnect_timer);
+    xEventGroupClearBits(wifi_event_group, WIFI_GOT_IP_BIT);
+    esp_wifi_disconnect();
+    esp_wifi_set_storage(WIFI_STORAGE_FLASH);
+    esp_wifi_set_config(WIFI_IF_STA, &cfg);
+    reconnect_delay_ms = RECONNECT_MIN_MS;
+    esp_wifi_connect();
+    memset(&cfg, 0, sizeof(cfg));
+
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_GOT_IP_BIT, pdFALSE, pdTRUE, pdMS_TO_TICKS(WIFI_CHANGE_TIMEOUT_MS));
+    if (bits & WIFI_GOT_IP_BIT) {
+        change_failed[0] = '\0';
+    } else {
+        DEBUG_F_ERROR("wifi: \"%s\" not joined, back to the previous network\n", change_ssid);
+        strlcpy(change_failed, change_ssid, sizeof(change_failed));
+        esp_timer_stop(reconnect_timer);
+        esp_wifi_disconnect();
+        esp_wifi_set_config(WIFI_IF_STA, &old);
+        reconnect_delay_ms = RECONNECT_MIN_MS;
+        esp_wifi_connect();
+    }
+    memset(&old, 0, sizeof(old));
+    change_running = false;
+    vTaskDelete(NULL);
+}
+
+bool wifi_change_network(const char *ssid, const char *password) {
+    if (change_running || ssid == NULL || password == NULL) {
+        return false;
+    }
+    size_t ssid_len = strlen(ssid);
+    size_t pw_len   = strlen(password);
+    // wpa needs 8 to 63 characters; an open network none
+    if (ssid_len == 0 || ssid_len > 32 || (pw_len > 0 && (pw_len < 8 || pw_len > 63))) {
+        return false;
+    }
+    strlcpy(change_ssid, ssid, sizeof(change_ssid));
+    strlcpy(change_password, password, sizeof(change_password));
+    change_running = true;
+    if (xTaskCreate(wifi_change_task, "wifi_change", WIFI_CHANGE_STACK_SIZE, NULL, 3, NULL) != pdPASS) {
+        memset(change_password, 0, sizeof(change_password));
+        change_running = false;
+        return false;
+    }
+    return true;
+}
+
+const char *wifi_change_failed(void) {
+    return change_failed;
+}
+
+int wifi_scan(wifi_ap_record_t *records, uint16_t max) {
+    wifi_scan_config_t scan_cfg = {
+        .show_hidden = false,
+    };
+    esp_err_t err = esp_wifi_scan_start(&scan_cfg, true);
+    if (err == ESP_ERR_WIFI_STATE && !(xEventGroupGetBits(wifi_event_group) & WIFI_GOT_IP_BIT)) {
+        // still trying to join a network: a scan needs the station idle
+        esp_timer_stop(reconnect_timer);
+        esp_wifi_disconnect();
+        delay_ms(100);
+        err = esp_wifi_scan_start(&scan_cfg, true);
+        esp_timer_start_once(reconnect_timer, (uint64_t)RECONNECT_MIN_MS * 1000);
+    }
+    if (err != ESP_OK) {
+        DEBUG_ERROR("wifi scan failed (%s)\n", esp_err_to_name(err));
+        return -1;
+    }
+
+    uint16_t found = 0;
+    esp_wifi_scan_get_ap_num(&found);
+    wifi_ap_record_t *all = calloc(found ? found : 1, sizeof(wifi_ap_record_t));
+    if (all == NULL) {
+        esp_wifi_clear_ap_list();
+        return -1;
+    }
+    esp_wifi_scan_get_ap_records(&found, all);
+
+    // the driver sorts by signal: keep the first record of every ssid
+    int count = 0;
+    for (int i = 0; i < found && count < max; i++) {
+        if (all[i].ssid[0] == '\0') {
+            continue;
+        }
+        bool seen = false;
+        for (int j = 0; j < count && !seen; j++) {
+            seen = strncmp((const char *)records[j].ssid, (const char *)all[i].ssid, sizeof(all[i].ssid)) == 0;
+        }
+        if (!seen) {
+            records[count++] = all[i];
+        }
+    }
+    free(all);
+    return count;
 }
 
 void wifi_reset_credentials(void) {

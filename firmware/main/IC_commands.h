@@ -14,8 +14,8 @@ typedef enum {
 
 /* Runs one {"cmd":"..."} request and returns the response to send back: {"ok":true}
  * with the command's data, or {"ok":false,"error":"..."}; an "id" in the request is
- * copied into it. Wi-Fi credentials and the server url are taken from the serial port
- * only. The caller frees the response. */
+ * copied into it. The server url is taken from the serial port only; Wi-Fi from the
+ * server switches with a fallback (docs/protocol.md). The caller frees the response. */
 cJSON *commands_handle(const cJSON *req, cmd_source_t source);
 
 // the device as the hello message and {"cmd":"info"} describe it
