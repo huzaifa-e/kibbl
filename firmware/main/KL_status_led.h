@@ -17,6 +17,10 @@ typedef enum {
 void status_led_setup(void);
 void set_status_led(status_led_state state);
 
+/* Three blinks of the status led: the Wi-Fi is connected. Its pattern goes on
+ * afterwards. */
+void status_led_wifi_connected(void);
+
 #ifdef __cplusplus
 }
 #endif

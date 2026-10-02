@@ -83,6 +83,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 
         reconnect_delay_ms = RECONNECT_MIN_MS;
         connect_state      = WIFI_GOT_IP;
+        status_led_wifi_connected();
         /* Signal main application to continue execution */
         xEventGroupSetBits(wifi_event_group, WIFI_GOT_IP_BIT);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
