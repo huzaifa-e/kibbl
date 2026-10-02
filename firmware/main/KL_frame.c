@@ -11,11 +11,13 @@
 
 #include "KL_camera.h"
 #include "KL_serial.h"
+#include "KL_stream.h"
 #include "KL_time.h"
 
 #define CAMERA_STACK_SIZE 4096
 #define NEW_FRAME_BIT     BIT0
 #define IDLE_WAIT_MS      1000 // longest sleep without demand before the demand is read again
+#define CAMERA_RETRY_MS   30000 // a camera that did not start is tried again this often
 
 static SemaphoreHandle_t frame_mutex;
 static EventGroupHandle_t frame_events;
@@ -59,8 +61,19 @@ static bool grow(frame_copy_t *copy, size_t len) {
 static void camera_task(void *pvParams) {
     int64_t second_start = millis();
     uint8_t frames       = 0;
+    int64_t last_retry   = millis();
 
     while (1) {
+        /* A camera that did not answer at boot (power dip, slow module) is tried again;
+         * when it starts, the server learns it from a new hello. */
+        if (!camera_ready() && millis() - last_retry > CAMERA_RETRY_MS) {
+            last_retry = millis();
+            if (camera_start()) {
+                DEBUG_F("camera: started on a retry\n");
+                stream_announce();
+            }
+        }
+
         uint8_t fps = highest_demand();
         if (fps == 0 || !camera_ready()) {
             fps_last_second = 0;

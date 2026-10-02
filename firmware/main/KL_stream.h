@@ -14,6 +14,9 @@ void stream_start(void);
 
 bool stream_connected(void);
 
+// sends the hello again: what the device can do has changed (the camera came back)
+void stream_announce(void);
+
 #ifdef __cplusplus
 }
 #endif

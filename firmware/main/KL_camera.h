@@ -16,6 +16,9 @@ extern "C" {
 // powers the sensor and starts the driver; false when no sensor answers
 bool camera_init(void);
 
+// camera_init(), one frame, then the stored settings: the way the camera is started
+bool camera_start(void);
+
 bool camera_ready(void);
 
 // the sensor name (OV2640, OV3660, ...), "none" before a successful camera_init()

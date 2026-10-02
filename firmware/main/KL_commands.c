@@ -74,11 +74,10 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
     cJSON_AddNumberToObject(json, "psram", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cJSON_AddNumberToObject(json, "resetReason", esp_reset_reason());
 
-    // what the device can do; the server builds its controls from this list
+    /* what the device can do; the server builds its controls from this list. A kibbl. cam
+     * is a camera even while its module does not answer: the app shows cameraError then. */
     cJSON *caps = cJSON_AddArrayToObject(json, "caps");
-    if (camera_ready()) {
-        cJSON_AddItemToArray(caps, cJSON_CreateString("camera"));
-    }
+    cJSON_AddItemToArray(caps, cJSON_CreateString("camera"));
     if (light_available()) {
         cJSON_AddItemToArray(caps, cJSON_CreateString("light"));
         cJSON_AddItemToArray(caps, cJSON_CreateString("blink"));

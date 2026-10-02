@@ -80,16 +80,9 @@ static void quick_reset_clear(void) {
 
 /* ----------------------------------------------------------------------- */
 
-static bool camera_start(void) {
+static bool camera_start_at_boot(void) {
     for (int i = 0; i < CAMERA_INIT_TRIES; i++) {
-        if (camera_init()) {
-            /* Settings written before the sensor delivered its first frame do not
-             * stick: the stream came up at UXGA, the size of the init, whatever was
-             * stored. One frame first, then the stored settings. */
-            camera_return(camera_take());
-            camera_settings_t settings;
-            config_camera_settings(&settings);
-            camera_apply(&settings);
+        if (camera_start()) {
             return true;
         }
         delay_ms(500);
@@ -109,9 +102,9 @@ void app_main(void) {
     status_led_setup();
     light_setup();
 
-    bool camera_ok = camera_start();
+    bool camera_ok = camera_start_at_boot();
     if (!camera_ok) {
-        // still online: the server shows the error and an update can fix it
+        // still online: the app shows the error, the frame hub tries again every 30 s
         DEBUG_F_ERROR("no camera (%s), running without it\n", camera_last_error());
         set_status_led(LED_ERROR);
     }

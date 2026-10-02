@@ -269,6 +269,10 @@ void stream_start(void) {
     xTaskCreatePinnedToCore(stream_task, "stream_task", STREAM_STACK_SIZE, NULL, 4, NULL, 0);
 }
 
+void stream_announce(void) {
+    hello_pending = true;
+}
+
 bool stream_connected(void) {
     return connected;
 }

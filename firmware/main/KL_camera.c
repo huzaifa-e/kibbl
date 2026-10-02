@@ -86,6 +86,20 @@ bool camera_init(void) {
     return true;
 }
 
+bool camera_start(void) {
+    if (!camera_init()) {
+        return false;
+    }
+    /* Settings written before the sensor delivered its first frame do not stick: the
+     * stream came up at UXGA, the size of the init, whatever was stored. One frame
+     * first, then the stored settings. */
+    camera_return(camera_take());
+    camera_settings_t settings;
+    config_camera_settings(&settings);
+    camera_apply(&settings);
+    return true;
+}
+
 bool camera_ready(void) {
     return ready;
 }
