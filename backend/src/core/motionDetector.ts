@@ -28,10 +28,19 @@ export interface MotionResult {
 }
 
 /* Background subtraction on a small grey picture (64x48): cheap enough to run on every
- * analysed frame of every camera, and blind to jpeg noise and small flicker. */
+ * analysed frame of every camera, and blind to jpeg noise and small flicker. A change of
+ * the whole picture's brightness (auto exposure, a cloud, the camera's own flash) is
+ * taken out before the pixels are compared: only what changes in a part of the
+ * picture is motion. */
 export class MotionDetector {
     private background: Float32Array | null = null;
     private overThreshold = 0;
+
+    // the next frame becomes the background, as the first one does
+    reset() {
+        this.background = null;
+        this.overThreshold = 0;
+    }
 
     analyze(gray: Uint8Array, sensitivity: MotionSensitivity): MotionResult {
         const n = gray.length;
@@ -41,19 +50,22 @@ export class MotionDetector {
             return { score: 0, motion: false, reset: true };
         }
 
-        let changed = 0;
         let meanNow = 0;
         let meanBackground = 0;
         for (let i = 0; i < n; i++) {
-            const diff = Math.abs(gray[i] - this.background[i]);
-            if (diff > PIXEL_THRESHOLD) {
-                changed++;
-            }
             meanNow += gray[i];
             meanBackground += this.background[i];
         }
+        const shift = (meanNow - meanBackground) / n; // brightness change of the whole picture
+        const brightnessJump = Math.abs(shift);
+
+        let changed = 0;
+        for (let i = 0; i < n; i++) {
+            if (Math.abs(gray[i] - shift - this.background[i]) > PIXEL_THRESHOLD) {
+                changed++;
+            }
+        }
         const score = changed / n;
-        const brightnessJump = Math.abs(meanNow - meanBackground) / n;
 
         if (score > GLOBAL_CHANGE || brightnessJump > LIGHTING_THRESHOLD) {
             this.background = Float32Array.from(gray);

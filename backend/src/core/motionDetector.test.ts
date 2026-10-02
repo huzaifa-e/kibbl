@@ -49,6 +49,31 @@ test('a light switched on resets the background instead of reporting motion', ()
     assert.equal(d.analyze(scene(160), 'high').motion, false);
 });
 
+test('the whole picture getting brighter or darker is no motion', () => {
+    // auto exposure settling after the flash: +20, then -15, below the lighting jump
+    const d = new MotionDetector();
+    for (let i = 0; i < 5; i++) d.analyze(scene(100), 'high');
+    for (const level of [120, 120, 108, 92, 85, 85]) {
+        assert.equal(d.analyze(scene(level), 'high').motion, false, `level ${level}`);
+    }
+});
+
+test('motion is still seen while the exposure drifts', () => {
+    const d = new MotionDetector();
+    for (let i = 0; i < 5; i++) d.analyze(scene(100), 'medium');
+    d.analyze(withObject(scene(112), 10, 14), 'medium');
+    assert.equal(d.analyze(withObject(scene(115), 12, 14), 'medium').motion, true);
+});
+
+test('after a reset the next frame is the background', () => {
+    const d = new MotionDetector();
+    for (let i = 0; i < 5; i++) d.analyze(scene(100), 'high');
+    d.reset();
+    const r = d.analyze(withObject(scene(100), 10, 14), 'high');
+    assert.equal(r.reset, true);
+    assert.equal(d.analyze(withObject(scene(100), 10, 14), 'high').motion, false);
+});
+
 test('a small object is seen on high sensitivity only', () => {
     const run = (sensitivity: 'low' | 'high') => {
         const d = new MotionDetector();

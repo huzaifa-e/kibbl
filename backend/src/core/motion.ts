@@ -13,11 +13,11 @@ const EVENT_MAX_MS = 10 * 60_000; // a longer visit is split, so the timeline ke
 const SNAPSHOT_MIN_GAP_MS = 2000; // the event picture is replaced by a better one at most this often
 const SETTINGS_TTL_MS = 5000; // motion settings are read from the database at most this often
 
-/* The white light flashes when something moves. Frames taken while it flashes are
- * brighter: they are not analysed, or the flash itself would look like motion and
- * flash it again. */
-const BLINK_GAP_MS = 3000; // at most one flash this often while the motion goes on
-const BLINK_BLIND_MS = 1200; // frames not analysed after a flash: 2 flashes take 400 ms, plus the delay of the link
+/* The white light flashes once when a movement starts, not again while it goes on. A
+ * flash brightens the next frames and the camera's auto exposure takes a moment to
+ * settle: those frames are skipped, and the first one after them is the new background,
+ * so the settling exposure is not compared with the picture from before the flash. */
+const BLINK_BLIND_MS = 2000;
 const BLINK = { cmd: 'blink', count: 2, level: 30 };
 
 interface CurrentEvent {
@@ -36,6 +36,7 @@ interface DeviceMotion {
     canBlink: boolean;
     settingsTime: number;
     lastBlink: number;
+    freshBackground: boolean; // after a flash: the next analysed frame becomes the background
 }
 
 const devices = new Map<string, DeviceMotion>();
@@ -55,7 +56,7 @@ export function toMotionEvent(doc: MotionEventDoc): MotionEvent {
 function state(deviceId: string) {
     let s = devices.get(deviceId);
     if (!s) {
-        s = { detector: new MotionDetector(), busy: false, lastAnalysis: 0, settingsTime: 0, canBlink: false, lastBlink: 0 };
+        s = { detector: new MotionDetector(), busy: false, lastAnalysis: 0, settingsTime: 0, canBlink: false, lastBlink: 0, freshBackground: false };
         devices.set(deviceId, s);
     }
     return s;
@@ -98,17 +99,14 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
     }
 
     const gray = await sharp(jpeg).resize(ANALYSIS_WIDTH, ANALYSIS_HEIGHT, { fit: 'fill' }).greyscale().raw().toBuffer();
+    if (s.freshBackground) {
+        s.freshBackground = false;
+        s.detector.reset();
+    }
     const result = s.detector.analyze(new Uint8Array(gray.buffer, gray.byteOffset, gray.length), settings.sensitivity);
 
     const quiet = inQuietHours(new Date(time).getHours(), settings.quietFrom, settings.quietTo);
     if (result.motion && !quiet) {
-        // settings stored before the option existed have no blink: they blink, as new ones do
-        if ((settings.blink ?? true) && s.canBlink && time - s.lastBlink > BLINK_GAP_MS) {
-            s.lastBlink = time;
-            sendCommand(deviceId, BLINK).then((resp) => {
-                if (!resp.ok) log('debug', `${deviceId}: blink not taken (${resp.error})`);
-            });
-        }
         let current = s.current;
         if (current && time - current.doc.start > EVENT_MAX_MS) {
             await closeEvent(deviceId, s);
@@ -120,6 +118,14 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
             await MotionEventModel.create(doc);
             current = { doc, lastMotion: time, bestScore: result.score, lastSnapshot: time };
             s.current = current;
+            // settings stored before the option existed have no blink: they blink, as new ones do
+            if ((settings.blink ?? true) && s.canBlink) {
+                s.lastBlink = time;
+                s.freshBackground = true;
+                sendCommand(deviceId, BLINK).then((resp) => {
+                    if (!resp.ok) log('debug', `${deviceId}: blink not taken (${resp.error})`);
+                });
+            }
             hub.emit('motionEvent', toMotionEvent(doc));
             log('debug', `${deviceId}: motion (${(result.score * 100).toFixed(1)} %)`);
         }
