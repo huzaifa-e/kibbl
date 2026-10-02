@@ -33,7 +33,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
     "type": "hello",
     "fw": "HM-1a2b3c4d",
     "id": "C82E1824CFA8",
-    "model": "esp32-cam",
+    "model": "hm-cam",
     "board": "ai-thinker-esp32-cam",
     "sensor": "OV2640",
     "hostname": "home-monitor-cfa8",
@@ -52,7 +52,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
 }
 ```
 
-`caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`). `wifiChangeFailed` is only present after a `wifi` change from the app that did not work: the device went back to `ssid`.
+`model` is the product (`hm-cam`, `hm-feeder`, …): the app names a device by it (`productNames` in `shared/protocol.ts`) and never shows `board` or `sensor`, which are there for diagnosis. `caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`). `wifiChangeFailed` is only present after a `wifi` change from the app that did not work: the device went back to `ssid`.
 
 ### `telemetry` (every 10 s)
 
