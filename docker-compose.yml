@@ -43,6 +43,8 @@ services:
         image: mongo:7
         container_name: kibbl-mongo
         restart: always
+        # mongod's json log lines in the columns of the app's log (deploy/mongo/log.jq)
+        entrypoint: ['bash', '/kibbl-mongo/entrypoint.sh']
         # without the per-connection lines and the storage checkpoint line every minute:
         # what is left are startups, warnings and errors
         command: ['mongod', '--quiet', '--wiredTigerEngineConfigString=verbose=[checkpoint_progress:0]']
@@ -52,3 +54,4 @@ services:
         # only the app reaches the database, no port leaves the host
         volumes:
             - './data/mongo:/data/db'
+            - './deploy/mongo:/kibbl-mongo:ro'
