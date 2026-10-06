@@ -14,7 +14,7 @@ The first run copies the repository and creates `~/kibbl/.env` with a random `JW
 * `DEVICE_BASE_URL`: the server as the cameras reach it, for firmware downloads and as the address the app writes into a device set up over USB (`DEVICE_SOCKET_URL` overrides the latter)
 * `COOKIE_SECURE=true` once the app is served over https
 
-Then run `./deploy/deploy.sh` again. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
+Then run `./deploy/deploy.sh` again. Away from the office, over Tailscale: `HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/deploy.sh`. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
 
 ## Reaching the server from the home network
 

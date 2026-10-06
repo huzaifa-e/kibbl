@@ -4,15 +4,17 @@
 #
 #   ./deploy/deploy.sh            first run: creates .env from .env.example and stops
 #   HOST=other ./deploy/deploy.sh
+#   HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/deploy.sh   over Tailscale, away from the office
 
 set -euo pipefail
 
 HOST="${HOST:-jhubuntu}"
 REMOTE_DIR="${REMOTE_DIR:-kibbl}"
+SSH=(ssh ${SSH_PORT:+-p "$SSH_PORT"})
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "Copying to $HOST:$REMOTE_DIR"
-rsync -az --delete \
+rsync -az --delete -e "${SSH[*]}" \
     --exclude '.git/' \
     --exclude 'node_modules/' \
     --exclude 'backend/dist/' \
@@ -22,7 +24,7 @@ rsync -az --delete \
     --exclude '.simulated-device.json' \
     "$ROOT/" "$HOST:$REMOTE_DIR/"
 
-ssh "$HOST" bash -s -- "$REMOTE_DIR" <<'EOF'
+"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" <<'EOF'
 set -euo pipefail
 cd "$1"
 if [ ! -f .env ]; then
