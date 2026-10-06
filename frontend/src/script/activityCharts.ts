@@ -75,21 +75,38 @@ export function hourlyChart(el: HTMLElement, buckets: ActivityBucket[], day: str
             axisTicks: { show: false },
             tooltip: { enabled: false },
         },
-        tooltip: {
-            ...baseOptions().tooltip,
-            shared: true,
-            intersect: false,
-            x: { formatter: (_v: string, o: { dataPointIndex: number }) => `${hourLabel(o.dataPointIndex)}:00` },
-            y: {
-                formatter: (v: number | number[] | undefined, o: { seriesIndex: number; dataPointIndex: number }) => {
-                    if (withBands && o.seriesIndex > 0 && o.seriesIndex < 3) {
-                        const r = q[o.dataPointIndex];
-                        return o.seriesIndex === 1 ? `${round1(r.p10)} – ${round1(r.p90)}` : `${round1(r.p25)} – ${round1(r.p75)}`;
-                    }
-                    return typeof v === 'number' ? String(round1(v)) : '';
-                },
-            },
-        },
+        tooltip: withBands
+            ? {
+                  ...baseOptions().tooltip,
+                  shared: true,
+                  intersect: false,
+                  followCursor: true,
+                  /* One box per hour with all four values. The range area chart brings a
+                   * tooltip of its own that shows one series only and calls the formatters
+                   * without the data point, so it is replaced here. */
+                  custom: ({ dataPointIndex: h }: { dataPointIndex: number }) => {
+                      const r = q[h];
+                      if (!r) return '';
+                      const row = (color: string, label: string, value: string) =>
+                          `<div style="display:flex;align-items:center;gap:8px;line-height:1.6">` +
+                          `<span style="width:8px;height:8px;border-radius:2px;background:${color};flex:none"></span>` +
+                          `<span style="flex:1">${label}</span><strong style="margin-left:12px">${value}</strong></div>`;
+                      const events = (v: number) => `${v} event${v === 1 ? '' : 's'}`;
+                      return (
+                          `<div style="padding:6px 10px;font-size:12px;min-width:180px">` +
+                          `<div style="font-weight:600;margin-bottom:4px">${hourLabel(h)}:00 – ${hourLabel((h + 1) % 24)}:00</div>` +
+                          row(ACCENT, 'This day', events(counts[h])) +
+                          row(band, 'Median', String(round1(r.p50))) +
+                          row(band, '25–75 %', `${round1(r.p25)} – ${round1(r.p75)}`) +
+                          row(outerBand, '10–90 %', `${round1(r.p10)} – ${round1(r.p90)}`) +
+                          `</div>`
+                      );
+                  },
+              }
+            : {
+                  ...baseOptions().tooltip,
+                  x: { formatter: (_v: string, o?: { dataPointIndex: number }) => `${hourLabel(o?.dataPointIndex ?? 0)}:00` },
+              },
         // an empty day has no scale of its own: without a max the axis reads "Infinity"
         yaxis: {
             labels: { formatter: (v: number) => Math.round(v).toString() },
