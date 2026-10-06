@@ -103,6 +103,7 @@ function render() {
                     : `<div class="card-body">${emptyState('cpu', 'No devices yet', 'A new device appears above once it reaches the server.')}</div>`
             }
         </div>
+        <div id="trackers"></div>
         <div class="row row-cards">
             <div class="col-lg-7">
                 <div class="card">
@@ -129,6 +130,76 @@ function render() {
             </div>
         </div>
         <input type="file" id="firmware-file" accept=".bin" class="d-none" />`;
+    renderTrackers();
+}
+
+/* ----------------------------------------------------------------------- */
+
+interface Tracker {
+    name: string;
+    type: string;
+    battery: number | null;
+    batteryStatus: string | null;
+    lastSync: string | null;
+}
+
+let trackers: { linked: boolean; trackers: Tracker[] } | undefined;
+
+function batteryIcon(level: number | null) {
+    if (level === null) return 'battery';
+    return level > 60 ? 'battery-3' : level > 30 ? 'battery-2' : level > 10 ? 'battery-1' : 'battery-exclamation';
+}
+
+/* Fitness trackers are not kibbl. devices: they reach the server through the Google
+ * account they sync to (Health), so they are listed on their own, without actions. */
+function renderTrackers() {
+    const slot = document.getElementById('trackers');
+    if (!slot || !trackers) return;
+    if (!trackers.linked) {
+        slot.innerHTML = `<div class="card mb-4"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+            <span class="hud-icon hud-plum"><i class="ti ti-device-watch"></i></span>
+            <div class="flex-fill"><div class="fw-bold">Fitness tracker</div>
+                <div class="text-secondary small">Connect the Google account your tracker syncs to, and it appears here with its battery and last sync.</div></div>
+            <a class="btn" href="/health"><i class="ti ti-heartbeat me-1"></i> Health</a>
+        </div></div>`;
+        return;
+    }
+    const rows = trackers.trackers
+        .map((t) => {
+            const synced = t.lastSync ? Date.parse(t.lastSync) : null;
+            // a tracker syncs several times an hour while it is near the phone
+            const stale = synced !== null && Date.now() - synced > 24 * 3600_000;
+            return `<tr>
+                <td><div class="d-flex align-items-center gap-3">
+                    <span class="avatar bg-purple-lt"><i class="ti ti-${t.type === 'TRACKER' ? 'device-watch' : 'device-mobile'}"></i></span>
+                    <div><div class="fw-bold">${escapeHtml(t.name)}</div><div class="text-secondary small">${escapeHtml(t.type.toLowerCase())} · through Google Health</div></div>
+                </div></td>
+                <td><i class="ti ti-${batteryIcon(t.battery)} me-1 ${t.battery !== null && t.battery <= 15 ? 'text-danger' : ''}"></i>${t.battery === null ? '–' : `${t.battery} %`}</td>
+                <td class="${stale ? 'text-warning' : 'text-secondary'}">${synced ? `synced ${timeAgo(synced)}` : 'not synced yet'}</td>
+                <td class="text-end"><a class="btn btn-sm" href="/health"><i class="ti ti-heartbeat me-1"></i> Health</a></td>
+            </tr>`;
+        })
+        .join('');
+    slot.innerHTML = `<div class="card mb-4">
+        <div class="card-header"><h3 class="card-title">Trackers</h3></div>
+        ${
+            trackers.trackers.length
+                ? `<div class="table-responsive"><table class="table table-vcenter card-table">
+                    <thead><tr><th>Tracker</th><th>Battery</th><th>Sync</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+                : `<div class="card-body text-secondary">Google Health is connected; the trackers show after its first sync.</div>`
+        }
+    </div>`;
+}
+
+async function loadTrackers() {
+    try {
+        const res = await fetch('/api/health/trackers');
+        if (!res.ok) return;
+        trackers = await res.json();
+        renderTrackers();
+    } catch {
+        // the devices page works without them
+    }
 }
 
 function result(html: string) {
@@ -192,6 +263,7 @@ async function onAction(action: string, deviceId: string) {
 async function load() {
     devices = await request<DeviceSummary[]>('getDevices');
     render();
+    if (!trackers) loadTrackers();
     if (usbSupported()) offerPluggedDevice();
 }
 
