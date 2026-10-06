@@ -15,7 +15,8 @@ services:
         environment:
             - TZ=Europe/Berlin
             - PORT=8790
-            - MONGODB_URI=mongodb://mongo:27017/kibbl
+            # the app's own user, read and write on kibbl only; MONGO_* in .env
+            - MONGODB_URI=mongodb://${MONGO_APP_USER}:${MONGO_APP_PASSWORD}@mongo:27017/kibbl?authSource=kibbl
             - IMAGE_DATA_PATH=/data/images
             - FIRMWARE_DATA_PATH=/data/firmware
             # coloured columns in `docker compose logs`; LOG_LEVEL in .env (info by default)
@@ -47,11 +48,20 @@ services:
         entrypoint: ['bash', '/kibbl-mongo/entrypoint.sh']
         # without the per-connection lines and the storage checkpoint line every minute:
         # what is left are startups, warnings and errors
-        command: ['mongod', '--quiet', '--wiredTigerEngineConfigString=verbose=[checkpoint_progress:0]']
+        command: ['mongod', '--auth', '--quiet', '--wiredTigerEngineConfigString=verbose=[checkpoint_progress:0]']
         logging: *logging
         environment:
             - TZ=Europe/Berlin
-        # only the app reaches the database, no port leaves the host
+            # users an empty database gets on its first start: admin (MONGO_ROOT_*) for people,
+            # the app's user (MONGO_APP_*) by deploy/mongo/init/app-user.js
+            - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+            - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+            - MONGO_APP_USER=${MONGO_APP_USER}
+            - MONGO_APP_PASSWORD=${MONGO_APP_PASSWORD}
+        # on jhubuntu's loopback only, for MongoDB Compass through an SSH tunnel; never on the network
+        ports:
+            - '127.0.0.1:27017:27017'
         volumes:
             - './data/mongo:/data/db'
             - './deploy/mongo:/kibbl-mongo:ro'
+            - './deploy/mongo/init:/docker-entrypoint-initdb.d:ro'

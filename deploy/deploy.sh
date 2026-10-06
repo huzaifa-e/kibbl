@@ -31,6 +31,8 @@ cd "$1"
 if [ ! -f .env ]; then
     cp .env.example .env
     sed -i "s/^JWT_SECRET=$/JWT_SECRET=$(openssl rand -hex 32)/" .env
+    sed -i "s/^MONGO_ROOT_PASSWORD=$/MONGO_ROOT_PASSWORD=$(openssl rand -hex 24)/" .env
+    sed -i "s/^MONGO_APP_PASSWORD=$/MONGO_APP_PASSWORD=$(openssl rand -hex 24)/" .env
     echo "Created $1/.env: set ADMIN_EMAIL, ADMIN_PASSWORD and DEVICE_BASE_URL there, then deploy again."
     exit 1
 fi
