@@ -435,6 +435,9 @@ async function deleteHistory() {
     window.location.reload();
 }
 
+// what the waiting page shows (first sync, an error), so a poll with the same answer leaves it be
+let waitingHtml = '';
+
 async function load() {
     const notice = connectNotice();
     const { status, body } = await getJson(summaryUrl());
@@ -464,7 +467,11 @@ async function load() {
     }
     if (status === 202 || (status === 503 && !body.series)) {
         const sync = body.sync ?? {};
-        byId('container').innerHTML =
+        const container = byId('container');
+        // a loader already on screen: the first sync's takes its place without waiting and fading again
+        const loader = container.querySelector('.center-loading');
+        const steady = loader && parseFloat(getComputedStyle(loader).opacity) > 0.5 ? ' loading-steady' : '';
+        const html =
             notice +
             (sync.reconnect
                 ? connectCard(
@@ -474,10 +481,17 @@ async function load() {
                   )
                 : sync.error
                   ? errorAlert(`Google Health does not answer: ${escapeHtml(sync.error)}. Trying again every minute.`)
-                  : `<div class="center-loading text-center"><div class="d-flex justify-content-center mb-3">${orbHtml('searching', 64, 'Fetching from Google Health')}</div><div class="text-secondary h2">First sync with Google Health<span class="animated-dots"></span></div></div>`);
+                  : `<div class="center-loading text-center${steady}"><div class="d-flex justify-content-center mb-3">${orbHtml('searching', 64, 'Fetching from Google Health')}</div><div class="text-secondary h2">First sync with Google Health<span class="animated-dots"></span></div></div>`);
+        // asked again every 5 s: the page only changes when the answer did, nothing blinks
+        const shown = html.replace(' loading-steady', '');
+        if (shown !== waitingHtml) {
+            container.innerHTML = html;
+            waitingHtml = shown;
+        }
         setTimeout(load, 5000);
         return;
     }
+    waitingHtml = '';
     summary = body;
     render(
         notice +
@@ -567,7 +581,7 @@ async function loadDrill(type: string, date: string) {
     drillChart?.destroy();
     drillChart = undefined;
     const body = byId('drill-body');
-    body.innerHTML = `<div class="text-center text-secondary py-5"><div class="d-flex justify-content-center mb-3">${orbHtml(type === 'heart-rate' ? 'listening' : 'working', 64, 'Loading the day')}</div>Loading the day<span class="animated-dots"></span></div>`;
+    body.innerHTML = `<div class="text-center text-secondary py-5 loading-delayed"><div class="d-flex justify-content-center mb-3">${orbHtml(type === 'heart-rate' ? 'listening' : 'working', 64, 'Loading the day')}</div>Loading the day<span class="animated-dots"></span></div>`;
     byId('drill-meta').textContent = '';
 
     const { status, body: data } = await getJson(`/api/health/intraday?type=${encodeURIComponent(type)}&date=${date}`);

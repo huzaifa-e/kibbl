@@ -181,6 +181,29 @@ html[data-bs-theme='dark'] .theme-label-dark {
     padding: 15vh 0;
 }
 
+/* A loader only shows when the wait is long enough to notice: invisible for its first
+ * 350 ms, so a page whose data comes quickly never flashes one, then fading in. One that
+ * replaces a loader already shown (loading-steady) is there at once. */
+.center-loading,
+.loading-delayed {
+    animation: loading-in 450ms ease-out 350ms both;
+}
+
+.center-loading.loading-steady {
+    animation: none;
+}
+
+@keyframes loading-in {
+    from {
+        opacity: 0;
+        transform: scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
 /* thinking orbs (script/orb.ts): a canvas that draws itself */
 .thinking-orb {
     display: block;
@@ -322,4 +345,12 @@ html[data-bs-theme='dark'] .theme-label-dark {
 
 .health-ticks span:last-child {
     transform: translateX(-100%);
+}
+
+/* reduced motion: the loader still waits before it shows, without the fade */
+@media (prefers-reduced-motion: reduce) {
+    .center-loading,
+    .loading-delayed {
+        animation: loading-in 1ms linear 350ms both;
+    }
 }
