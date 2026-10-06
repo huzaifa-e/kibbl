@@ -103,6 +103,7 @@ function render() {
                     : `<div class="card-body">${emptyState('cpu', 'No devices yet', 'A new device appears above once it reaches the server.')}</div>`
             }
         </div>
+        <div id="meters"></div>
         <div id="trackers"></div>
         <div class="row row-cards">
             <div class="col-lg-7">
@@ -130,7 +131,73 @@ function render() {
             </div>
         </div>
         <input type="file" id="firmware-file" accept=".bin" class="d-none" />`;
+    renderMeters();
     renderTrackers();
+}
+
+/* ----------------------------------------------------------------------- */
+
+/* Utility meters (electricity, gas, water) of the EMONI LoRaWAN server: kibbl. keeps a
+ * copy of their readings, battery included; added here by the uuid of their dashboard. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let meters: any[] | undefined;
+
+function renderMeters() {
+    const slot = document.getElementById('meters');
+    if (!slot || !meters) return;
+    const rows = meters
+        .map((m) => {
+            const b = m.battery;
+            const battery = b
+                ? `<i class="ti ti-${b.percent > 60 ? 'battery-3' : b.percent > 30 ? 'battery-2' : b.percent > 10 ? 'battery-1' : 'battery-exclamation'} me-1 ${b.percent !== null && b.percent <= 15 ? 'text-danger' : ''}"></i>${b.percent ?? '–'} % <span class="text-secondary small">${(b.mv / 1000).toFixed(2)} V</span>`
+                : '–';
+            const stale = m.latest && Date.now() - m.latest.at > 6 * 3600_000;
+            return `<tr>
+                <td><div class="d-flex align-items-center gap-3">
+                    <span class="avatar bg-orange-lt"><i class="ti ti-${m.medium === 'electricity' ? 'bolt' : m.medium === 'water' ? 'droplet' : 'flame'}"></i></span>
+                    <div><div class="fw-bold">${escapeHtml(m.name)}</div><div class="text-secondary small">${escapeHtml(m.deviceType ?? m.medium)} · EMONI LoRaWAN</div></div>
+                </div></td>
+                <td><b>${m.latest ? Number(m.latest.value).toLocaleString([], { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '–'}</b> <span class="text-secondary small">${escapeHtml(m.unit)}</span></td>
+                <td>${battery}</td>
+                <td class="${stale || m.lastSyncError ? 'text-warning' : 'text-secondary'}">${m.lastSyncError ? 'source not answering' : m.latest ? `read ${timeAgo(m.latest.at)}` : 'no reading yet'}</td>
+                <td class="text-end"><a class="btn btn-sm" href="/meter/${m._id}"><i class="ti ti-chart-bar me-1"></i> Open</a></td>
+            </tr>`;
+        })
+        .join('');
+    slot.innerHTML = `<div class="card mb-4">
+        <div class="card-header"><h3 class="card-title">Meters</h3></div>
+        ${meters.length ? `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Meter</th><th>Reading</th><th>Battery</th><th>Last</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+        <div class="card-body">
+            <form class="d-flex flex-wrap gap-2" id="add-meter">
+                <input class="form-control" style="max-width:420px" id="meter-uuid" placeholder="Device id from the LoRaWAN dashboard (a uuid)" autocomplete="off" />
+                <button class="btn" type="submit"><i class="ti ti-plus me-1"></i> Add meter</button>
+            </form>
+            <div id="meter-result" class="mt-2"></div>
+        </div>
+    </div>`;
+    byId('add-meter').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const uuid = byId<HTMLInputElement>('meter-uuid').value.trim();
+        const res = await fetch('/api/meters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uuid }) });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            byId('meter-result').innerHTML = errorAlert(escapeHtml(body.error ?? 'Not added.'));
+            return;
+        }
+        byId('meter-result').innerHTML = successAlert(`${escapeHtml(body.name)} added: its history is being copied.`);
+        setTimeout(loadMeters, 3000);
+    });
+}
+
+async function loadMeters() {
+    try {
+        const res = await fetch('/api/meters');
+        if (!res.ok) return;
+        meters = await res.json();
+        renderMeters();
+    } catch {
+        // the devices page works without them
+    }
 }
 
 /* ----------------------------------------------------------------------- */
@@ -264,6 +331,7 @@ async function load() {
     devices = await request<DeviceSummary[]>('getDevices');
     render();
     if (!trackers) loadTrackers();
+    if (!meters) loadMeters();
     if (usbSupported()) offerPluggedDevice();
 }
 
