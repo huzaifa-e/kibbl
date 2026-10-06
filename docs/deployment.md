@@ -86,6 +86,12 @@ The token comes on stdin, never on the command line. Tokens are stored encrypted
 
 The health history is **stored on this server**: after connecting, the server fetches everything Google has once (the page shows how far it got; heart rate at full resolution takes the longest, ~40 requests a day of history), then only the latest data after each sync of the tracker. Disconnecting keeps the stored history, the page shows it without new data; *Delete stored history* removes it for good. It is in MongoDB (`healthpoints`, `heartratedays`), so a database backup has it too: a year is roughly 70 MB of points and 110 MB of heart rate on disk.
 
+## Meters
+
+Meters (electricity, gas, water) come from the EMONI LoRaWAN server running on the same host (`ttn-chirpstack-webhook`, container `emoni-lorawan`). The app joins its docker network (`METER_SOURCE_NETWORK`, default `ttn-chirpstack-webhook_default`, which must exist before `docker compose up`) and reads its api at `METER_SOURCE_URL` (default `http://emoni-lorawan:8000`); it only reads.
+
+A meter is one of the source's configured devices, by its uuid: in `.env` as `METERS=<uuid>,<uuid>` (added on start), or on the Devices page, **Add meter**. The first sync copies its whole history (12,000 readings take a few seconds), then every 2 minutes only what is new. The copy is in MongoDB (`meterreadings`, `meterperiods`), so the page keeps working while the source is down; removing a meter in the app deletes its copy, not the source's data.
+
 ## Reaching the server from the home network
 
 The camera opens the connection itself, so the server only has to be **reachable from the home network**. 10.0.1.99 is the office LAN and is not. Choose one:
