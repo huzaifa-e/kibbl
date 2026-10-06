@@ -83,7 +83,7 @@ export function sparkline(el: HTMLElement, series: (SeriesPoint & { low?: number
 
 // hours per night by stage, the last nights side by side
 export function sleepNightsChart(el: HTMLElement, nights: { date: string; value: number; stages?: Record<string, number> }[]) {
-    const last = nights.slice(-14);
+    const last = nights.slice(-60); // more nights would be bars a pixel wide
     const stages = ['DEEP', 'LIGHT', 'REM', 'AWAKE'];
     return render(el, {
         ...baseOptions(),
@@ -172,7 +172,7 @@ export function breathingChart(
 ) {
     // two records a night are common (two sources): the last one of a date counts
     const byDate = new Map(rows.map((r) => [r.date, r]));
-    const nights = [...byDate.values()].slice(-21);
+    const nights = [...byDate.values()].slice(-60);
     // 0 breaths a minute is a stage without a reading (no deep sleep that night), not a value
     const line = (name: string, key: 'value' | 'deep' | 'light' | 'rem') => ({ name, data: nights.map((n) => ({ x: shortDate(n.date), y: n[key] || null })) });
     return render(el, {

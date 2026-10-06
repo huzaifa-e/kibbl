@@ -52,6 +52,11 @@ const DRILLS: Record<string, { title: string; tone: Tone }> = {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Summary = any;
 
+const RANGES: Record<string, string> = { '30': '30 days', '90': '90 days', '365': '1 year', all: 'All' };
+let range = new URLSearchParams(window.location.search).get('range') ?? '30';
+if (!(range in RANGES)) range = '30';
+const summaryUrl = () => `/api/health/summary?range=${range}`;
+
 const LIVE_HR_MS = 10_000;
 const SUMMARY_MS = 60_000;
 
@@ -203,7 +208,7 @@ function workoutsCard() {
                 `<tr><td>${shortDate(w.date)}</td><td>${escapeHtml(w.type)}</td><td class="text-end">${fmt(w.calories, 0)}</td><td class="text-end">${fmt(w.avg_hr, 0)}</td><td class="text-end d-none d-md-table-cell">${fmt(w.azm, 0)}</td></tr>`,
         )
         .join('');
-    return `<div class="card"><div class="card-header"><h3 class="card-title">Workouts</h3><div class="card-actions text-secondary small">${list.length} in 30 days</div></div>
+    return `<div class="card"><div class="card-header"><h3 class="card-title">Workouts</h3><div class="card-actions text-secondary small">${list.length} ${range === 'all' ? 'in total' : `in ${RANGES[range].toLowerCase()}`}</div></div>
         <div class="table-responsive"><table class="table table-vcenter card-table">
             <thead><tr><th>Day</th><th>Type</th><th class="text-end">kcal</th><th class="text-end">Avg HR</th><th class="text-end d-none d-md-table-cell">Zone min</th></tr></thead>
             <tbody>${rows}</tbody></table></div></div>`;
@@ -233,23 +238,41 @@ function discoveredCard() {
         <div class="card-footer text-secondary small">Found by the regular look for data types the tracker started to record.</div></div>`;
 }
 
+const longDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' });
+
+// what this server keeps, and how far the one-time fetch of the history has come
+function historyLine() {
+    const st = summary.storage;
+    const h = summary.sync?.history;
+    if (!st?.days) return '';
+    let fetch = '';
+    if (h?.state === 'running' || h?.state === 'failed') {
+        const done = h.heartRateDaysTotal ? Math.round(((h.heartRateDays ?? 0) / h.heartRateDaysTotal) * 100) : 0;
+        fetch = h.heartRateDaysTotal
+            ? ` · fetching heart rate at full resolution: ${h.heartRateDays} of ${h.heartRateDaysTotal} days (${done} %)`
+            : ` · fetching the history, back to ${longDate(h.reachedDay ?? st.oldestDay)} so far`;
+        if (h.state === 'failed') fetch += ', paused, it goes on by itself';
+    }
+    return `<div><i class="ti ti-database me-1"></i>Stored on this server: <b>${st.days} days</b> since ${longDate(st.oldestDay)}, heart rate at full resolution for ${st.heartRateDays} days${fetch}.</div>`;
+}
+
 function connectionCard() {
-    const link = summary.link ?? {};
-    const expires = link.refreshTokenExpiresAt;
+    const link = summary.link;
+    const expires = link?.refreshTokenExpiresAt;
     const soon = expires && expires - Date.now() < 3 * 24 * 3600_000;
+    const connected = link
+        ? `<div>Data from <b>Google Health</b>, connected ${link.connectedAt ? timeAgo(link.connectedAt) : ''}${link.scopes && link.scopesAsked && link.scopes < link.scopesAsked ? ` · ${link.scopes} of ${link.scopesAsked} permissions` : ''}; new data is fetched after each sync of the tracker.</div>`
+        : `<div class="text-warning">Not connected to Google Health: no new data comes in. The history stored here stays.</div>`;
+    const expiry = expires
+        ? `<div class="${soon ? 'text-warning' : 'text-secondary'}">The access ends ${new Date(expires).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: the Google app is in testing mode. Publish it to production in the Google Cloud console, or connect again then.</div>`
+        : '';
     return `<div class="card"><div class="card-body d-flex flex-wrap align-items-center gap-3">
         <i class="ti ti-brand-google text-secondary" style="font-size:1.4rem"></i>
-        <div class="flex-fill small">
-            <div>Data from <b>Google Health</b>, connected ${link.connectedAt ? timeAgo(link.connectedAt) : ''}${link.scopes && link.scopesAsked && link.scopes < link.scopesAsked ? ` · ${link.scopes} of ${link.scopesAsked} permissions` : ''}.</div>
-            ${
-                expires
-                    ? `<div class="${soon ? 'text-warning' : 'text-secondary'}">The access ends ${new Date(expires).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: the Google app is in testing mode. Publish it to production in the Google Cloud console, or connect again then.</div>`
-                    : ''
-            }
-        </div>
-        <div class="d-flex gap-2 ms-auto">
-            <a class="btn btn-sm" href="/api/health/google/connect"><i class="ti ti-refresh me-1"></i> Connect again</a>
-            <button class="btn btn-sm btn-outline-danger" id="health-disconnect"><i class="ti ti-plug-connected-x me-1"></i> Disconnect</button>
+        <div class="flex-fill small">${connected}${historyLine()}${expiry}</div>
+        <div class="d-flex flex-wrap gap-2 ms-auto">
+            <a class="btn btn-sm" href="/api/health/google/connect"><i class="ti ti-refresh me-1"></i> ${link ? 'Connect again' : 'Connect'}</a>
+            ${link ? '<button class="btn btn-sm" id="health-disconnect"><i class="ti ti-plug-connected-x me-1"></i> Disconnect</button>' : ''}
+            <button class="btn btn-sm btn-outline-danger" id="health-delete"><i class="ti ti-trash me-1"></i> Delete stored history</button>
         </div>
     </div></div>`;
 }
@@ -340,8 +363,35 @@ function render(notice = '') {
             if (e.key === 'Enter') open();
         });
     });
-    byId('health-disconnect').addEventListener('click', disconnect);
+    document.getElementById('health-disconnect')?.addEventListener('click', disconnect);
+    byId('health-delete').addEventListener('click', deleteHistory);
+    renderRanges();
     updateLiveHr();
+}
+
+// the range of the page: 30 days, 90 days, a year or everything stored
+function renderRanges() {
+    const slot = document.getElementById('page-actions');
+    if (!slot) return;
+    slot.innerHTML = `<div class="btn-group">${Object.entries(RANGES)
+        .map(([key, label]) => `<button class="btn btn-sm ${key === range ? 'active' : ''}" data-range="${key}">${label}</button>`)
+        .join('')}</div>`;
+    slot.querySelectorAll<HTMLButtonElement>('[data-range]').forEach((b) =>
+        b.addEventListener('click', async () => {
+            if (b.dataset.range === range) return;
+            range = b.dataset.range!;
+            const url = new URL(window.location.href);
+            if (range === '30') url.searchParams.delete('range');
+            else url.searchParams.set('range', range);
+            history.replaceState(null, '', url);
+            slot.querySelectorAll('[data-range]').forEach((x) => x.classList.toggle('active', x === b));
+            const { status, body } = await getJson(summaryUrl());
+            if (status === 200) {
+                summary = body;
+                render();
+            }
+        }),
+    );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -363,7 +413,7 @@ async function updateLiveHr() {
 async function disconnect() {
     if (
         !confirm(
-            'Disconnect Google Health? kibbl. forgets the access; the data stays with Google. To remove the access entirely, also remove kibbl. under Third-party apps in your Google account.',
+            'Disconnect Google Health? No new data comes in; the history stored on this server stays. To remove the access entirely, also remove kibbl. under Third-party apps in your Google account.',
         )
     )
         return;
@@ -371,10 +421,22 @@ async function disconnect() {
     window.location.reload();
 }
 
+async function deleteHistory() {
+    const st = summary.storage;
+    if (
+        !confirm(
+            `Delete the health history stored on this server (${st?.days ?? 0} days) and disconnect Google Health? This cannot be undone; Google keeps its own copy.`,
+        )
+    )
+        return;
+    await fetch('/api/health/google/disconnect?delete=1', { method: 'POST' });
+    window.location.reload();
+}
+
 async function load() {
     const notice = connectNotice();
-    const { status, body } = await getJson('/api/health/summary');
-    if (body.configured === false) {
+    const { status, body } = await getJson(summaryUrl());
+    if (body.configured === false && !body.series) {
         byId('container').innerHTML =
             notice +
             emptyState(
@@ -382,6 +444,11 @@ async function load() {
                 'Health is not set up on this server',
                 'The server needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET of a Google Cloud OAuth client with the Google Health API.',
             );
+        return;
+    }
+    if (!body.linked && body.series) {
+        summary = body; // not connected, but the history is stored here
+        render(notice);
         return;
     }
     if (!body.linked) {
@@ -551,8 +618,11 @@ window.setInterval(updateLiveHr, LIVE_HR_MS);
 window.setInterval(async () => {
     // a quiet refresh: only when the page is seen and no day is open
     if (document.hidden || !summary || document.querySelector('#drill-modal.show')) return;
-    const { status, body } = await getJson('/api/health/summary');
-    if (status === 200 && body.sync?.last_update !== summary.sync?.last_update) {
+    const { status, body } = await getJson(summaryUrl());
+    if (
+        status === 200 &&
+        (body.sync?.last_update !== summary.sync?.last_update || JSON.stringify(body.sync?.history) !== JSON.stringify(summary.sync?.history))
+    ) {
         summary = body;
         render();
     }
