@@ -17,6 +17,17 @@ services:
             - './data/app:/data'
         depends_on:
             - mongo
+    # temporary public address until a named tunnel exists: a random https://*.trycloudflare.com
+    # that changes on every start of this container. Not started by deploy.sh, so a deploy keeps
+    # the address: docker compose --profile tunnel up -d tunnel, url in docker compose logs tunnel
+    tunnel:
+        image: cloudflare/cloudflared:latest
+        container_name: kibbl-tunnel
+        profiles: ['tunnel']
+        restart: unless-stopped
+        command: tunnel --no-autoupdate --url http://app:8790
+        depends_on:
+            - app
     mongo:
         image: mongo:7
         container_name: kibbl-mongo

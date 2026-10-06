@@ -24,7 +24,14 @@ The camera opens the connection itself, so the server only has to be **reachable
 2. **Port forward** of the office router to 10.0.1.99:8790, best with a reverse proxy doing TLS in front.
 3. **Testing at home**: run the server on the laptop (`npm run build`, then `node backend/dist/app.js` with a `backend/.env`) and point the camera at `ws://<laptop-ip>:8790/device/socket`.
 
-A quick cloudflared tunnel (random `trycloudflare.com` url, changes on every restart) works for a first test but is not suitable for a camera that must find its server after a restart.
+A quick cloudflared tunnel (random `trycloudflare.com` url, changes on every restart) works for a first test but is not suitable for a camera that must find its server after a restart. The `tunnel` service in `docker-compose.yml` runs one, apart from the app, so a deploy keeps its url:
+
+```bash
+docker compose --profile tunnel up -d tunnel
+docker compose logs tunnel | grep trycloudflare.com
+```
+
+Set `DEVICE_BASE_URL` to that url (`docker compose up -d --force-recreate app`) and point every camera at `wss://<name>.trycloudflare.com/device/socket`. When the tunnel container restarts, its url changes and all of this has to be done again.
 
 ## Firmware
 
