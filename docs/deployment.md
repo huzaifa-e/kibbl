@@ -60,7 +60,13 @@ The health page reads a fitness tracker through the Google Health API v4 (the su
 3. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then `docker compose up -d --force-recreate app`.
 4. In the app: Health, **Connect Google Health**.
 
-While the OAuth app is in **Testing** mode, Google ends the access after 7 days (the page says when). Publishing it to **Production** in the console (no verification needed for scopes of your own account) makes it last.
+While the OAuth app is in **Testing** mode, Google ends the access after 7 days (the page says when). Publishing it to **Production** makes it last, but Google then asks for a home page and privacy policy on an authorised domain. Without a domain, renew the access before it ends (the stored history is not affected by a lapse, only new data pauses):
+
+```bash
+HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/renew-health-token.sh user@example.com
+```
+
+It opens the Google consent in the browser with whoofit's `gh_auth.py` (`WHOOFIT_DIR`, default next to this repository) and imports the new token on the server through ssh stdin; `--import-only` imports the current token without a consent.
 
 A token from whoofit (`gh_token.json`, same OAuth client) is linked to a user without a new consent:
 
