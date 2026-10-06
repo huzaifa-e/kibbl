@@ -18,8 +18,12 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 
-# stream throughput: bigger tcp windows and lwip buffers
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+# stream throughput: bigger tcp windows and lwip buffers. The send buffer holds more than
+# a frame (~20 kB at QVGA, best quality): with less, every frame waits for acks from the
+# far end of the tunnel, and the stream ran at send buffer / round trip (7 fps of 16).
+# lwip and wifi buffers may go to PSRAM, the internal RAM is spent on the camera and TLS.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=46080
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_LWIP_TCP_WND_DEFAULT=11520
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
 CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
