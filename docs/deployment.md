@@ -24,18 +24,20 @@ docker compose logs --since 1h app    # the last hour
 docker compose logs app | grep C82E1824CFA8    # one device
 ```
 
-One line per event, in columns, in the server's time (Europe/Berlin):
+One line per event, columns separated by `|`, in the server's time (Europe/Berlin):
 
 ```
-2026-10-06 10:28:17.200  INFO   db       connected to MongoDB
-2026-10-06 10:28:21.843  INFO   device   connected                                device=C82E1824CFA8 ip=192.168.0.243
-2026-10-06 10:28:22.105  INFO   device   hello                                    device=C82E1824CFA8 model=kibbl-cam fw=KIBBL-3f2a1c0 ip=192.168.0.243 ssid=home
-2026-10-06 10:31:09.552  INFO   motion   movement                                 device=C82E1824CFA8 moved=12.4% picture=none
-2026-10-06 10:42:53.039  WARN   device   silent, closing                          device=C82E1824CFA8 after=35s
-2026-10-06 10:43:01.552  INFO   auth     logged in                                user=a@b.de ip=100.81.234.79
+2026-10-06 10:28:17.200 | INFO  | db       | connected to MongoDB
+2026-10-06 10:28:21.843 | INFO  | device   | connected                                | device=C82E1824CFA8 ip=192.168.0.243
+2026-10-06 10:28:22.105 | INFO  | device   | hello                                    | device=C82E1824CFA8 model=kibbl-cam fw=KIBBL-3f2a1c0 ip=192.168.0.243 ssid=home
+2026-10-06 10:31:09.552 | INFO  | motion   | movement                                 | device=C82E1824CFA8 moved=12.4% picture=none
+2026-10-06 10:42:53.039 | WARN  | device   | silent, closing                          | device=C82E1824CFA8 after=35s
+2026-10-06 10:43:01.552 | INFO  | auth     | logged in                                | user=a@b.de ip=100.81.234.79
 ```
 
-Time, level, the part of the server (`server`, `db`, `auth`, `app` for actions taken in the app, `device`, `stream`, `motion`, `storage`, `ota`), what happened, then the details as `key=value`. An unexpected error is followed by its stack, indented. `LOG_LEVEL` in `.env` sets how much is written (`info` by default); colours are on (`LOG_COLOR=always` in `docker-compose.yml`, `never` for plain text). MongoDB logs only startups, warnings and errors. Every container keeps at most 5 × 10 MB of logs.
+Time, level, the part of the server (`server`, `db`, `auth`, `app` for actions taken in the app, `device`, `stream`, `motion`, `storage`, `ota`), what happened, then the details as `key=value` (quoted when a value holds spaces, quotes, `=` or `|`). An unexpected error is followed by its stack, indented. `LOG_LEVEL` in `.env` sets how much is written (`info` by default); colours are on (`LOG_COLOR=always` in `docker-compose.yml`, `never` for plain text).
+
+MongoDB writes its log as json; `deploy/mongo/entrypoint.sh` starts it through the image's own entrypoint with each line rewritten by `deploy/mongo/log.jq` into the same columns, the MongoDB component in place of the scope (`network`, `storage`, `control`, ...). Lines that are no MongoDB log entries pass unchanged. With `--quiet` and the storage checkpoints off it logs only startups, new connections, warnings and errors. Every container keeps at most 5 × 10 MB of logs.
 
 ## Reaching the server from the home network
 
