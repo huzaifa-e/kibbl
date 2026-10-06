@@ -58,6 +58,8 @@ export interface MotionSettings {
     quietFrom: number;
     quietTo: number;
     blink: boolean; // flash the white light when something moves (devices with the blink capability)
+    // keep a picture of each movement; off, a movement is logged as activity only and no frame is stored
+    keepPictures: boolean;
 }
 
 export interface DeviceTelemetry {

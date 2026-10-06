@@ -9,7 +9,7 @@ import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, MotionDetector, inQuietHours } from '.
 import { deleteSnapshot, saveSnapshot } from './storage';
 
 const EVENT_GAP_MS = 10_000; // calm this long ends an event
-const EVENT_MAX_MS = 10 * 60_000; // a longer visit is split, so the timeline keeps a picture of it
+const EVENT_MAX_MS = 10 * 60_000; // a longer visit is split into several events on the timeline
 const SNAPSHOT_MIN_GAP_MS = 2000; // the event picture is replaced by a better one at most this often
 const SETTINGS_TTL_MS = 5000; // motion settings are read from the database at most this often
 
@@ -80,6 +80,16 @@ export function invalidateMotionSettings(deviceId: string) {
     }
 }
 
+/* The pictures of the camera were deleted while one of its events is still open: that
+ * event takes no new one, else its file would come back after the delete. */
+export function dropCurrentPicture(deviceId: string) {
+    const current = devices.get(deviceId)?.current;
+    if (current) {
+        current.doc.snapshot = undefined;
+        current.lastSnapshot = Number.POSITIVE_INFINITY;
+    }
+}
+
 async function closeEvent(deviceId: string, s: DeviceMotion) {
     const current = s.current;
     if (!current) {
@@ -114,7 +124,12 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
         }
         if (!current) {
             const doc: MotionEventDoc = { _id: crypto.randomUUID(), deviceId, start: time, peakScore: result.score, frames: 0 };
-            doc.snapshot = await saveSnapshot(deviceId, doc._id, time, jpeg);
+            /* A picture only when the camera's settings keep pictures: otherwise the movement
+             * is logged as activity (when, how long, how much moved) and the frame is never
+             * written anywhere. Settings stored before the option existed keep none, as new ones. */
+            if (settings.keepPictures) {
+                doc.snapshot = await saveSnapshot(deviceId, doc._id, time, jpeg);
+            }
             await MotionEventModel.create(doc);
             current = { doc, lastMotion: time, bestScore: result.score, lastSnapshot: time };
             s.current = current;
@@ -133,13 +148,16 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
         current.doc.frames++;
         current.doc.peakScore = Math.max(current.doc.peakScore, result.score);
 
-        // the picture with the most change shows the visitor best
-        if (result.score > current.bestScore * 1.2 && time - current.lastSnapshot > SNAPSHOT_MIN_GAP_MS) {
+        // the picture with the most change shows the visitor best; an event without one takes the next
+        const better = !current.doc.snapshot || result.score > current.bestScore * 1.2;
+        if (settings.keepPictures && better && time > current.lastSnapshot + SNAPSHOT_MIN_GAP_MS) {
             current.bestScore = result.score;
             current.lastSnapshot = time;
             const old = current.doc.snapshot;
             current.doc.snapshot = await saveSnapshot(deviceId, current.doc._id, time, jpeg);
             if (old !== current.doc.snapshot) {
+                // a new file (the day changed, or pictures were switched on during the event)
+                await MotionEventModel.updateOne({ _id: current.doc._id }, { snapshot: current.doc.snapshot });
                 await deleteSnapshot(old);
             }
         }

@@ -15,7 +15,7 @@ import { applyCommandResult, closeConnection, commandAllowed, getSummaries, publ
 import { forgetFrames } from '../core/frames';
 import { hub } from '../core/hub';
 import { log } from '../core/logger';
-import { endMotion, invalidateMotionSettings, toMotionEvent } from '../core/motion';
+import { dropCurrentPicture, endMotion, invalidateMotionSettings, toMotionEvent } from '../core/motion';
 import { deleteDeviceImages, deleteSnapshot } from '../core/storage';
 import { expectDevice, setDeviceApproved } from './device-socket';
 
@@ -45,6 +45,8 @@ interface ClientToServerEvents {
     setMotionSettings: (deviceId: string, settings: Partial<MotionSettings>, cb: Callback<Result>) => void;
     getEvents: (query: EventQuery, cb: Callback<MotionEvent[]>) => void;
     deleteEvent: (eventId: string, cb: Callback<Result>) => void;
+    countEventPictures: (deviceId: string, cb: Callback<Result & { count?: number }>) => void;
+    deleteEventPictures: (deviceId: string, cb: Callback<Result & { deleted?: number }>) => void;
     getActivity: (query: { deviceId?: string; days: number }, cb: Callback<ActivityBucket[]>) => void;
     getSetupInfo: (cb: Callback<SetupInfo>) => void;
     expectDevice: (deviceId: string, name: string, cb: Callback<Result>) => void;
@@ -196,6 +198,7 @@ function registerEvents(socket: BrowserSocket) {
         if (hour(settings?.quietFrom)) motion.quietFrom = settings.quietFrom as number;
         if (hour(settings?.quietTo)) motion.quietTo = settings.quietTo as number;
         if (typeof settings?.blink === 'boolean') motion.blink = settings.blink;
+        if (typeof settings?.keepPictures === 'boolean') motion.keepPictures = settings.keepPictures;
         await Device.updateOne({ _id: deviceId }, { motion });
         invalidateMotionSettings(deviceId);
         await updateDemand(deviceId);
@@ -221,6 +224,33 @@ function registerEvents(socket: BrowserSocket) {
         const doc = await MotionEventModel.findByIdAndDelete(eventId).lean();
         await deleteSnapshot(doc?.snapshot);
         cb({ ok: !!doc });
+    });
+
+    socket.on('countEventPictures', async (deviceId, cb) => {
+        if (!isCallback(cb)) return;
+        if (!isDeviceID(deviceId)) {
+            cb({ ok: false, error: 'device not found' });
+            return;
+        }
+        cb({ ok: true, count: await MotionEventModel.countDocuments({ deviceId, snapshot: { $exists: true } }) });
+    });
+
+    /* The pictures of a camera's events, not the events: the activity log stays as it
+     * was, only what the camera saw is gone. */
+    socket.on('deleteEventPictures', async (deviceId, cb) => {
+        if (!isCallback(cb)) return;
+        if (!isDeviceID(deviceId)) {
+            cb({ ok: false, error: 'device not found' });
+            return;
+        }
+        dropCurrentPicture(deviceId);
+        const withPictures = await MotionEventModel.find({ deviceId, snapshot: { $exists: true } }, { snapshot: 1 }).lean();
+        for (const event of withPictures) {
+            await deleteSnapshot(event.snapshot);
+        }
+        await MotionEventModel.updateMany({ _id: { $in: withPictures.map((e) => e._id) } }, { $unset: { snapshot: 1 } });
+        log('info', `${socket.data.session.email}: deleted ${withPictures.length} pictures of ${deviceId}, the events stay`);
+        cb({ ok: true, deleted: withPictures.length });
     });
 
     socket.on('getActivity', async (query, cb) => {

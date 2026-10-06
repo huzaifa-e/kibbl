@@ -7,7 +7,7 @@ export let MotionEventModel: Model<MotionEventDoc>;
 
 let isConnected = false;
 
-const motionDefaults: DeviceDoc['motion'] = { enabled: true, sensitivity: 'medium', quietFrom: 0, quietTo: 0, blink: true };
+const motionDefaults: DeviceDoc['motion'] = { enabled: true, sensitivity: 'medium', quietFrom: 0, quietTo: 0, blink: true, keepPictures: false };
 
 async function init() {
     mongooseSet('strictQuery', false);
@@ -40,6 +40,7 @@ async function init() {
             quietFrom: { type: Number, default: motionDefaults.quietFrom },
             quietTo: { type: Number, default: motionDefaults.quietTo },
             blink: { type: Boolean, default: motionDefaults.blink },
+            keepPictures: { type: Boolean, default: motionDefaults.keepPictures },
         },
         lastSeen: Number,
         createdAt: { type: Number, required: true },
