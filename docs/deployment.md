@@ -16,6 +16,27 @@ The first run copies the repository and creates `~/kibbl/.env` with a random `JW
 
 Then run `./deploy/deploy.sh` again. Away from the office, over Tailscale: `HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/deploy.sh`. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
 
+## Logs
+
+```bash
+docker compose logs -f app            # the server, live
+docker compose logs --since 1h app    # the last hour
+docker compose logs app | grep C82E1824CFA8    # one device
+```
+
+One line per event, in columns, in the server's time (Europe/Berlin):
+
+```
+2026-10-06 10:28:17.200  INFO   db       connected to MongoDB
+2026-10-06 10:28:21.843  INFO   device   connected                                device=C82E1824CFA8 ip=192.168.0.243
+2026-10-06 10:28:22.105  INFO   device   hello                                    device=C82E1824CFA8 model=kibbl-cam fw=KIBBL-3f2a1c0 ip=192.168.0.243 ssid=home
+2026-10-06 10:31:09.552  INFO   motion   movement                                 device=C82E1824CFA8 moved=12.4% picture=none
+2026-10-06 10:42:53.039  WARN   device   silent, closing                          device=C82E1824CFA8 after=35s
+2026-10-06 10:43:01.552  INFO   auth     logged in                                user=a@b.de ip=100.81.234.79
+```
+
+Time, level, the part of the server (`server`, `db`, `auth`, `app` for actions taken in the app, `device`, `stream`, `motion`, `storage`, `ota`), what happened, then the details as `key=value`. An unexpected error is followed by its stack, indented. `LOG_LEVEL` in `.env` sets how much is written (`info` by default); colours are on (`LOG_COLOR=always` in `docker-compose.yml`, `never` for plain text). MongoDB logs only startups, warnings and errors. Every container keeps at most 5 × 10 MB of logs.
+
 ## Reaching the server from the home network
 
 The camera opens the connection itself, so the server only has to be **reachable from the home network**. 10.0.1.99 is the office LAN and is not. Choose one:
