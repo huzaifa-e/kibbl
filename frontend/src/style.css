@@ -185,3 +185,132 @@ html[data-bs-theme='dark'] .theme-label-dark {
 .text-mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ═══════════  Health  ═══════════ */
+.health-metric .health-spark {
+    margin: 6px -8px 0;
+    min-height: 64px;
+}
+
+.health-drillable {
+    cursor: pointer;
+    transition: transform 0.12s ease;
+}
+
+.health-drillable:hover,
+.health-drillable:focus-visible {
+    transform: translate(-2px, -2px);
+}
+
+.health-live {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 6px;
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.health-live .ti {
+    color: var(--kb-pumpkin);
+    font-size: 1.4rem;
+    animation: health-beat 1.2s ease-in-out infinite;
+}
+
+.health-live small {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--kb-text-muted);
+}
+
+@keyframes health-beat {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    15% {
+        transform: scale(1.18);
+    }
+    30% {
+        transform: scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .health-live .ti {
+        animation: none;
+    }
+}
+
+.health-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    margin-right: 5px;
+    vertical-align: baseline;
+}
+
+.health-dot-off {
+    border: 1px dashed var(--kb-text-muted);
+}
+
+.health-stagebar {
+    display: flex;
+    height: 14px;
+    border-radius: 7px;
+    overflow: hidden;
+    border: 2px solid var(--kb-ink);
+}
+
+.health-zone {
+    position: relative;
+    height: 10px;
+    border-radius: 5px;
+    background: var(--kb-dot);
+}
+
+.health-zone span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 5px;
+}
+
+/* a day as a strip of 24 hours: active, sedentary, not worn (hatched) */
+.health-timeline {
+    position: relative;
+    height: 44px;
+    border-radius: 8px;
+    border: 2px solid var(--kb-ink);
+    background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--kb-dot) 6px 8px);
+    overflow: hidden;
+}
+
+.health-run {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.health-ticks {
+    position: relative;
+    height: 16px;
+    font-size: 11px;
+    color: var(--kb-text-muted);
+}
+
+.health-ticks span {
+    position: absolute;
+    top: 2px;
+    transform: translateX(-50%);
+}
+
+.health-ticks span:first-child {
+    transform: none;
+}
+
+.health-ticks span:last-child {
+    transform: translateX(-100%);
+}

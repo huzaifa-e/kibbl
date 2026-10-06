@@ -5,7 +5,7 @@ import { isDarkMode, localDayKey } from './utils';
 
 const ACCENT = '#d9622b';
 
-function baseOptions() {
+export function baseOptions() {
     const dark = isDarkMode();
     return {
         chart: {
