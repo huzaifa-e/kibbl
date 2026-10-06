@@ -24,7 +24,10 @@ test('the pipes line up whatever the level, scope and message', () => {
 });
 
 test('values with spaces, quotes, = or | are quoted, empty ones too', () => {
-    assert.equal(formatFields({ name: 'Camera CFA8', q: 'a"b', eq: 'a=b', p: 'a|b', e: '', n: 3, ok: true }), 'name="Camera CFA8" q="a\\"b" eq="a=b" p="a|b" e="" n=3 ok=true');
+    assert.equal(
+        formatFields({ name: 'Camera CFA8', q: 'a"b', eq: 'a=b', p: 'a|b', e: '', n: 3, ok: true }),
+        'name="Camera CFA8" q="a\\"b" eq="a=b" p="a|b" e="" n=3 ok=true',
+    );
 });
 
 test('undefined and null fields are left out', () => {
