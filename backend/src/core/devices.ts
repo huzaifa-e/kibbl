@@ -1,6 +1,13 @@
 import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
-import { capabilityCommands, commonCommands, type CameraSettings, type DeviceSummary, type DeviceTelemetry, type MotionSettings } from '../../../shared/protocol';
+import {
+    capabilityCommands,
+    commonCommands,
+    type CameraSettings,
+    type DeviceSummary,
+    type DeviceTelemetry,
+    type MotionSettings,
+} from '../../../shared/protocol';
 import db, { Device } from './db';
 import { hub } from './hub';
 import { logger } from './logger';
@@ -223,7 +230,17 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
         time: Date.now(),
     };
     hub.emit('telemetry', deviceId, dev.telemetry);
+
+    // while it streams, once a minute: what a slow live view is down to (camera, link or size)
+    const t = dev.telemetry;
+    if (t.fps > 0 && Date.now() - (streamLogged.get(deviceId) ?? 0) >= STREAM_LOG_MS) {
+        streamLogged.set(deviceId, Date.now());
+        log.info('streaming', { device: deviceId, fps: t.fps, cameraFps: t.cameraFps, frameBytes: t.frameBytes, rssi: t.rssi, asked: viewFps() });
+    }
 }
+
+const STREAM_LOG_MS = 60_000;
+const streamLogged = new Map<string, number>();
 
 export function handleResponse(deviceId: string, msg: Record<string, unknown>) {
     const dev = live.get(deviceId);
