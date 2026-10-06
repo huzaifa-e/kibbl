@@ -2,14 +2,15 @@
 import chalk from 'chalk';
 
 /*
- * One line per event, in columns, for `docker compose logs`:
+ * One line per event, in columns separated by pipes, for `docker compose logs`:
  *
- *   2026-10-06 10:42:53.039  WARN   device   silent for 35 s, closing                device=C82E1824CFA8
- *   2026-10-06 10:43:01.552  INFO   auth     logged in                               user=a@b.de ip=100.81.234.79
+ *   2026-10-06 10:42:53.039 | WARN  | device   | silent, closing                          | device=C82E1824CFA8 after=35s
+ *   2026-10-06 10:43:01.552 | INFO  | auth     | logged in                                | user=a@b.de ip=100.81.234.79
  *
  * time in the server's time zone (TZ), level, the part of the server that speaks,
  * what happened, then the details as key=value. An unexpected error is followed by
- * its stack, indented.
+ * its stack, indented. MongoDB's lines are written in the same columns
+ * (deploy/mongo/log.jq).
  *
  *   LOG_LEVEL  debug | info | warn | error   (default: info, debug outside production)
  *   LOG_COLOR  auto | always | never         (default: auto, colours on a terminal only)
@@ -55,7 +56,7 @@ export function clean(text: string) {
 
 export function formatValue(value: string | number | boolean) {
     const text = clean(String(value));
-    return text === '' || /[\s="]/.test(text) ? JSON.stringify(text) : text;
+    return text === '' || /[\s="|]/.test(text) ? JSON.stringify(text) : text;
 }
 
 function fieldEntries(fields: Fields | undefined) {
@@ -70,13 +71,20 @@ export function formatFields(fields: Fields | undefined, c: chalk.Chalk = new ch
 
 export function formatLine(level: Level, scope: string, message: string, fields?: Fields, date = new Date(), c: chalk.Chalk = colors()) {
     const levelColor = { debug: c.gray, info: c.blue, warn: c.yellow, error: c.red }[level];
+    const bar = c.gray(' | ');
     const msg = clean(message);
     const details = formatFields(fields, c);
     const text = details ? msg.padEnd(MESSAGE_WIDTH) : msg;
     return (
-        `${c.gray(formatTime(date))}  ${levelColor(level.toUpperCase().padEnd(5))}  ${c.cyan(scope.padEnd(SCOPE_WIDTH))} ` +
-        `${level === 'error' ? c.red(text) : text}${details ? ' ' + details : ''}`
-    ).trimEnd();
+        c.gray(formatTime(date)) +
+        bar +
+        levelColor(level.toUpperCase().padEnd(5)) +
+        bar +
+        c.cyan(scope.padEnd(SCOPE_WIDTH)) +
+        bar +
+        (level === 'error' ? c.red(text) : text) +
+        (details ? bar + details : '')
+    );
 }
 
 function write(level: Level, scope: string, message: string, fields?: Fields, err?: unknown) {
