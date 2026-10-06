@@ -14,7 +14,9 @@ import { Device, MotionEventModel } from '../core/db';
 import { applyCommandResult, closeConnection, commandAllowed, getSummaries, publishDevice, sendCommand, updateDemand, type DeviceResponse } from '../core/devices';
 import { forgetFrames } from '../core/frames';
 import { hub } from '../core/hub';
-import { log } from '../core/logger';
+import { logger } from '../core/logger';
+
+const log = logger('app');
 import { dropCurrentPicture, endMotion, invalidateMotionSettings, toMotionEvent } from '../core/motion';
 import { deleteDeviceImages, deleteSnapshot } from '../core/storage';
 import { expectDevice, setDeviceApproved } from './device-socket';
@@ -142,7 +144,7 @@ function registerEvents(socket: BrowserSocket) {
         // a scan holds the radio for a few seconds, longer than other commands
         const resp = await sendCommand(deviceId, clean, clean.cmd === 'wifi_scan' ? 15000 : undefined);
         await applyCommandResult(deviceId, clean.cmd as string, resp);
-        log('info', `${socket.data.session.email}: ${deviceId} ${clean.cmd} -> ${resp.ok ? 'ok' : resp.error}`);
+        log.info('command', { device: deviceId, cmd: String(clean.cmd), result: resp.ok ? 'ok' : resp.error, user: socket.data.session.email });
         cb(resp);
     });
 
@@ -153,7 +155,7 @@ function registerEvents(socket: BrowserSocket) {
             cb({ ok: false, error: 'no pending device with this id' });
             return;
         }
-        log('info', `${socket.data.session.email}: approved ${deviceId}`);
+        log.info('device approved', { device: deviceId, user: socket.data.session.email });
         setDeviceApproved(deviceId);
         await updateDemand(deviceId);
         await publishDevice(deviceId);
@@ -179,7 +181,7 @@ function registerEvents(socket: BrowserSocket) {
         await Device.deleteOne({ _id: deviceId });
         await MotionEventModel.deleteMany({ deviceId });
         await deleteDeviceImages(deviceId);
-        log('info', `${socket.data.session.email}: removed ${deviceId} with its events`);
+        log.info('device removed with its events', { device: deviceId, user: socket.data.session.email });
         hub.emit('deviceRemoved', deviceId);
         cb({ ok: true });
     });
@@ -200,6 +202,14 @@ function registerEvents(socket: BrowserSocket) {
         if (typeof settings?.blink === 'boolean') motion.blink = settings.blink;
         if (typeof settings?.keepPictures === 'boolean') motion.keepPictures = settings.keepPictures;
         await Device.updateOne({ _id: deviceId }, { motion });
+        log.info('motion settings changed', {
+            device: deviceId,
+            enabled: motion.enabled,
+            sensitivity: motion.sensitivity,
+            quiet: motion.quietFrom === motion.quietTo ? 'off' : `${motion.quietFrom}-${motion.quietTo}h`,
+            pictures: motion.keepPictures ? 'kept' : 'none',
+            user: socket.data.session.email,
+        });
         invalidateMotionSettings(deviceId);
         await updateDemand(deviceId);
         await publishDevice(deviceId);
@@ -249,7 +259,7 @@ function registerEvents(socket: BrowserSocket) {
             await deleteSnapshot(event.snapshot);
         }
         await MotionEventModel.updateMany({ _id: { $in: withPictures.map((e) => e._id) } }, { $unset: { snapshot: 1 } });
-        log('info', `${socket.data.session.email}: deleted ${withPictures.length} pictures of ${deviceId}, the events stay`);
+        log.info('pictures deleted, events kept', { device: deviceId, pictures: withPictures.length, user: socket.data.session.email });
         cb({ ok: true, deleted: withPictures.length });
     });
 
@@ -302,7 +312,7 @@ function registerSetupEvents(socket: BrowserSocket) {
             return;
         }
         expectDevice(deviceId, name.trim());
-        log('info', `${socket.data.session.email}: setting up ${deviceId} over USB`);
+        log.info('setting up over USB', { device: deviceId, user: socket.data.session.email });
         cb({ ok: true });
     });
 }

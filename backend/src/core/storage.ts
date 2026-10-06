@@ -1,7 +1,9 @@
 import { mkdir, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { MotionEventModel } from './db';
-import { log } from './logger';
+import { logger } from './logger';
+
+const log = logger('storage');
 
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -42,7 +44,7 @@ export async function deleteSnapshot(relative: string | undefined) {
     try {
         await rm(resolveInside(imageRoot(), relative), { force: true });
     } catch (err) {
-        log('warn', `Snapshot ${relative} not deleted: ${(err as Error).message}`);
+        log.warn('picture not deleted', { file: relative }, err);
     }
 }
 
@@ -75,15 +77,15 @@ export async function cleanupOldEvents() {
     }
 
     if (old.length) {
-        log('info', `Deleted ${old.length} motion events older than ${days} days`);
+        log.info('old events deleted', { events: old.length, olderThanDays: days });
     }
 }
 
 export function initStorageCleanup() {
-    cleanupOldEvents().catch((err) => log('error', `Cleanup failed: ${err.message}`));
+    cleanupOldEvents().catch((err) => log.error('cleanup failed', undefined, err));
     setInterval(
         () => {
-            cleanupOldEvents().catch((err) => log('error', `Cleanup failed: ${err.message}`));
+            cleanupOldEvents().catch((err) => log.error('cleanup failed', undefined, err));
         },
         6 * 3600 * 1000,
     );

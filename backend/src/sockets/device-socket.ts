@@ -5,7 +5,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { Device } from '../core/db';
 import { MAX_PENDING_DEVICES, dropConnection, handleHello, handleResponse, handleTelemetry, hashSecret, publishDevice, registerConnection } from '../core/devices';
 import { onFrame } from '../core/frames';
-import { log } from '../core/logger';
+import { logger } from '../core/logger';
+
+const log = logger('device');
 import { endMotion } from '../core/motion';
 
 export const DEVICE_SOCKET_PATH = '/device/socket';
@@ -65,12 +67,12 @@ async function authenticate(req: IncomingMessage): Promise<{ deviceId: string; a
             { $set: { secretHash: hash, status: 'approved', name: setUp.name }, $setOnInsert: { caps: [], createdAt: Date.now() } },
             { upsert: true },
         );
-        log('info', `${deviceId}: set up over USB as "${setUp.name}", approved`);
+        log.info('set up over USB, approved', { device: deviceId, name: setUp.name });
         return { deviceId, approved: true };
     }
     if (doc) {
         if (!sameHash(doc.secretHash, hash)) {
-            log('warn', `${deviceId}: refused, the secret does not match (factory reset or a copied id)`);
+            log.warn('refused, secret does not match (factory reset or a copied id)', { device: deviceId });
             return { status: 401, text: 'Unauthorized' };
         }
         return { deviceId, approved: doc.status === 'approved' };
@@ -78,7 +80,7 @@ async function authenticate(req: IncomingMessage): Promise<{ deviceId: string; a
 
     // nobody can fill the database with devices: a few pending ones at a time
     if ((await Device.countDocuments({ status: 'pending' })) >= MAX_PENDING_DEVICES) {
-        log('warn', `${deviceId}: refused, ${MAX_PENDING_DEVICES} devices already wait for approval`);
+        log.warn('refused, too many devices wait for approval', { device: deviceId, waiting: MAX_PENDING_DEVICES });
         return { status: 429, text: 'Too Many Requests' };
     }
     await Device.create({
@@ -89,7 +91,7 @@ async function authenticate(req: IncomingMessage): Promise<{ deviceId: string; a
         caps: [],
         createdAt: Date.now(),
     });
-    log('info', `${deviceId}: new device, waiting for approval in the app`);
+    log.info('new device, waiting for approval in the app', { device: deviceId });
     return { deviceId, approved: false };
 }
 
@@ -100,7 +102,7 @@ async function onMessage(ws: DeviceSocket, data: Buffer, isBinary: boolean) {
             return; // a pending device shows nothing to anybody
         }
         if (data.length > MAX_FRAME_BYTES) {
-            log('warn', `${ws.deviceId}: frame of ${data.length} bytes dropped`);
+            log.warn('frame dropped', { device: ws.deviceId, bytes: data.length });
             return;
         }
         onFrame(ws.deviceId, data);
@@ -111,7 +113,7 @@ async function onMessage(ws: DeviceSocket, data: Buffer, isBinary: boolean) {
     try {
         msg = JSON.parse(data.toString('utf-8'));
     } catch {
-        log('warn', `${ws.deviceId}: text message is no json`);
+        log.warn('text message is no json', { device: ws.deviceId });
         return;
     }
     if (typeof msg !== 'object' || msg === null) {
@@ -128,7 +130,7 @@ async function onMessage(ws: DeviceSocket, data: Buffer, isBinary: boolean) {
             handleResponse(ws.deviceId, msg);
             break;
         default:
-            log('debug', `${ws.deviceId}: unknown message type ${String(msg.type)}`);
+            log.debug('unknown message type', { device: ws.deviceId, type: String(msg.type) });
     }
 }
 
@@ -164,28 +166,28 @@ export function initDeviceSocket(http: Server) {
                 });
             })
             .catch((err) => {
-                log('error', `Device upgrade failed: ${err.message}`);
+                log.error('connection upgrade failed', undefined, err);
                 reject(socket, 500, 'Internal Server Error');
             });
     });
 
     wss.on('connection', (ws: DeviceSocket, req: IncomingMessage) => {
-        log('info', `${ws.deviceId}: connected from ${req.socket.remoteAddress}`);
+        log.info('connected', { device: ws.deviceId, ip: req.socket.remoteAddress });
         registerConnection(ws.deviceId, ws);
         publishDevice(ws.deviceId);
 
         ws.on('message', (data, isBinary) => {
-            onMessage(ws, data as Buffer, isBinary).catch((err) => log('error', `${ws.deviceId}: ${err.message}`));
+            onMessage(ws, data as Buffer, isBinary).catch((err) => log.error('message not handled', { device: ws.deviceId }, err));
         });
         ws.on('ping', () => {
             ws.lastSeen = Date.now();
         });
         ws.on('close', () => {
-            log('info', `${ws.deviceId}: disconnected`);
+            log.info('disconnected', { device: ws.deviceId });
             dropConnection(ws.deviceId, ws);
             endMotion(ws.deviceId).catch(() => undefined);
         });
-        ws.on('error', (err) => log('warn', `${ws.deviceId}: ${err.message}`));
+        ws.on('error', (err) => log.warn('connection error', { device: ws.deviceId }, err));
     });
 
     // a device that lost its wifi never closes its socket: it is ended after 35 s of silence
@@ -194,7 +196,7 @@ export function initDeviceSocket(http: Server) {
         for (const client of wss.clients) {
             const ws = client as DeviceSocket;
             if (now - ws.lastSeen > SILENT_TIMEOUT_MS) {
-                log('info', `${ws.deviceId}: silent for ${SILENT_TIMEOUT_MS / 1000} s, closing`);
+                log.info('silent, closing', { device: ws.deviceId, after: `${SILENT_TIMEOUT_MS / 1000}s` });
                 ws.terminate();
             }
         }

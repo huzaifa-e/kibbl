@@ -8,7 +8,9 @@ import http from 'node:http';
 import sirv from 'sirv';
 import db from './core/db';
 import { ensureAdminUser } from './core/auth';
-import { log } from './core/logger';
+import { logger } from './core/logger';
+
+const log = logger('server');
 import { closeStaleEvents, initMotionWatchdog } from './core/motion';
 import { initStorageCleanup } from './core/storage';
 import { initRoutes } from './routes';
@@ -30,7 +32,7 @@ if ((process.env.JWT_SECRET as string).length < 32) {
 }
 
 if (process.env.NODE_ENV !== 'production') {
-    log('warn', 'Running in development mode');
+    log.warn('running in development mode');
 }
 
 async function main() {
@@ -82,7 +84,7 @@ async function main() {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-        log('error', `${req.method} ${req.path}: ${err.message}`);
+        log.error('request failed', { method: req.method, path: req.path }, err);
         if (!res.headersSent) {
             res.status(err.name === 'MulterError' ? 400 : 500).send(err.name === 'MulterError' ? err.message : 'Internal Server Error');
         }
@@ -91,7 +93,7 @@ async function main() {
     const port = Number(process.env.PORT);
     const ip = process.env.IP || '0.0.0.0';
     httpServer.listen(port, ip, () => {
-        log('info', `Listening on http://${ip}:${port}`);
+        log.info('listening', { url: `http://${ip}:${port}`, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, env: process.env.NODE_ENV });
     });
 }
 
@@ -99,10 +101,10 @@ async function main() {
  * while the database is away (restart, network) is logged; the process keeps its
  * device connections and mongoose reconnects. */
 process.on('unhandledRejection', (err) => {
-    log('error', `Unhandled: ${err instanceof Error ? err.message : String(err)}`);
+    log.error('unhandled rejection', undefined, err);
 });
 
 main().catch((err) => {
-    log('error', `Start failed: ${err.message}`);
+    log.error('start failed', undefined, err);
     process.exit(1);
 });

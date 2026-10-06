@@ -4,7 +4,9 @@ import type { MotionEvent } from '../../../shared/protocol';
 import { Device, MotionEventModel } from './db';
 import { motionFps, sendCommand } from './devices';
 import { hub } from './hub';
-import { log } from './logger';
+import { logger } from './logger';
+
+const log = logger('motion');
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, MotionDetector, inQuietHours } from './motionDetector';
 import { deleteSnapshot, saveSnapshot } from './storage';
 
@@ -138,11 +140,11 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
                 s.lastBlink = time;
                 s.freshBackground = true;
                 sendCommand(deviceId, BLINK).then((resp) => {
-                    if (!resp.ok) log('debug', `${deviceId}: blink not taken (${resp.error})`);
+                    if (!resp.ok) log.debug('blink not taken', { device: deviceId, error: resp.error });
                 });
             }
             hub.emit('motionEvent', toMotionEvent(doc));
-            log('debug', `${deviceId}: motion (${(result.score * 100).toFixed(1)} %)`);
+            log.info('movement', { device: deviceId, moved: `${(result.score * 100).toFixed(1)}%`, picture: settings.keepPictures ? 'kept' : 'none' });
         }
         current.lastMotion = time;
         current.doc.frames++;
@@ -177,7 +179,7 @@ export function onFrameForMotion(deviceId: string, jpeg: Buffer) {
     s.busy = true;
     s.lastAnalysis = now;
     analyzeFrame(deviceId, s, jpeg, now)
-        .catch((err) => log('error', `${deviceId}: motion analysis failed: ${err.message}`))
+        .catch((err) => log.error('analysis failed', { device: deviceId }, err))
         .finally(() => {
             s.busy = false;
         });
@@ -197,7 +199,7 @@ export async function endMotion(deviceId: string) {
 export async function closeStaleEvents() {
     const res = await MotionEventModel.updateMany({ end: { $exists: false } }, [{ $set: { end: '$start' } }]);
     if (res.modifiedCount) {
-        log('info', `Closed ${res.modifiedCount} motion events left open by the last run`);
+        log.info('closed events left open by the last run', { events: res.modifiedCount });
     }
 }
 
@@ -207,7 +209,7 @@ export function initMotionWatchdog() {
         const now = Date.now();
         for (const [deviceId, s] of devices) {
             if (s.current && !s.busy && now - s.current.lastMotion > EVENT_GAP_MS * 2) {
-                closeEvent(deviceId, s).catch((err) => log('error', err.message));
+                closeEvent(deviceId, s).catch((err) => log.error('event not closed', { device: deviceId }, err));
             }
         }
     }, 5000);

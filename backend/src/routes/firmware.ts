@@ -5,7 +5,9 @@ import multer from 'multer';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
 import { sendCommand } from '../core/devices';
-import { log } from '../core/logger';
+import { logger } from '../core/logger';
+
+const log = logger('ota');
 import { firmwareRoot, resolveInside } from '../core/storage';
 
 const MAX_IMAGE_BYTES = 0x1e0000; // one app slot of kibbl_partition_tbl.csv
@@ -81,7 +83,7 @@ export default function initFirmwareRoutes(app: express.Application) {
             await rm(file, { force: true });
             return res.status(502).send(`The device did not start the update: ${resp.error}`);
         }
-        log('info', `${req.sessionInfo!.email}: update of ${deviceId} to ${version} started`);
+        log.info('update started', { device: deviceId, version, user: req.sessionInfo!.email });
         res.json({ version });
     });
 
@@ -91,7 +93,7 @@ export default function initFirmwareRoutes(app: express.Application) {
             res.sendStatus(404);
             return;
         }
-        log('info', `${download.deviceId}: downloading its update from ${req.ip}`);
+        log.info('device downloads its update', { device: download.deviceId, ip: req.ip });
         res.setHeader('Content-Type', 'application/octet-stream');
         res.sendFile(download.file);
     });

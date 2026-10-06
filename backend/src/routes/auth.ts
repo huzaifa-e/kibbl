@@ -2,7 +2,9 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { AUTH_COOKIE, checkAuthMiddleware, generateAuthToken, passwordMatches, setAuthCookie, setPassword } from '../core/auth';
 import { User } from '../core/db';
-import { log } from '../core/logger';
+import { logger } from '../core/logger';
+
+const log = logger('auth');
 
 // ten wrong passwords per address in 15 minutes, then a pause
 const loginLimiter = rateLimit({
@@ -24,12 +26,12 @@ export default function initAuthRoutes(app: express.Application) {
 
         const user = await User.findOne({ email }).lean();
         if (!user || !(await passwordMatches(user, password))) {
-            log('warn', `Failed login for ${email} from ${req.ip}`);
+            log.warn('login failed', { user: email, ip: req.ip });
             return res.status(401).send('E-mail or password is wrong.');
         }
 
         setAuthCookie(res, generateAuthToken(user));
-        log('info', `${email} logged in from ${req.ip}`);
+        log.info('logged in', { user: email, ip: req.ip });
         res.json({ name: user.name, email: user.email });
     });
 
@@ -56,7 +58,7 @@ export default function initAuthRoutes(app: express.Application) {
         user.tokenVersion++; // every other session ends
         await user.save();
         setAuthCookie(res, generateAuthToken(user.toObject()));
-        log('info', `${user.email} changed the password`);
+        log.info('password changed', { user: user.email });
         res.sendStatus(200);
     });
 }

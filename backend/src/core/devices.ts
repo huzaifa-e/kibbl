@@ -3,7 +3,9 @@ import { WebSocket } from 'ws';
 import { capabilityCommands, commonCommands, type CameraSettings, type DeviceSummary, type DeviceTelemetry, type MotionSettings } from '../../../shared/protocol';
 import db, { Device } from './db';
 import { hub } from './hub';
-import { log } from './logger';
+import { logger } from './logger';
+
+const log = logger('device');
 
 const COMMAND_TIMEOUT_MS = 8000;
 export const MAX_PENDING_DEVICES = 5;
@@ -93,7 +95,7 @@ export async function publishDevice(deviceId: string) {
             hub.emit('deviceUpdate', summarize(doc));
         }
     } catch (err) {
-        log('warn', `${deviceId}: device update not sent (${(err as Error).message})`);
+        log.warn('device update not sent to the app', { device: deviceId }, err);
     }
 }
 
@@ -111,7 +113,7 @@ export async function updateDemand(deviceId: string) {
     try {
         doc = await Device.findById(deviceId).lean();
     } catch (err) {
-        log('warn', `${deviceId}: stream rate not updated (${(err as Error).message})`);
+        log.warn('stream rate not updated', { device: deviceId }, err);
         return; // the next change asks again
     }
     let fps = 0;
@@ -126,7 +128,7 @@ export async function updateDemand(deviceId: string) {
         dev.requestedFps = fps;
         const resp = await sendCommand(deviceId, { cmd: 'stream', fps });
         if (!resp.ok) {
-            log('warn', `${deviceId}: stream rate ${fps} not taken (${resp.error})`);
+            log.warn('stream rate not taken', { device: deviceId, fps, error: resp.error });
             dev.requestedFps = -1; // asked again on the next change
         }
     }
@@ -199,7 +201,7 @@ export async function handleHello(deviceId: string, msg: Record<string, unknown>
             lastSeen: Date.now(),
         },
     );
-    log('info', `${deviceId}: hello, ${str('fw')} ${str('sensor')} at ${str('ip')}`);
+    log.info('hello', { device: deviceId, model: str('model'), fw: str('fw'), ip: str('ip'), ssid: str('ssid') });
     await updateDemand(deviceId);
     await publishDevice(deviceId);
 }

@@ -1,6 +1,8 @@
 import express from 'express';
 import { changeSnapshotWaiters, changeViewers } from './devices';
-import { log } from './logger';
+import { logger } from './logger';
+
+const log = logger('stream');
 import { onFrameForMotion } from './motion';
 
 const BOUNDARY = 'hmframe';
@@ -23,7 +25,7 @@ function isJpeg(buf: Buffer) {
 
 export function onFrame(deviceId: string, jpeg: Buffer) {
     if (!isJpeg(jpeg)) {
-        log('warn', `${deviceId}: binary message without jpeg header dropped`);
+        log.warn('binary message without jpeg header dropped', { device: deviceId, bytes: jpeg.length });
         return;
     }
     const frame = { jpeg, time: Date.now() };

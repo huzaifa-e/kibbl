@@ -2,7 +2,9 @@ import { sign as signJWT, verify as verifyJWT } from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import express from 'express';
 import { User } from './db';
-import { log } from './logger';
+import { logger } from './logger';
+
+const log = logger('auth');
 
 export const AUTH_COOKIE = 'auth';
 const TOKEN_LIFETIME_S = 30 * 24 * 3600;
@@ -99,7 +101,7 @@ export async function ensureAdminUser() {
     const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
     const password = process.env.ADMIN_PASSWORD;
     if (!email || !password) {
-        log('warn', 'No user yet: set ADMIN_EMAIL and ADMIN_PASSWORD to create the first one');
+        log.warn('no user yet, set ADMIN_EMAIL and ADMIN_PASSWORD to create the first one');
         return;
     }
     const user: User = {
@@ -113,5 +115,5 @@ export async function ensureAdminUser() {
     };
     await setPassword(user, password);
     await User.create(user);
-    log('info', `Created the user ${email}`);
+    log.info('user created', { user: email });
 }

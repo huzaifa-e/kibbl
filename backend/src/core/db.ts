@@ -1,5 +1,7 @@
 import { Schema, Model, model, connect, connection, set as mongooseSet } from 'mongoose';
-import { log } from './logger';
+import { logger } from './logger';
+
+const log = logger('db');
 
 export let User: Model<User>;
 export let Device: Model<DeviceDoc>;
@@ -63,14 +65,14 @@ async function init() {
 
     connection.on('connected', () => {
         isConnected = true;
-        log('info', 'Connected to MongoDB');
+        log.info('connected to MongoDB');
     });
     connection.on('disconnected', () => {
         isConnected = false;
-        log('warn', 'Disconnected from MongoDB');
+        log.warn('disconnected from MongoDB');
     });
     connection.on('error', (err) => {
-        log('error', `MongoDB error: ${err.message}`);
+        log.error('MongoDB error', undefined, err);
     });
 
     await connect(process.env.MONGODB_URI as string, { serverSelectionTimeoutMS: 10000 });
