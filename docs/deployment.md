@@ -39,6 +39,18 @@ Time, level, the part of the server (`server`, `db`, `auth`, `app` for actions t
 
 MongoDB writes its log as json; `deploy/mongo/entrypoint.sh` starts it through the image's own entrypoint with each line rewritten by `deploy/mongo/log.jq` into the same columns, the MongoDB component in place of the scope (`network`, `storage`, `control`, ...). The handshake lines of each new connection of the app are dropped; an info line keeps only its plain values, without MongoDB's internal file and build names; a warning or error keeps its details, shortened, an error object as its message. Lines that are no MongoDB log entries, or that the filter cannot format, pass unchanged. With `--quiet` and the storage checkpoints off it logs only startups, warnings and errors. Every container keeps at most 5 × 10 MB of logs.
 
+## Database
+
+MongoDB runs with authentication: `admin` (`MONGO_ROOT_*` in `.env`) for people, `kibbl` (`MONGO_APP_*`, read and write on the `kibbl` database only) for the app. `deploy.sh` generates both passwords on the first deployment and an empty database creates both users on its first start (`deploy/mongo/init/`). Its port is open on jhubuntu's loopback only (`127.0.0.1:27017`), never on the network.
+
+From a Mac with MongoDB Compass, through an SSH tunnel:
+
+* connection string `mongodb://admin@127.0.0.1:27017/kibbl?authSource=admin&directConnection=true`
+* Proxy/SSH: SSH with identity file, host `100.84.217.119` (Tailscale) or `10.0.1.99` (office), port `4711`, user `jh`, key `~/.ssh/id_ed25519`
+* password: `ssh -p 4711 jh@100.84.217.119 "grep ^MONGO_ROOT_PASSWORD= ~/kibbl/.env | cut -d= -f2" | tr -d '\n' | pbcopy` copies it without showing it
+
+On the server itself: `docker exec -it kibbl-mongo mongosh -u admin --authenticationDatabase admin kibbl` (asks for the password).
+
 ## Reaching the server from the home network
 
 The camera opens the connection itself, so the server only has to be **reachable from the home network**. 10.0.1.99 is the office LAN and is not. Choose one:
