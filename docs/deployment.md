@@ -66,7 +66,15 @@ While the OAuth app is in **Testing** mode, Google ends the access after 7 days 
 HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/renew-health-token.sh user@example.com
 ```
 
-It opens the Google consent in the browser with whoofit's `gh_auth.py` (`WHOOFIT_DIR`, default next to this repository) and imports the new token on the server through ssh stdin; `--import-only` imports the current token without a consent.
+It opens the Google consent in the browser with whoofit's `gh_auth.py` (`WHOOFIT_DIR`, default next to this repository) and imports the new token on the server through ssh stdin; `--import-only` imports the current token without a consent, `--check` says when it ends.
+
+To have it run by itself, install the daily job on the Mac (launchd, 9:00, or after waking):
+
+```bash
+HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/install-health-renewal.sh user@example.com
+```
+
+It stays quiet while the token has more than 3 days left; then it shows a notification and opens the consent, which still needs one click (Google's testing mode asks a person every 7 days). An unanswered consent is given up after 2 hours and asked again the next day; a token renewed while the server was unreachable is imported on the next run. Log: `~/Library/Logs/kibbl-health-renewal.log`; `--remove` uninstalls it.
 
 A token from whoofit (`gh_token.json`, same OAuth client) is linked to a user without a new consent:
 
