@@ -51,6 +51,25 @@ From a Mac with MongoDB Compass, through an SSH tunnel:
 
 On the server itself: `docker exec -it kibbl-mongo mongosh -u admin --authenticationDatabase admin kibbl` (asks for the password).
 
+## Health
+
+The health page reads a fitness tracker through the Google Health API v4 (the successor of the Fitbit Web API). It needs an OAuth client of a Google Cloud project, in `.env`:
+
+1. In the Google Cloud console, enable the **Google Health API** (`health.googleapis.com`).
+2. Create an **OAuth client ID** of type *Web application*. Its authorized redirect URI is the server as the browser reaches it plus `/api/health/google/callback`, e.g. `https://<tunnel or domain>/api/health/google/callback` (`GOOGLE_REDIRECT_URI` fixes it when the server cannot tell).
+3. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then `docker compose up -d --force-recreate app`.
+4. In the app: Health, **Connect Google Health**.
+
+While the OAuth app is in **Testing** mode, Google ends the access after 7 days (the page says when). Publishing it to **Production** in the console (no verification needed for scopes of your own account) makes it last.
+
+A token from whoofit (`gh_token.json`, same OAuth client) is linked to a user without a new consent:
+
+```bash
+docker exec -i kibbl-app node health-import.js user@example.com < gh_token.json
+```
+
+The token comes on stdin, never on the command line. Tokens are stored encrypted with `HEALTH_TOKEN_KEY` (or a key derived from `JWT_SECRET`): changing it means connecting again.
+
 ## Reaching the server from the home network
 
 The camera opens the connection itself, so the server only has to be **reachable from the home network**. 10.0.1.99 is the office LAN and is not. Choose one:

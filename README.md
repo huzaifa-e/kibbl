@@ -32,6 +32,7 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
 * **Firmware**: ESP-IDF in C, conventions of ESW0009. Wi-Fi provisioning over SoftAP, one outbound websocket to the server (works behind the home router), jpeg frames at the rate the server asks for, local stream on the home network, firmware updates over the air with rollback.
 * **Server**: Node/TypeScript as in the enny-cloud-app-service. Pairs devices (trust on first use, approved in the app), relays the stream as mjpeg, detects motion and logs it as activity; a picture of each movement is kept only where the camera's settings allow it, and deleted with its event after `RETENTION_DAYS`.
 * **App**: live view with snapshot and full screen, camera and light controls, motion sensitivity, quiet hours and whether pictures are kept, activity heatmap with the usual range per hour, timeline, device management with firmware upload.
+* **Health**: a fitness tracker's heart rate, HRV, sleep stages, blood oxygen, breathing, temperature and workouts through the Google Health API (formerly whoofit), next to the home.
 
 ## Repository Structure
 
