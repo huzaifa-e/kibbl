@@ -274,6 +274,34 @@ export const CATALOG: Record<string, FilterKind> = {
     food: 'interval',
 };
 
+// local calendar date of a UTC time and its offset ("7200s")
+function localDate(iso: unknown, offset: unknown) {
+    const t = parseTime(iso);
+    if (t === null) return null;
+    const off = typeof offset === 'string' && offset.endsWith('s') ? parseInt(offset.slice(0, -1), 10) || 0 : 0;
+    return new Date(t + off * 1000).toISOString().slice(0, 10);
+}
+
+/* The civil day a data point belongs to, the way the API's filter for its family counts
+ * it: daily types by their date, intervals by their civil start, samples by their civil
+ * time, sleep by the civil END of the night. Sleep and exercise carry no civil date: it
+ * is their UTC time moved by its offset. */
+export function pointDay(dataType: string, kind: FilterKind, point: Json): string | null {
+    const inner = point?.[camel(dataType)] ?? {};
+    switch (kind) {
+        case 'daily':
+            return dateStr(inner.date);
+        case 'sample':
+            return civilDate(inner.sampleTime ?? {});
+        case 'sleep':
+            return dateStr(inner.interval?.civilEndTime?.date) ?? localDate(inner.interval?.endTime, inner.interval?.endUtcOffset);
+        case 'ecg':
+            return typeof inner.interval?.startTime === 'string' ? inner.interval.startTime.slice(0, 10) : null;
+        case 'interval':
+            return dateStr(inner.interval?.civilStartTime?.date) ?? localDate(inner.interval?.startTime, inner.interval?.startUtcOffset);
+    }
+}
+
 export const KNOWN = new Set([
     'daily-resting-heart-rate',
     'daily-heart-rate-variability',
@@ -408,24 +436,34 @@ export function datasourceMeta(points: Json[]) {
     };
 }
 
-/* One civil day at high resolution, bucket-averaged when dense (summed for interval
- * types), or every sample with raw. */
-export function intradayFromPoints(dataType: string, date: string, points: Json[], options: { target?: number; raw?: boolean } = {}) {
-    const target = options.target ?? 320;
-    const spec = INTRADAY[dataType];
-    if (!spec) return { error: `${dataType} has no intraday support` };
-    const key = camel(dataType);
-    const meta = datasourceMeta(points);
+export type Row = [number, number]; // second of the civil day, value
 
-    const rows: [number, number][] = [];
+// the (second, value) of each point of an intraday type, sorted as whoofit sorts them
+export function intradayRows(dataType: string, points: Json[]): Row[] {
+    const spec = INTRADAY[dataType];
+    const key = camel(dataType);
+    const rows: Row[] = [];
     for (const p of points) {
         const node = p?.[key] ?? {};
-        const t = spec.kind === 'sample' ? (node.sampleTime?.civilTime?.time ?? {}) : (node.interval?.civilStartTime?.time ?? {});
+        const t = spec?.kind === 'sample' ? (node.sampleTime?.civilTime?.time ?? {}) : (node.interval?.civilStartTime?.time ?? {});
         const [val] = firstNumber(node);
         if (val === null) continue;
         rows.push([(t.hours ?? 0) * 3600 + (t.minutes ?? 0) * 60 + (t.seconds ?? 0), val]);
     }
-    rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    return rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+
+export function intradayFromPoints(dataType: string, date: string, points: Json[], options: { target?: number; raw?: boolean } = {}) {
+    if (!INTRADAY[dataType]) return { error: `${dataType} has no intraday support` };
+    return intradayFromRows(dataType, date, intradayRows(dataType, points), datasourceMeta(points), options);
+}
+
+/* One civil day at high resolution, bucket-averaged when dense (summed for interval
+ * types), or every sample with raw. rows sorted as intradayRows() returns them. */
+export function intradayFromRows(dataType: string, date: string, rows: Row[], meta: Record<string, unknown>, options: { target?: number; raw?: boolean } = {}) {
+    const target = options.target ?? 320;
+    const spec = INTRADAY[dataType];
+    if (!spec) return { error: `${dataType} has no intraday support` };
 
     if (options.raw) {
         return {
@@ -469,11 +507,26 @@ export function intradayFromPoints(dataType: string, date: string, points: Json[
 /* A minute-by-minute day: a heart rate sample proves the tracker was worn; worn without
  * steps is truly sedentary; no heart rate is off the wrist (not counted as sedentary). */
 export function sedentaryGranularFromPoints(date: string, hrPoints: Json[], stepPoints: Json[]) {
+    const wornMinutes = hrPoints.map((p) => {
+        const t = p?.heartRate?.sampleTime?.civilTime?.time ?? {};
+        return (t.hours ?? 0) * 60 + (t.minutes ?? 0);
+    });
+    return sedentaryGranular(date, wornMinutes, stepPoints);
+}
+
+// the same day from stored heart rate rows (every stored sample has a value)
+export function sedentaryGranularFromRows(date: string, hrRows: Row[], stepPoints: Json[]) {
+    return sedentaryGranular(
+        date,
+        hrRows.map(([sec]) => Math.floor(sec / 60)),
+        stepPoints,
+    );
+}
+
+function sedentaryGranular(date: string, wornMinutes: number[], stepPoints: Json[]) {
     const worn = new Array<boolean>(1440).fill(false);
     const active = new Array<boolean>(1440).fill(false);
-    for (const p of hrPoints) {
-        const t = p?.heartRate?.sampleTime?.civilTime?.time ?? {};
-        const m = (t.hours ?? 0) * 60 + (t.minutes ?? 0);
+    for (const m of wornMinutes) {
         if (m >= 0 && m < 1440) worn[m] = true;
     }
     for (const p of stepPoints) {

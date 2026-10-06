@@ -53,6 +53,41 @@ declare global {
         refreshTokenExpiresAt?: number;
         connectedAt: number;
         updatedAt: number;
+        backfill?: HealthBackfill;
+        discoveredTypes: string[];
+    }
+
+    interface HealthBackfill {
+        state: 'running' | 'done' | 'failed';
+        startedAt: number;
+        finishedAt?: number;
+        oldestDay?: string; // the oldest day with data found
+        reachedDay?: string; // how far back the points have been fetched
+        pointsDone?: boolean; // all points fetched, heart rate is next
+        heartRateDays?: number;
+        heartRateDaysTotal?: number;
+        error?: string;
+    }
+
+    interface HealthPointDoc {
+        userID: string;
+        type: string;
+        day: string;
+        name?: string;
+        seq: number;
+        batch: string;
+        point: unknown;
+    }
+
+    interface HeartRateDayDoc {
+        _id: string;
+        userID: string;
+        date: string;
+        count: number;
+        seconds: Buffer;
+        values: Buffer;
+        meta?: Record<string, unknown>;
+        fetchedAt: number;
     }
 
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };

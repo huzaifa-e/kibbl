@@ -3,7 +3,8 @@ import { checkAuthMiddleware } from '../core/auth';
 import { HealthLink } from '../core/db';
 import { logger } from '../core/logger';
 import { HealthError, SCOPES, configured, exchangeCode, newAuthorization } from '../health/google';
-import { INTRADAY_TYPES, forget, intraday, latestHeartRate, summary, syncNow, syncStatus, trackers } from '../health/service';
+import { INTRADAY_TYPES, RANGES, dropCached, forget, intraday, latestHeartRate, summary, syncNow, syncStatus, trackers } from '../health/service';
+import { deleteStoredHealth, storageStats } from '../health/store';
 import { saveTokens } from '../health/tokens';
 
 const log = logger('health');
@@ -33,26 +34,27 @@ function sendError(res: express.Response, err: unknown) {
 export default function initHealthRoutes(app: express.Application) {
     const auth = checkAuthMiddleware as express.RequestHandler;
 
+    /* The stored history for a range (?range=30|90|365|all). Shown also without a link
+     * to Google (expired, disconnected): the data is on this server. */
     app.get('/api/health/summary', auth, async (req: RequestWithSessionInfo, res) => {
         const userID = req.sessionInfo!.userID;
-        if (!configured()) {
-            res.json({ configured: false, linked: false });
+        const range = typeof req.query.range === 'string' && req.query.range in RANGES ? req.query.range : '30';
+        const link = configured() ? await HealthLink.findById(userID, { connectedAt: 1, refreshTokenExpiresAt: 1, scopes: 1 }).lean() : null;
+        const data = await summary(userID, range);
+        if (!link && !data) {
+            res.json({ configured: configured(), linked: false });
             return;
         }
-        const link = await HealthLink.findById(userID, { connectedAt: 1, refreshTokenExpiresAt: 1, scopes: 1 }).lean();
-        if (!link) {
-            res.json({ configured: true, linked: false });
-            return;
-        }
-        const data = summary(userID);
-        const sync = syncStatus(userID);
-        const linkInfo = {
-            connectedAt: link.connectedAt,
-            refreshTokenExpiresAt: link.refreshTokenExpiresAt ?? null,
-            scopes: link.scopes.length,
-            scopesAsked: SCOPES.length,
-        };
+        const linkInfo = link
+            ? {
+                  connectedAt: link.connectedAt,
+                  refreshTokenExpiresAt: link.refreshTokenExpiresAt ?? null,
+                  scopes: link.scopes.length,
+                  scopesAsked: SCOPES.length,
+              }
+            : null;
         if (!data) {
+            const sync = await syncStatus(userID);
             res.status(sync.error ? 503 : 202).json({
                 configured: true,
                 linked: true,
@@ -62,18 +64,19 @@ export default function initHealthRoutes(app: express.Application) {
             });
             return;
         }
-        res.json({ configured: true, linked: true, link: linkInfo, ...data });
+        res.json({ configured: configured(), linked: !!link, link: linkInfo, ...data });
     });
 
-    app.get('/api/health/status', auth, (req: RequestWithSessionInfo, res) => {
-        res.json(syncStatus(req.sessionInfo!.userID));
+    app.get('/api/health/status', auth, async (req: RequestWithSessionInfo, res) => {
+        const userID = req.sessionInfo!.userID;
+        res.json({ ...(await syncStatus(userID)), storage: await storageStats(userID) });
     });
 
     // the trackers paired with the Google account, for the devices page
     app.get('/api/health/trackers', auth, async (req: RequestWithSessionInfo, res) => {
         const userID = req.sessionInfo!.userID;
         const linked = configured() && !!(await HealthLink.exists({ _id: userID }));
-        res.json({ linked, trackers: linked ? trackers(userID) : [], sync: linked ? syncStatus(userID) : null });
+        res.json({ linked, trackers: linked ? trackers(userID) : [], sync: linked ? await syncStatus(userID) : null });
     });
 
     app.get('/api/health/intraday', auth, async (req: RequestWithSessionInfo, res) => {
@@ -152,12 +155,18 @@ export default function initHealthRoutes(app: express.Application) {
         }
     });
 
-    // forgets the tokens here; the access stays listed in the Google account until removed there
+    /* Forgets the tokens here; the access stays listed in the Google account until removed
+     * there. The stored history stays unless ?delete=1: then it is gone for good. */
     app.post('/api/health/google/disconnect', auth, async (req: RequestWithSessionInfo, res) => {
         const userID = req.sessionInfo!.userID;
         await HealthLink.deleteOne({ _id: userID });
         forget(userID);
-        log.info('disconnected', { user: req.sessionInfo!.email });
-        res.json({ ok: true });
+        let deleted: { points: number; heartRateDays: number } | undefined;
+        if (req.query.delete === '1') {
+            deleted = await deleteStoredHealth(userID);
+            dropCached(userID);
+        }
+        log.info(deleted ? 'disconnected, stored history deleted' : 'disconnected, stored history kept', { user: req.sessionInfo!.email, ...(deleted ?? {}) });
+        res.json({ ok: true, deleted: deleted ?? null });
     });
 }

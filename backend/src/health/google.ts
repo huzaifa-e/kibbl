@@ -170,12 +170,24 @@ export class GoogleHealth {
         this.tokens = await pending;
     }
 
+    /* One request, the access token refreshed once on a 401. A 429 (rate limit) or 503
+     * waits as long as Google asks (Retry-After, else 30 s) and tries again, up to 5 times:
+     * the one-time fetch of the whole history makes thousands of requests. */
     async get(path: string, params?: Record<string, string | number>): Promise<{ status: number; body: unknown }> {
         const url = `${BASE}${path}${params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])) : ''}`;
-        for (let attempt = 1; attempt <= 2; attempt++) {
+        let refreshed = false;
+        for (let attempt = 1; attempt <= 6; attempt++) {
             const res = await fetch(url, { headers: { Authorization: `Bearer ${await this.token()}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-            if (res.status === 401 && attempt === 1) {
+            if (res.status === 401 && !refreshed) {
+                refreshed = true;
                 await this.refresh();
+                continue;
+            }
+            if ((res.status === 429 || res.status === 503) && attempt < 6) {
+                const wait = Math.min(Number(res.headers.get('retry-after')) || 30, 300);
+                log.warn('google asks to wait', { status: res.status, seconds: wait, attempt });
+                await res.body?.cancel();
+                await new Promise((r) => setTimeout(r, wait * 1000));
                 continue;
             }
             const text = await res.text();
@@ -187,7 +199,7 @@ export class GoogleHealth {
             }
             return { status: res.status, body };
         }
-        throw new HealthError('unreachable');
+        throw new HealthError('Google Health kept refusing requests (rate limit)');
     }
 
     profile() {
