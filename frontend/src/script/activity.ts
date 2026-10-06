@@ -2,6 +2,7 @@ import './main';
 import type ApexCharts from 'apexcharts';
 import type { ActivityBucket, DeviceSummary, MotionEvent } from '../../../shared/protocol';
 import { heatmapChart, hourlyChart } from './activityCharts';
+import { MIN_BASELINE_DAYS, baselineDays, windowDays } from './activityStats';
 import { bindEventViewer, eventCardHtml, eventDuration } from './events';
 import { request, socket } from './socket';
 import { byId, emptyState, escapeHtml, formatDuration, localDayKey } from './utils';
@@ -51,6 +52,7 @@ function layout() {
                     <div class="card-body">
                         <div class="row mb-3" id="day-stats"></div>
                         <div id="hourly"></div>
+                        <div class="text-secondary small mt-2" id="hourly-note"></div>
                     </div>
                 </div>
             </div>
@@ -108,8 +110,14 @@ function renderDay() {
         <div class="col-4"><div class="stat-value">${events.length ? formatDuration(total) : '–'}</div><div class="text-secondary small">in motion</div></div>
         <div class="col-4"><div class="stat-value">${busiest}</div><div class="text-secondary small">busiest hour</div></div>`;
 
+    const today = localDayKey(Date.now());
+    const baseline = baselineDays(buckets, windowDays(DAYS), selectedDay, today);
     hourly?.destroy();
-    hourly = hourlyChart(byId('hourly'), buckets, selectedDay);
+    hourly = hourlyChart(byId('hourly'), buckets, selectedDay, baseline);
+    byId('hourly-note').textContent =
+        baseline.length >= MIN_BASELINE_DAYS
+            ? `Bars: this day. Bands: the usual range per hour over ${baseline.length} other days (middle half darker, dashed line the median).`
+            : `The usual range per hour shows once there are ${MIN_BASELINE_DAYS} other days with recordings.`;
 
     const name = (id: string) => (selectedDevice ? undefined : devices.find((d) => d._id === id)?.name);
     byId('timeline').innerHTML = events.length

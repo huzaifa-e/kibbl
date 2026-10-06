@@ -1,5 +1,6 @@
 import ApexCharts from 'apexcharts';
 import type { ActivityBucket } from '../../../shared/protocol';
+import { MIN_BASELINE_DAYS, hourlyQuantiles } from './activityStats';
 import { isDarkMode, localDayKey } from './utils';
 
 const ACCENT = '#d9622b';
@@ -21,32 +22,79 @@ function baseOptions() {
     };
 }
 
-// motion events per hour of one day: when the pets and people were around
-export function hourlyChart(el: HTMLElement, buckets: ActivityBucket[], day: string) {
+const hourLabel = (h: number) => String(h).padStart(2, '0');
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+/* Motion events per hour of one day: when the pets and people were around. With
+ * baseline days, the quantiles of those days per hour are drawn as translucent bands: the
+ * band from the 10th to the 90th percentile, the 25th to 75th, and the median, so a
+ * bar above the bands is an hour busier than usual. */
+export function hourlyChart(el: HTMLElement, buckets: ActivityBucket[], day: string, baseline: string[] = []) {
     const counts = new Array(24).fill(0);
     for (const b of buckets) {
         if (b.day === day) counts[b.hour] += b.count;
     }
+    const dark = isDarkMode();
+    const withBands = baseline.length >= MIN_BASELINE_DAYS;
+    const q = withBands ? hourlyQuantiles(buckets, baseline) : [];
+
+    const bars = { name: 'This day', type: 'column', data: counts.map((y, h) => ({ x: hourLabel(h), y })) };
+    const series = withBands
+        ? [
+              bars,
+              { name: '10–90 %', type: 'rangeArea', data: q.map((v, h) => ({ x: hourLabel(h), y: [round1(v.p10), round1(v.p90)] })) },
+              { name: '25–75 %', type: 'rangeArea', data: q.map((v, h) => ({ x: hourLabel(h), y: [round1(v.p25), round1(v.p75)] })) },
+              { name: 'Median', type: 'line', data: q.map((v, h) => ({ x: hourLabel(h), y: round1(v.p50) })) },
+          ]
+        : [bars];
+    const barOutline = dark ? '#0b0604' : '#2a1a12';
+    const band = dark ? '#e8a77d' : '#a0471c';
+    const outerBand = dark ? '#b98a6c' : '#cf8f62'; // lighter, so the legend tells the two bands apart
+    // a multiple of the 4 ticks, so every grid line is a whole number of events
+    const top = Math.max(4, Math.ceil(Math.max(...counts, ...q.map((v) => v.p90)) / 4) * 4);
+
     const chart = new ApexCharts(el, {
         ...baseOptions(),
-        chart: { ...baseOptions().chart, type: 'bar', height: 160 },
-        series: [{ name: 'Motion events', data: counts }],
-        colors: [ACCENT],
+        chart: { ...baseOptions().chart, type: withBands ? 'rangeArea' : 'bar', height: withBands ? 200 : 160 },
+        series,
+        colors: withBands ? [ACCENT, outerBand, band, band] : [ACCENT],
+        fill: { opacity: withBands ? [1, 0.14, 0.26, 1] : 1 },
         plotOptions: { bar: { columnWidth: '70%', borderRadius: 2 } },
-        stroke: { show: true, width: 1, colors: [isDarkMode() ? '#0b0604' : '#2a1a12'] },
+        stroke: withBands
+            ? { show: true, curve: 'straight', width: [1, 0, 0, 2], dashArray: [0, 0, 0, 4], colors: [barOutline, outerBand, band, band] }
+            : { show: true, width: 1, colors: [barOutline] },
+        markers: { size: 0, hover: { size: 0 } },
+        legend: withBands
+            ? { show: true, position: 'bottom', fontSize: '11px', markers: { width: 8, height: 8 }, itemMargin: { horizontal: 6 } }
+            : { show: false },
         xaxis: {
-            categories: counts.map((_, h) => String(h).padStart(2, '0')),
+            type: 'category',
             // every third hour labelled, the bars of a narrow card leave no room for 24
             labels: { rotate: 0, formatter: (v: string) => (Number(v) % 3 === 0 ? v : '') },
             axisBorder: { show: false },
             axisTicks: { show: false },
+            tooltip: { enabled: false },
         },
-        tooltip: { ...baseOptions().tooltip, x: { formatter: (_v: string, o: { dataPointIndex: number }) => `${String(o.dataPointIndex).padStart(2, '0')}:00` } },
+        tooltip: {
+            ...baseOptions().tooltip,
+            shared: true,
+            intersect: false,
+            x: { formatter: (_v: string, o: { dataPointIndex: number }) => `${hourLabel(o.dataPointIndex)}:00` },
+            y: {
+                formatter: (v: number | number[] | undefined, o: { seriesIndex: number; dataPointIndex: number }) => {
+                    if (withBands && o.seriesIndex > 0 && o.seriesIndex < 3) {
+                        const r = q[o.dataPointIndex];
+                        return o.seriesIndex === 1 ? `${round1(r.p10)} – ${round1(r.p90)}` : `${round1(r.p25)} – ${round1(r.p75)}`;
+                    }
+                    return typeof v === 'number' ? String(round1(v)) : '';
+                },
+            },
+        },
         // an empty day has no scale of its own: without a max the axis reads "Infinity"
         yaxis: {
             labels: { formatter: (v: number) => Math.round(v).toString() },
             min: 0,
-            max: Math.max(4, ...counts),
+            max: top,
             tickAmount: 4,
         },
     });
