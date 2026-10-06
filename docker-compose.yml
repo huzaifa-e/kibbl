@@ -1,3 +1,10 @@
+# every container keeps at most 5 x 10 MB of logs: `docker compose logs` stays quick and the disk stays free
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: 10m
+        max-file: '5'
+
 services:
     app:
         build: .
@@ -11,6 +18,9 @@ services:
             - MONGODB_URI=mongodb://mongo:27017/kibbl
             - IMAGE_DATA_PATH=/data/images
             - FIRMWARE_DATA_PATH=/data/firmware
+            # coloured columns in `docker compose logs`; LOG_LEVEL in .env (info by default)
+            - LOG_COLOR=always
+        logging: *logging
         ports:
             - '8790:8790'
         volumes:
@@ -26,12 +36,17 @@ services:
         profiles: ['tunnel']
         restart: unless-stopped
         command: tunnel --no-autoupdate --url http://app:8790
+        logging: *logging
         depends_on:
             - app
     mongo:
         image: mongo:7
         container_name: kibbl-mongo
         restart: always
+        # without the per-connection lines and the storage checkpoint line every minute:
+        # what is left are startups, warnings and errors
+        command: ['mongod', '--quiet', '--wiredTigerEngineConfigString=verbose=[checkpoint_progress:0]']
+        logging: *logging
         environment:
             - TZ=Europe/Berlin
         # only the app reaches the database, no port leaves the host
