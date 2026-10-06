@@ -7,6 +7,8 @@ WORKDIR /home/node
 COPY --chown=node:node . .
 RUN npm ci
 RUN npm run build
+# a build without the pages must fail here, not start a server that serves nothing
+RUN test -f backend/dist/app.js && test -f backend/dist/frontend/index.html
 
 # -----
 

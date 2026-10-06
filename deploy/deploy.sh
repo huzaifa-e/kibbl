@@ -17,6 +17,7 @@ echo "Copying to $HOST:$REMOTE_DIR"
 rsync -az --delete -e "${SSH[*]}" \
     --exclude '.git/' \
     --exclude 'node_modules/' \
+    --exclude '.turbo/' \
     --exclude 'backend/dist/' \
     --exclude 'firmware/' \
     --exclude 'data/' \

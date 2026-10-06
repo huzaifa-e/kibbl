@@ -7,3 +7,7 @@ firmware/
 data/
 .git/
 .env
+# turbo's local build cache: a hit restores only files inside a package, and the
+# frontend builds into backend/dist/frontend, so the image would have no frontend
+.turbo/
+**/.turbo/
