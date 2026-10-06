@@ -45,6 +45,16 @@ declare global {
         snapshot?: string;
     }
 
+    interface HealthLinkDoc {
+        _id: string;
+        provider: 'google';
+        tokens: string; // AES-256-GCM, base64: iv.tag.ciphertext
+        scopes: string[];
+        refreshTokenExpiresAt?: number;
+        connectedAt: number;
+        updatedAt: number;
+    }
+
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };
 }
 

@@ -1,7 +1,8 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-    entry: ['./src/app.ts'],
+    // the server, and the command that links a user to Google Health with an existing token
+    entry: { app: './src/app.ts', 'health-import': './src/healthImport.ts' },
     sourcemap: false,
     bundle: true,
     platform: 'node',

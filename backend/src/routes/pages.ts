@@ -8,6 +8,7 @@ const pages = [
     { name: 'login', path: 'login', auth: false },
     { name: 'camera', path: 'camera/:deviceID', auth: true },
     { name: 'activity', path: 'activity', auth: true },
+    { name: 'health', path: 'health', auth: true },
     { name: 'devices', path: 'devices', auth: true },
     { name: 'settings', path: 'settings', auth: true },
 

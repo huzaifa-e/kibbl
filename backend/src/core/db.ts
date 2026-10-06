@@ -6,6 +6,7 @@ const log = logger('db');
 export let User: Model<User>;
 export let Device: Model<DeviceDoc>;
 export let MotionEventModel: Model<MotionEventDoc>;
+export let HealthLink: Model<HealthLinkDoc>;
 
 let isConnected = false;
 
@@ -62,6 +63,18 @@ async function init() {
     User = model<User>('User', userSchema);
     Device = model<DeviceDoc>('Device', deviceSchema);
     MotionEventModel = model<MotionEventDoc>('MotionEvent', motionEventSchema);
+
+    // a user's link to Google Health: the tokens encrypted (health/tokens.ts), never in clear
+    const healthLinkSchema = new Schema<HealthLinkDoc>({
+        _id: { type: String, required: true }, // the user's id
+        provider: { type: String, required: true, enum: ['google'] },
+        tokens: { type: String, required: true },
+        scopes: { type: [String], default: [] },
+        refreshTokenExpiresAt: Number, // only while the Google app is in testing mode (7 days)
+        connectedAt: { type: Number, required: true },
+        updatedAt: { type: Number, required: true },
+    });
+    HealthLink = model<HealthLinkDoc>('HealthLink', healthLinkSchema);
 
     connection.on('connected', () => {
         isConnected = true;

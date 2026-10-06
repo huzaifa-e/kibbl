@@ -13,6 +13,7 @@ import { logger } from './core/logger';
 const log = logger('server');
 import { closeStaleEvents, initMotionWatchdog } from './core/motion';
 import { initStorageCleanup } from './core/storage';
+import { initHealthSync } from './health/service';
 import { initRoutes } from './routes';
 import { sendPage } from './routes/pages';
 import { initBrowserSocket } from './sockets/browser-socket';
@@ -41,6 +42,7 @@ async function main() {
     initStorageCleanup();
     await closeStaleEvents();
     initMotionWatchdog();
+    initHealthSync();
 
     const app: express.Application = express();
     app.disable('x-powered-by');
