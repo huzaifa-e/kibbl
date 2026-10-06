@@ -173,6 +173,12 @@ function renderMotion() {
         </label>`
                 : ''
         }
+        <label class="form-check form-switch mb-1">
+            <input class="form-check-input" type="checkbox" id="motion-pictures" ${m.keepPictures ? 'checked' : ''} />
+            <span class="form-check-label">Keep a picture of each movement</span>
+        </label>
+        <div class="form-hint mb-2">Off: only when and how much something moved is logged, no picture is stored.</div>
+        <div class="d-flex align-items-center gap-2 mb-3 small" id="saved-pictures"></div>
         <div class="mb-3">
             <label class="form-label">Sensitivity</label>
             <div class="btn-group w-100" role="group">
@@ -201,12 +207,39 @@ function renderMotion() {
         const settings = {
             enabled: byId<HTMLInputElement>('motion-enabled').checked,
             blink: document.querySelector<HTMLInputElement>('#motion-blink')?.checked,
+            keepPictures: byId<HTMLInputElement>('motion-pictures').checked,
             sensitivity: document.querySelector<HTMLInputElement>('input[name="motion-sensitivity"]:checked')?.value,
             quietFrom: Number(byId<HTMLSelectElement>('quiet-from').value),
             quietTo: Number(byId<HTMLSelectElement>('quiet-to').value),
         };
         const res = await request<{ ok: boolean; error?: string }>('setMotionSettings', deviceId, settings);
         byId('motion-result').innerHTML = res.ok ? successAlert('Saved.') : errorAlert(res.error ?? 'Not saved.');
+    });
+    renderSavedPictures();
+}
+
+/* Pictures saved so far stay when keeping them is switched off: deleting them is a
+ * decision of its own, and it keeps the activity log. */
+async function renderSavedPictures() {
+    const el = byId('saved-pictures');
+    const res = await request<{ ok: boolean; count?: number }>('countEventPictures', deviceId);
+    const count = res.ok ? (res.count ?? 0) : 0;
+    if (count === 0) {
+        el.innerHTML = '<span class="text-secondary"><i class="ti ti-photo-off me-1"></i>No saved pictures</span>';
+        return;
+    }
+    el.innerHTML = `<span class="text-secondary flex-fill"><i class="ti ti-photo me-1"></i>${count} saved picture${count === 1 ? '' : 's'}</span>
+        <button class="btn btn-sm btn-outline-danger" id="delete-pictures"><i class="ti ti-trash me-1"></i>Delete pictures</button>`;
+    byId('delete-pictures').addEventListener('click', async () => {
+        if (!confirm(`Delete the ${count} saved picture${count === 1 ? '' : 's'} of ${device!.name}? The activity log stays.`)) return;
+        const del = await request<{ ok: boolean; deleted?: number; error?: string }>('deleteEventPictures', deviceId);
+        if (!del.ok) {
+            byId('motion-result').innerHTML = errorAlert(del.error ?? 'Not deleted.');
+            return;
+        }
+        events = await request<MotionEvent[]>('getEvents', { deviceId, limit: 24 });
+        renderEvents();
+        renderSavedPictures();
     });
 }
 

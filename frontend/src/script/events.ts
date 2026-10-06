@@ -19,7 +19,7 @@ export function eventCardHtml(e: MotionEvent, deviceName: string | undefined, is
     const ongoing = e.end === undefined;
     const img = e.hasSnapshot
         ? `<img src="/api/events/${e._id}/image" alt="motion at ${formatTime(e.start)}" loading="lazy" />`
-        : '<div class="d-flex h-100 align-items-center justify-content-center text-secondary"><i class="ti ti-photo-off" style="font-size:2rem"></i></div>';
+        : `<div class="event-activity" title="Logged as activity, no picture kept"><i class="ti ti-activity"></i><span>${(e.peakScore * 100).toFixed(1)} % moved</span></div>`;
     return `<div class="col-6 col-md-4 col-xl-3" data-event-id="${e._id}">
         <div class="event-thumb ${isNew ? 'event-new' : ''}" data-open-event="${e._id}">
             ${img}
