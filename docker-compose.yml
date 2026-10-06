@@ -28,6 +28,10 @@ services:
             - './data/app:/data'
         depends_on:
             - mongo
+        # the EMONI LoRaWAN server's network: meters are read from it (METER_SOURCE_URL)
+        networks:
+            - default
+            - meters
     # temporary public address until a named tunnel exists: a random https://*.trycloudflare.com
     # that changes on every start of this container. Not started by deploy.sh, so a deploy keeps
     # the address: docker compose --profile tunnel up -d tunnel, url in docker compose logs tunnel
@@ -65,3 +69,9 @@ services:
             - './data/mongo:/data/db'
             - './deploy/mongo:/kibbl-mongo:ro'
             - './deploy/mongo/init:/docker-entrypoint-initdb.d:ro'
+
+networks:
+    # created by the ttn-chirpstack-webhook project, running on the same host
+    meters:
+        external: true
+        name: ${METER_SOURCE_NETWORK:-ttn-chirpstack-webhook_default}
