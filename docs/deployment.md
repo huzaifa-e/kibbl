@@ -90,7 +90,7 @@ The health history is **stored on this server**: after connecting, the server fe
 
 Meters (electricity, gas, water) come from the EMONI LoRaWAN server running on the same host (`ttn-chirpstack-webhook`, container `emoni-lorawan`). The app joins its docker network (`METER_SOURCE_NETWORK`, default `ttn-chirpstack-webhook_default`, which must exist before `docker compose up`) and reads its api at `METER_SOURCE_URL` (default `http://emoni-lorawan:8000`); it only reads.
 
-A meter is one of the source's configured devices, by its uuid: in `.env` as `METERS=<uuid>,<uuid>` (added on start), or on the Devices page, **Add meter**. The first sync copies its whole history (12,000 readings take a few seconds), then every 2 minutes only what is new. The copy is in MongoDB (`meterreadings`, `meterperiods`), so the page keeps working while the source is down; removing a meter in the app deletes its copy, not the source's data.
+A meter is one of the source's configured devices, by its uuid: in `.env` as `METERS=<uuid>,<uuid>` (added on start), or on the Devices page, **Add meter**. The first sync copies its whole history (12,000 readings take a few seconds); after that the app listens to the source's live stream and fetches a reading as soon as the meter sends it (after a lost connection it reconnects and catches up). The copy is in MongoDB (`meterreadings`, `meterperiods`), so the page keeps working while the source is down; removing a meter (Devices) deletes its copy, not the source's data.
 
 ## Reaching the server from the home network
 
