@@ -3,6 +3,7 @@ import type ApexCharts from 'apexcharts';
 import type { ActivityBucket, DeviceSummary, MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
 import { controlsHtml, bindControls } from './controls';
+import { renderHomeCards } from './homeCards';
 import { bindEventViewer, eventCardHtml } from './events';
 import { request, socket } from './socket';
 import { byId, cameraProblem, emptyState, escapeHtml, localDayKey, signalQuality, startOfDay, timeAgo } from './utils';
@@ -79,10 +80,10 @@ function cameraTileHtml(d: DeviceSummary) {
     const picture = problem
         ? `<div class="stream-placeholder"><i class="ti ti-camera-off"></i><span>Camera not responding</span></div>`
         : d.online
-        ? `<img data-tile-img="${d._id}" alt="${escapeHtml(d.name)}" style="display:none" />
+          ? `<img data-tile-img="${d._id}" alt="${escapeHtml(d.name)}" style="display:none" />
            <div class="stream-placeholder" data-tile-placeholder="${d._id}"><i class="ti ti-player-play"></i><span>${d.motion.enabled ? 'Waiting for a picture' : 'Open the live view'}</span></div>`
-        : `<div class="stream-placeholder"><i class="ti ti-wifi-off"></i><span>Offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</span></div>`;
-    return `<div class="col-md-6 col-xl-4">
+          : `<div class="stream-placeholder"><i class="ti ti-wifi-off"></i><span>Offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</span></div>`;
+    return `<div class="col-md-6 col-xl-4" data-camera-col>
         <div class="card camera-tile" data-camera="${d._id}">
             <div class="stream-frame" style="border-radius: var(--kb-radius) var(--kb-radius) 0 0">
                 <div class="stream-badges">
@@ -107,16 +108,21 @@ function cameraTileHtml(d: DeviceSummary) {
 function renderCameras() {
     const cams = cameras();
     const grid = byId('camera-grid');
+    // the meter and health cards after the cameras stay; only the cameras are redrawn
+    grid.querySelectorAll('[data-camera-col]').forEach((el) => el.remove());
     if (cams.length === 0) {
-        grid.innerHTML = `<div class="col-12"><div class="card"><div class="card-body">${emptyState(
-            'device-cctv',
-            'No camera yet',
-            'Plug your kibbl. cam into this computer and set it up under Devices.',
-            '<a href="/devices" class="btn btn-primary">Devices</a>',
-        )}</div></div></div>`;
+        grid.insertAdjacentHTML(
+            'afterbegin',
+            `<div class="col-12" data-camera-col><div class="card"><div class="card-body">${emptyState(
+                'device-cctv',
+                'No camera yet',
+                'Plug your kibbl. cam into this computer and set it up under Devices.',
+                '<a href="/devices" class="btn btn-primary">Devices</a>',
+            )}</div></div></div>`,
+        );
         return;
     }
-    grid.innerHTML = cams.map(cameraTileHtml).join('');
+    grid.insertAdjacentHTML('afterbegin', cams.map(cameraTileHtml).join(''));
     refreshTiles();
 }
 
@@ -181,6 +187,7 @@ async function load() {
     ]);
     renderAll();
     renderChart();
+    void renderHomeCards(byId('camera-grid'));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -189,7 +196,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tile) window.location.href = `/camera/${tile.dataset.camera}`;
     });
     setInterval(refreshTiles, TILE_REFRESH_MS);
-    window.addEventListener('themechange', renderChart);
+    window.addEventListener('themechange', () => {
+        renderChart();
+        void renderHomeCards(byId('camera-grid'));
+    });
 });
 
 socket.on('connect', load);
@@ -203,6 +213,11 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
         renderCameras();
         renderOthers();
     }
+});
+
+// a new meter reading: the meter cards show it
+socket.on('meterUpdate', () => {
+    if (rendered) void renderHomeCards(byId('camera-grid'));
 });
 
 socket.on('deviceRemoved', (deviceId: string) => {
