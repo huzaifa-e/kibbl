@@ -84,7 +84,9 @@ docker exec -i kibbl-app node health-import.js user@example.com < gh_token.json
 
 The token comes on stdin, never on the command line. Tokens are stored encrypted with `HEALTH_TOKEN_KEY` (or a key derived from `JWT_SECRET`): changing it means connecting again.
 
-The health history is **stored on this server**: after connecting, the server fetches everything Google has once (the page shows how far it got; heart rate at full resolution takes the longest, ~40 requests a day of history), then only the latest data after each sync of the tracker. Disconnecting keeps the stored history, the page shows it without new data; *Delete stored history* removes it for good. It is in MongoDB (`healthpoints`, `heartratedays`), so a database backup has it too: a year is roughly 70 MB of points and 110 MB of heart rate on disk.
+The health history is **stored on this server**: after connecting, the server fetches everything Google has once (the page shows how far it got; heart rate at full resolution takes the longest, ~4 requests a day of history), then only the latest data after each sync of the tracker. Disconnecting keeps the stored history, the page shows it without new data; *Delete stored history* removes it for good. It is in MongoDB (`healthpoints`, `heartratedays`), so a database backup has it too: a year is roughly 70 MB of points and 110 MB of heart rate on disk.
+
+Every request to Google goes through one queue: `HEALTH_CONCURRENCY` (4 by default) at once for all users, pages of 10 000 points (the API's maximum), heart rate as a partial response with only the values. A 429 from Google pauses the whole queue for as long as it asks; a network error or a 5xx is tried again after 2, 4 and 8 s. A day opened on the page goes ahead of the history fetch. `/api/health/status` shows the queue (`requests.running`, `requests.waiting`).
 
 ## Meters
 

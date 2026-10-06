@@ -1,7 +1,8 @@
 import { HealthLink, HealthPoint } from '../core/db';
 import { logger } from '../core/logger';
-import { CATALOG, PARSERS, intradayRows, datasourceMeta, type FilterKind } from './extract';
-import { GoogleHealth, HealthError, day, nextDay } from './google';
+import { CATALOG, PARSERS, type FilterKind } from './extract';
+import { GoogleHealth, HealthError, day } from './google';
+import { forEachLimited } from './limiter';
 import { saveHeartRateDay, storeWindow, storedHeartRateDates } from './store';
 
 /*
@@ -15,7 +16,8 @@ const CHUNK_DAYS = 30; // one request window of the one-time fetch
 const EMPTY_CHUNKS_TO_STOP = 3; // 90 days without any data: the history begins after them
 const MAX_YEARS = 10;
 export const RECENT_DAYS = 2; // re-read on every sync: Google revises the latest days (sleep is reprocessed)
-const HR_MAX_PAGES = 120; // up to a sample a second: 86 400 points, 1000 a page
+const HR_MAX_PAGES = 12; // up to a sample a second: 86 400 points, 10 000 a page
+const HR_DAYS_AT_ONCE = 3; // heart rate days fetched side by side; the limiter in google.ts caps the requests
 
 // every type that is stored as data points: whoofit's series and the intraday ones
 const BASE_TYPES: [string, FilterKind][] = [
@@ -69,12 +71,21 @@ async function fetchAndStore(gh: GoogleHealth, userID: string, type: string, kin
 }
 
 async function fetchHeartRateDay(gh: GoogleHealth, userID: string, date: string) {
-    const { status, points } = await gh.dataPointsAll(HEART_RATE, 'sample', date, nextDay(date), HR_MAX_PAGES);
+    const { status, rows, meta } = await gh.heartRateDay(date, HR_MAX_PAGES);
     if (status !== 200) throw new HealthError(`heart rate ${date}: HTTP ${status}`);
-    const rows = intradayRows(HEART_RATE, points);
     // a day without heart rate (before the tracker, not worn) is stored empty: it is not asked for again
-    await saveHeartRateDay(userID, date, rows, datasourceMeta(points));
+    await saveHeartRateDay(userID, date, rows, meta);
     return rows.length;
+}
+
+/* Every type over [start, end) side by side (the limiter caps the requests), the points
+ * stored. The first error is thrown once all have stopped. */
+async function fetchTypes(gh: GoogleHealth, userID: string, types: [string, FilterKind][], start: string, end: string) {
+    let points = 0;
+    await forEachLimited(types, types.length, async ([type, kind]) => {
+        points += await fetchAndStore(gh, userID, type, kind, start, end);
+    });
+    return points;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -84,11 +95,7 @@ export async function refreshRecent(userID: string, discovered: string[]) {
     const gh = new GoogleHealth(userID);
     const start = day(RECENT_DAYS);
     const end = day(-1); // today included
-    let points = 0;
-    for (const [type, kind] of storedTypes(discovered)) {
-        points += await fetchAndStore(gh, userID, type, kind, start, end);
-    }
-    return points;
+    return fetchTypes(gh, userID, storedTypes(discovered), start, end);
 }
 
 /* Heart rate of the days that became complete since the last time: normally the day
@@ -101,12 +108,10 @@ export async function storeCompletedHeartRate(userID: string, lastSync: string |
     if (!stored.size) return 0; // the one-time fetch has not reached heart rate yet
     const newest = [...stored].sort().pop()!;
     const gh = new GoogleHealth(userID);
-    let days = 0;
-    for (let date = addDays(newest, 1); date <= last; date = addDays(date, 1)) {
-        await fetchHeartRateDay(gh, userID, date);
-        days++;
-    }
-    return days;
+    const dates: string[] = [];
+    for (let date = addDays(newest, 1); date <= last; date = addDays(date, 1)) dates.push(date);
+    await forEachLimited(dates, HR_DAYS_AT_ONCE, (date) => fetchHeartRateDay(gh, userID, date).then(() => undefined));
+    return dates.length;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -142,12 +147,21 @@ export async function backfill(userID: string, lastSync: string | null) {
             // disconnected and deleted meanwhile: nothing more is written for this user
             if (!(await HealthLink.exists({ _id: userID }))) throw new HealthError('disconnected');
             const start = addDays(end, -CHUNK_DAYS);
-            let found = 0;
-            for (const [type, kind] of types) {
-                if (!DERIVED_TYPES.has(type)) found += await fetchAndStore(gh, userID, type, kind, start, end);
-            }
+            const found = await fetchTypes(
+                gh,
+                userID,
+                types.filter(([t]) => !DERIVED_TYPES.has(t)),
+                start,
+                end,
+            );
             if (found) {
-                for (const [type, kind] of types) if (DERIVED_TYPES.has(type)) await fetchAndStore(gh, userID, type, kind, start, end);
+                await fetchTypes(
+                    gh,
+                    userID,
+                    types.filter(([t]) => DERIVED_TYPES.has(t)),
+                    start,
+                    end,
+                );
             }
             empty = found ? 0 : empty + 1;
             if (found) progress.oldestDay = (await oldestStoredDay(userID)) ?? progress.oldestDay;
@@ -160,7 +174,9 @@ export async function backfill(userID: string, lastSync: string | null) {
         progress.pointsDone = true;
         await saveProgress(userID, progress);
 
-        // heart rate: every complete day from the oldest day with data on, newest first
+        /* heart rate: every complete day from the oldest day with data on, newest first,
+         * a few side by side. The progress is written one save after the other, so an
+         * older count never lands after a newer one. */
         const last = lastCompleteDay(lastSync) ?? day(1);
         const oldest = progress.oldestDay ?? last;
         const stored = await storedHeartRateDates(userID);
@@ -168,12 +184,14 @@ export async function backfill(userID: string, lastSync: string | null) {
         for (let date = last; date >= oldest; date = addDays(date, -1)) if (!stored.has(date)) missing.push(date);
         progress.heartRateDaysTotal = stored.size + missing.length;
         progress.heartRateDays = stored.size;
-        for (const date of missing) {
+        let saving = Promise.resolve();
+        await forEachLimited(missing, HR_DAYS_AT_ONCE, async (date) => {
             if (!(await HealthLink.exists({ _id: userID }))) throw new HealthError('disconnected');
             await fetchHeartRateDay(gh, userID, date);
-            progress.heartRateDays++;
-            await saveProgress(userID, progress);
-        }
+            progress.heartRateDays = (progress.heartRateDays ?? 0) + 1;
+            saving = saving.then(() => saveProgress(userID, progress));
+            await saving;
+        });
 
         progress.state = 'done';
         progress.finishedAt = Date.now();
@@ -208,9 +226,9 @@ async function oldestStoredDay(userID: string) {
 /* A data type that started to return data (discovery): its own history fetched once,
  * the same way, and from then on it is part of every refresh. */
 export async function addDiscoveredType(userID: string, type: string) {
-    if (!CATALOG[type] || type === HEART_RATE) return;
+    if (!CATALOG[type] || type === HEART_RATE) return false;
     const updated = await HealthLink.updateOne({ _id: userID, discoveredTypes: { $ne: type } }, { $push: { discoveredTypes: type } });
-    if (!updated.modifiedCount) return;
+    if (!updated.modifiedCount) return false;
     log.info('new data type, fetching its history', { user: userID, type });
     const gh = new GoogleHealth(userID);
     const kind = CATALOG[type];
@@ -221,4 +239,5 @@ export async function addDiscoveredType(userID: string, type: string) {
         empty = (await fetchAndStore(gh, userID, type, kind, start, end)) ? 0 : empty + 1;
         end = start;
     }
+    return true;
 }

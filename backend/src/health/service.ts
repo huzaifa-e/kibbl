@@ -7,12 +7,10 @@ import {
     KNOWN,
     PARSERS,
     blocksFromPoints,
-    datasourceMeta,
     dateStr,
     genericSeries,
     intradayFromPoints,
     intradayFromRows,
-    intradayRows,
     num,
     parseAzm,
     parseBreathingStages,
@@ -22,7 +20,8 @@ import {
     parseSleep,
     sedentaryGranularFromRows,
 } from './extract';
-import { GoogleHealth, HealthError, configured, day, nextDay } from './google';
+import { GoogleHealth, HealthError, configured, day, nextDay, requestQueue } from './google';
+import { forEachLimited } from './limiter';
 import { HEART_RATE, addDiscoveredType, backfill, backfillRunning, refreshRecent, storeCompletedHeartRate, storedTypes } from './history';
 import { loadHeartRateDay, loadPoints, storageStats } from './store';
 
@@ -36,7 +35,7 @@ import { loadHeartRateDay, loadPoints, storageStats } from './store';
 const log = logger('health');
 
 const POLL_MS = 60_000;
-const DISCOVERY_MS = 30 * 60_000;
+const DISCOVERY_MS = 24 * 3600_000; // a type a tracker starts to record is rare; a probe is ~100 requests
 const PROFILE_MS = 6 * 3600_000;
 const BACKFILL_RETRY_MS = 10 * 60_000;
 const INTRADAY_CACHE_MS = 5 * 60_000;
@@ -65,6 +64,8 @@ interface UserState {
     discoveredAt?: number;
     backfillTriedAt?: number;
     summaries: Map<string, Record<string, unknown>>; // built from the stored data, cleared when it changes
+    building: Map<string, Promise<Record<string, unknown> | undefined>>; // one build per range at a time
+    generation: number; // raised by every change: a build that started before it is not kept
     busy: boolean;
 }
 
@@ -75,7 +76,7 @@ const hrCache = new Map<string, { at: number; data: unknown }>();
 function state(userID: string) {
     let s = states.get(userID);
     if (!s) {
-        s = { trackers: [], checks: 0, reconnect: false, busy: false, summaries: new Map() };
+        s = { trackers: [], checks: 0, reconnect: false, busy: false, summaries: new Map(), building: new Map(), generation: 0 };
         states.set(userID, s);
     }
     return s;
@@ -83,6 +84,7 @@ function state(userID: string) {
 
 function changed(s: UserState) {
     s.summaries.clear();
+    s.generation++;
     s.lastUpdate = Date.now();
 }
 
@@ -104,23 +106,26 @@ function trackersFrom(body: unknown): Tracker[] {
     }));
 }
 
-/* Probes every data type that is not stored yet: one that started to return data gets
- * its history fetched and is stored from then on. */
+/* Probes every data type that is not stored yet, a few side by side: one that started
+ * to return data gets its history fetched and is stored from then on. Returns how many
+ * were added: only then has the stored data changed. */
 async function discover(userID: string, stored: Set<string>) {
     const gh = new GoogleHealth(userID);
     const start = day(30);
     const end = day(-1);
-    for (const [dataType, kind] of Object.entries(CATALOG)) {
-        if (KNOWN.has(dataType) || stored.has(dataType) || dataType === HEART_RATE) continue;
+    const probe = Object.entries(CATALOG).filter(([t]) => !KNOWN.has(t) && !stored.has(t) && t !== HEART_RATE);
+    let added = 0;
+    await forEachLimited(probe, 4, async ([dataType, kind]) => {
         try {
             const { status, body } = await gh.dataPoints(dataType, kind, start, end, 5);
             if (status === 200 && ((body as { dataPoints?: unknown[] })?.dataPoints ?? []).length) {
-                await addDiscoveredType(userID, dataType);
+                if (await addDiscoveredType(userID, dataType)) added++;
             }
         } catch {
             // one type that fails is no reason to stop discovering the others
         }
-    }
+    });
+    return added;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -179,7 +184,9 @@ async function pollUser(userID: string) {
         if (!s.discoveredAt || Date.now() - s.discoveredAt > DISCOVERY_MS) {
             s.discoveredAt = Date.now();
             discover(userID, new Set(storedTypes(link.discoveredTypes).map(([t]) => t)))
-                .then(() => changed(s))
+                .then((added) => {
+                    if (added) changed(s);
+                })
                 .catch((err) => log.warn('discovery failed', { user: userID }, err));
         }
 
@@ -237,6 +244,7 @@ export async function syncStatus(userID: string) {
         error: s.error ?? null,
         reconnect: s.reconnect,
         history: link?.backfill ?? null,
+        requests: requestQueue(),
         server_time: Date.now(),
     };
 }
@@ -251,49 +259,80 @@ export async function summary(userID: string, range = '30') {
     const key = String(days);
     let data = s.summaries.get(key);
     if (!data) {
-        const stats = await storageStats(userID);
-        if (!stats.points) return undefined; // nothing stored yet: the first sync is still running
-        const link = await HealthLink.findById(userID, { discoveredTypes: 1 }).lean();
-        const from = days ? day(days) : undefined;
-
-        const series: Record<string, unknown> = {};
-        for (const [name, p] of Object.entries(PARSERS)) series[name] = p.parse(await loadPoints(userID, p.dataType, from));
-        series.sleep = parseSleep(await loadPoints(userID, 'sleep', from));
-        series.exercise = parseExercise(await loadPoints(userID, 'exercise', from));
-        series.active_zone_minutes = parseAzm(await loadPoints(userID, 'active-zone-minutes', from));
-        series.sedentary = parseSedentary(await loadPoints(userID, 'sedentary-period', from));
-        series.hr_zones = parseHrZones(await loadPoints(userID, 'daily-heart-rate-zones', from));
-        series.breathing_stages = parseBreathingStages(await loadPoints(userID, 'respiratory-rate-sleep-summary', from));
-
-        // the other recorded types, one value a day (genericSeries keeps a day's last)
-        const discovered: Record<string, unknown> = {};
-        for (const [type] of storedTypes(link?.discoveredTypes ?? [])) {
-            if (KNOWN.has(type) || !CATALOG[type]) continue;
-            const g = genericSeries(type, await loadPoints(userID, type, from));
-            if (g.length) discovered[type] = g;
+        // several tabs (or the quiet refresh) asking at once share one build
+        let build = s.building.get(key);
+        if (!build) {
+            const generation = s.generation;
+            build = buildSummary(userID, s, days)
+                .then((built) => {
+                    if (built && s.generation === generation) s.summaries.set(key, built);
+                    return built;
+                })
+                .finally(() => s.building.delete(key));
+            s.building.set(key, build);
         }
-
-        const first = (s.devices as { pairedDevices?: Record<string, unknown>[] })?.pairedDevices?.[0];
-        data = {
-            window: { start: from ?? stats.oldestDay, end: day(0) },
-            range: days ? String(days) : 'all',
-            series,
-            discovered,
-            device: first
-                ? {
-                      name: first.deviceVersion ?? null,
-                      type: first.deviceType ?? null,
-                      battery: first.batteryLevel ?? null,
-                      last_sync: first.lastSyncTime ?? null,
-                  }
-                : null,
-            profile: s.profile ?? null,
-            storage: stats,
-            errors: {},
-        };
-        s.summaries.set(key, data);
+        data = await build;
+        if (!data) return undefined; // nothing stored yet: the first sync is still running
     }
     return { ...data, sync: await syncStatus(userID) };
+}
+
+// the stored types read side by side: the database does the waiting, not one read after another
+type Points = Awaited<ReturnType<typeof loadPoints>>;
+
+async function buildSummary(userID: string, s: UserState, days: number | null) {
+    const stats = await storageStats(userID);
+    if (!stats.points) return undefined;
+    const link = await HealthLink.findById(userID, { discoveredTypes: 1 }).lean();
+    const from = days ? day(days) : undefined;
+
+    /* every type read and parsed in one step, three at a time: the database does the
+     * waiting side by side, and the raw points of a type are let go once parsed, never
+     * all of them in memory at once (the whole history is ~70 MB a year) */
+    const series: Record<string, unknown> = {};
+    const discovered: Record<string, unknown> = {};
+    const jobs: [string, (points: Points) => void][] = [
+        ...Object.entries(PARSERS).map(([name, p]) => [p.dataType, (pts: Points) => (series[name] = p.parse(pts))] as [string, (points: Points) => void]),
+        ['sleep', (pts) => (series.sleep = parseSleep(pts))],
+        ['exercise', (pts) => (series.exercise = parseExercise(pts))],
+        ['active-zone-minutes', (pts) => (series.active_zone_minutes = parseAzm(pts))],
+        ['sedentary-period', (pts) => (series.sedentary = parseSedentary(pts))],
+        ['daily-heart-rate-zones', (pts) => (series.hr_zones = parseHrZones(pts))],
+        ['respiratory-rate-sleep-summary', (pts) => (series.breathing_stages = parseBreathingStages(pts))],
+        // the other recorded types, one value a day (genericSeries keeps a day's last)
+        ...storedTypes(link?.discoveredTypes ?? [])
+            .filter(([type]) => !KNOWN.has(type) && CATALOG[type])
+            .map(
+                ([type]) =>
+                    [
+                        type,
+                        (pts: Points) => {
+                            const g = genericSeries(type, pts);
+                            if (g.length) discovered[type] = g;
+                        },
+                    ] as [string, (points: Points) => void],
+            ),
+    ];
+    await forEachLimited(jobs, 3, async ([type, parse]) => parse(await loadPoints(userID, type, from)));
+
+    const first = (s.devices as { pairedDevices?: Record<string, unknown>[] })?.pairedDevices?.[0];
+    return {
+        window: { start: from ?? stats.oldestDay, end: day(0) },
+        range: days ? String(days) : 'all',
+        series,
+        discovered,
+        device: first
+            ? {
+                  name: first.deviceVersion ?? null,
+                  type: first.deviceType ?? null,
+                  battery: first.batteryLevel ?? null,
+                  last_sync: first.lastSyncTime ?? null,
+              }
+            : null,
+        profile: s.profile ?? null,
+        storage: stats,
+        errors: {},
+    } as Record<string, unknown>;
 }
 
 export function trackers(userID: string) {
@@ -306,9 +345,9 @@ export const INTRADAY_TYPES = new Set([...Object.keys(INTRADAY), ...BLOCK_TYPES,
 async function heartRateRows(userID: string, date: string) {
     const stored = await loadHeartRateDay(userID, date);
     if (stored) return { ...stored, source: 'stored' };
-    const res = await new GoogleHealth(userID).dataPointsAll(HEART_RATE, 'sample', date, nextDay(date), 120);
+    const res = await new GoogleHealth(userID, true).heartRateDay(date);
     if (res.status !== 200) throw new HealthError(`heart rate: HTTP ${res.status}`);
-    return { rows: intradayRows(HEART_RATE, res.points), meta: datasourceMeta(res.points), source: 'google' };
+    return { rows: res.rows, meta: res.meta, source: 'google' };
 }
 
 /* One metric of one day at high resolution, from the stored history; a day not stored
@@ -322,7 +361,7 @@ export async function intraday(userID: string, type: string, date: string) {
     const pointsOf = async (t: string) => {
         const stored = await loadPoints(userID, t, date, end);
         if (stored.length) return stored;
-        const res = await new GoogleHealth(userID).dataPointsAll(t, INTRADAY[t]?.kind ?? 'interval', date, end);
+        const res = await new GoogleHealth(userID, true).dataPointsAll(t, INTRADAY[t]?.kind ?? 'interval', date, end);
         return res.status === 200 ? res.points : [];
     };
 
@@ -347,7 +386,7 @@ export async function intraday(userID: string, type: string, date: string) {
 export async function latestHeartRate(userID: string) {
     const hit = hrCache.get(userID);
     if (hit && Date.now() - hit.at < HR_CACHE_MS) return hit.data;
-    const gh = new GoogleHealth(userID);
+    const gh = new GoogleHealth(userID, true);
     const { status, body } = await gh.dataPoints(HEART_RATE, 'sample', day(0), day(-1), 1);
     const point = (body as { dataPoints?: { heartRate?: Record<string, unknown> }[] })?.dataPoints?.[0]?.heartRate;
     let data: unknown = { bpm: null };

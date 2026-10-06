@@ -51,8 +51,9 @@ services:
         # mongod's json log lines in the columns of the app's log (deploy/mongo/log.jq)
         entrypoint: ['bash', '/kibbl-mongo/entrypoint.sh']
         # without the per-connection lines and the storage checkpoint line every minute:
-        # what is left are startups, warnings and errors
-        command: ['mongod', '--auth', '--quiet', '--wiredTigerEngineConfigString=verbose=[checkpoint_progress:0]']
+        # what is left are startups, warnings and errors. The cache is capped at 1 GB (by default
+        # half the host's memory): the health history fetch must not push the rest of jhubuntu out
+        command: ['mongod', '--auth', '--quiet', '--wiredTigerCacheSizeGB=1', '--wiredTigerEngineConfigString=verbose=[checkpoint_progress:0]']
         logging: *logging
         environment:
             - TZ=Europe/Berlin

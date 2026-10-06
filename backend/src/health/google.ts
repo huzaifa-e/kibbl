@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { logger } from '../core/logger';
-import type { FilterKind } from './extract';
+import { datasourceMeta, intradayRows, type FilterKind, type Row } from './extract';
+import { Limiter } from './limiter';
 import { loadTokens, saveTokens, type GoogleTokens } from './tokens';
 
 /*
@@ -15,6 +16,17 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const BASE = 'https://health.googleapis.com/v4';
 const TIMEOUT_MS = 30_000;
+const PAGE_SIZE = 10_000; // the api's maximum (sleep and exercise: 25, it truncates); 1440 when not given
+
+// requests to Google under way at once, for all users together (HEALTH_CONCURRENCY)
+const limiter = new Limiter(Math.max(1, Number(process.env.HEALTH_CONCURRENCY) || 4));
+
+/* Heart rate only needs the value and its time: a partial response (the standard fields
+ * parameter) leaves out the data source repeated in every one of ~37 000 points a day,
+ * less to download and to parse. If Google refuses the mask, it is not used again. */
+const HEART_RATE_FIELDS =
+    'nextPageToken,dataPoints(dataSource(recordingMethod,platform,device/displayName),heartRate(beatsPerMinute,sampleTime(civilTime/time,utcOffset)))';
+let heartRateMask = true;
 
 const SCOPE_BASE = 'https://www.googleapis.com/auth/googlehealth';
 export const SCOPES = [
@@ -129,7 +141,11 @@ const refreshing = new Map<string, Promise<GoogleTokens>>();
 export class GoogleHealth {
     private tokens?: GoogleTokens;
 
-    constructor(readonly userID: string) {}
+    // urgent: a person waits for it, it goes ahead of the history fetch
+    constructor(
+        readonly userID: string,
+        readonly urgent = false,
+    ) {}
 
     private async token() {
         if (!this.tokens) {
@@ -171,35 +187,60 @@ export class GoogleHealth {
     }
 
     /* One request, the access token refreshed once on a 401. A 429 (rate limit) or 503
-     * waits as long as Google asks (Retry-After, else 30 s) and tries again, up to 5 times:
-     * the one-time fetch of the whole history makes thousands of requests. */
+     * pauses every request as long as Google asks (Retry-After, else 30 s) and tries again,
+     * up to 5 times. A network error, a timeout or a 500/502/504 is tried again after 2, 4,
+     * 8 s: one of them should not end a fetch of thousands of requests. */
     async get(path: string, params?: Record<string, string | number>): Promise<{ status: number; body: unknown }> {
         const url = `${BASE}${path}${params ? '?' + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])) : ''}`;
         let refreshed = false;
-        for (let attempt = 1; attempt <= 6; attempt++) {
-            const res = await fetch(url, { headers: { Authorization: `Bearer ${await this.token()}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-            if (res.status === 401 && !refreshed) {
+        let limited = 0;
+        let failed = 0;
+        for (;;) {
+            const outcome = await limiter.run(async () => {
+                let res: Response;
+                try {
+                    res = await fetch(url, { headers: { Authorization: `Bearer ${await this.token()}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+                } catch (err) {
+                    if (err instanceof HealthError) throw err;
+                    return { again: 'failed' as const, err };
+                }
+                if (res.status === 401 && !refreshed) {
+                    await res.body?.cancel();
+                    return { again: 'refresh' as const };
+                }
+                if ((res.status === 429 || res.status === 503) && limited < 5) {
+                    const wait = Math.min(Number(res.headers.get('retry-after')) || 30, 300);
+                    log.warn('google asks to wait', { status: res.status, seconds: wait, attempt: limited + 1 });
+                    await res.body?.cancel();
+                    limiter.pause(wait * 1000);
+                    return { again: 'limited' as const };
+                }
+                if ((res.status === 500 || res.status === 502 || res.status === 504) && failed < 3) {
+                    await res.body?.cancel();
+                    return { again: 'failed' as const, err: new Error(`HTTP ${res.status}`) };
+                }
+                const text = await res.text();
+                let body: unknown = text;
+                try {
+                    body = JSON.parse(text);
+                } catch {
+                    // not json: kept as text
+                }
+                return { status: res.status, body };
+            }, this.urgent);
+
+            if (!('again' in outcome)) return outcome;
+            if (outcome.again === 'refresh') {
                 refreshed = true;
                 await this.refresh();
-                continue;
+            } else if (outcome.again === 'limited') {
+                if (++limited >= 5) throw new HealthError('Google Health kept refusing requests (rate limit)');
+            } else {
+                if (++failed > 3) throw outcome.err;
+                log.debug('request failed, trying again', { path, attempt: failed, error: (outcome.err as Error)?.message });
+                await new Promise((r) => setTimeout(r, 1000 * 2 ** failed));
             }
-            if ((res.status === 429 || res.status === 503) && attempt < 6) {
-                const wait = Math.min(Number(res.headers.get('retry-after')) || 30, 300);
-                log.warn('google asks to wait', { status: res.status, seconds: wait, attempt });
-                await res.body?.cancel();
-                await new Promise((r) => setTimeout(r, wait * 1000));
-                continue;
-            }
-            const text = await res.text();
-            let body: unknown = text;
-            try {
-                body = JSON.parse(text);
-            } catch {
-                // not json: kept as text
-            }
-            return { status: res.status, body };
         }
-        throw new HealthError('Google Health kept refusing requests (rate limit)');
     }
 
     profile() {
@@ -214,21 +255,79 @@ export class GoogleHealth {
         return this.get(`/users/me/dataTypes/${dataType}/dataPoints`, { filter: buildFilter(dataType, kind, start, end), pageSize });
     }
 
-    /* Every point of the window, following nextPageToken: intraday interval types (active
-     * zone minutes, sedentary periods) have many points a day, one page would cut the totals. */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async dataPointsAll(dataType: string, kind: FilterKind, start: string, end: string, maxPages = 40): Promise<{ status: number; points: any[] }> {
-        const params: Record<string, string | number> = { filter: buildFilter(dataType, kind, start, end), pageSize: 1000 };
+    /* Every page of the window, following nextPageToken, each handed to onPage as it
+     * arrives and then let go: a day of heart rate is ~37 000 points, never all in memory
+     * at once as Google sent them. Intraday interval types (active zone minutes, sedentary
+     * periods) have many points a day, one page would cut the totals. */
+    async dataPointsPages(
+        dataType: string,
+        kind: FilterKind,
+        start: string,
+        end: string,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const points: any[] = [];
+        onPage: (points: any[], page: number) => void | Promise<void>,
+        options: { maxPages?: number; fields?: string } = {},
+    ): Promise<{ status: number; pages: number; complete: boolean }> {
+        const maxPages = options.maxPages ?? 40;
+        const params: Record<string, string | number> = { filter: buildFilter(dataType, kind, start, end), pageSize: PAGE_SIZE };
+        if (options.fields) params.fields = options.fields;
         for (let page = 0; page < maxPages; page++) {
             const { status, body } = await this.get(`/users/me/dataTypes/${dataType}/dataPoints`, params);
-            if (status !== 200 || !body || typeof body !== 'object') return { status, points };
+            if (status !== 200 || !body || typeof body !== 'object') return { status, pages: page, complete: false };
             const b = body as { dataPoints?: unknown[]; nextPageToken?: string };
-            points.push(...(b.dataPoints ?? []));
-            if (!b.nextPageToken) break;
+            await onPage(b.dataPoints ?? [], page);
+            if (!b.nextPageToken) return { status: 200, pages: page + 1, complete: true };
             params.pageToken = b.nextPageToken;
         }
-        return { status: 200, points };
+        log.warn('more pages than expected, the rest left out', { dataType, start, end, pages: maxPages });
+        return { status: 200, pages: maxPages, complete: false };
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async dataPointsAll(dataType: string, kind: FilterKind, start: string, end: string, maxPages = 40): Promise<{ status: number; points: any[] }> {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const points: any[] = [];
+        const { status } = await this.dataPointsPages(
+            dataType,
+            kind,
+            start,
+            end,
+            (page) => {
+                for (const p of page) points.push(p);
+            },
+            { maxPages },
+        );
+        return { status, points };
+    }
+
+    /* The heart rate of one civil day as [second of the day, bpm] rows, sorted: each page
+     * becomes rows right away. */
+    async heartRateDay(date: string, maxPages = 12): Promise<{ status: number; rows: Row[]; meta: Record<string, unknown> }> {
+        const masked = heartRateMask;
+        const rows: Row[] = [];
+        let meta: Record<string, unknown> = {};
+        const { status } = await this.dataPointsPages(
+            'heart-rate',
+            'sample',
+            date,
+            nextDay(date),
+            (points, page) => {
+                if (page === 0) meta = datasourceMeta(points);
+                for (const row of intradayRows('heart-rate', points)) rows.push(row);
+            },
+            { maxPages, fields: masked ? HEART_RATE_FIELDS : undefined },
+        );
+        if (status === 400 && masked) {
+            heartRateMask = false;
+            log.warn('google refused the partial response for heart rate, fetching whole points');
+            return this.heartRateDay(date, maxPages);
+        }
+        rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        return { status, rows, meta };
+    }
+}
+
+// for the status page and the logs
+export function requestQueue() {
+    return { running: limiter.running, waiting: limiter.pending };
 }
