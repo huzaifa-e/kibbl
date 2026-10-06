@@ -11,7 +11,8 @@
 
 static SemaphoreHandle_t cam_mutex;
 
-static bool ready = false;
+static bool ready   = false;
+static bool stopped = false; // camera_stop() was called: nothing starts it again until a restart
 static char sensor_name[16] = "none";
 static char last_error[24];
 
@@ -87,7 +88,7 @@ bool camera_init(void) {
 }
 
 bool camera_start(void) {
-    if (!camera_init()) {
+    if (stopped || !camera_init()) {
         return false;
     }
     /* Settings written before the sensor delivered its first frame do not stick: the
@@ -98,6 +99,21 @@ bool camera_start(void) {
     config_camera_settings(&settings);
     camera_apply(&settings);
     return true;
+}
+
+void camera_stop(void) {
+    if (cam_mutex == NULL) {
+        stopped = true;
+        return;
+    }
+    xSemaphoreTake(cam_mutex, portMAX_DELAY); // Mutex block
+    stopped = true;
+    if (ready) {
+        ready = false;
+        esp_camera_deinit();
+        DEBUG("camera: stopped\n");
+    }
+    xSemaphoreGive(cam_mutex); // Mutex release
 }
 
 bool camera_ready(void) {

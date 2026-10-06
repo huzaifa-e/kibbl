@@ -19,6 +19,11 @@ bool camera_init(void);
 // camera_init(), one frame, then the stored settings: the way the camera is started
 bool camera_start(void);
 
+/* stops the driver and its DMA for good (until a restart): writing the flash pauses the
+ * cache, and a capture running meanwhile trips the interrupt watchdog. No frame may be
+ * held when it is called. */
+void camera_stop(void);
+
 bool camera_ready(void);
 
 // the sensor name (OV2640, OV3660, ...), "none" before a successful camera_init()

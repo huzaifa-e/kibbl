@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "KL_camera.h"
 #include "KL_frame.h"
 #include "KL_serial.h"
 #include "KL_time.h"
@@ -29,6 +30,11 @@ static void ota_task(void *pvParams) {
     for (int i = 0; i < FRAME_CONSUMERS; i++) {
         frame_set_demand((frame_consumer_t)i, 0);
     }
+    /* The camera keeps capturing without consumers; with the cache paused for the flash
+     * writes its interrupt trips the watchdog and the board resets halfway (TG1WDT).
+     * The frame task lets go of its frame within one frame time once nobody asks. */
+    delay_ms(300);
+    camera_stop();
 
     esp_http_client_config_t http_config = {
         .url               = ota_url,
@@ -47,9 +53,10 @@ static void ota_task(void *pvParams) {
         esp_restart();
     }
 
-    DEBUG_F_ERROR("ota: failed (%s)\n", esp_err_to_name(err));
-    running = false;
-    vTaskDelete(NULL);
+    // the camera is stopped for good: a restart brings it back, on the image that runs now
+    DEBUG_F_ERROR("ota: failed (%s), restarting\n", esp_err_to_name(err));
+    delay_ms(500);
+    esp_restart();
 }
 
 bool ota_start(const char *url) {
