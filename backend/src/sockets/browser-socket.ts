@@ -11,7 +11,16 @@ import {
 } from '../../../shared/protocol';
 import { AUTH_COOKIE, checkAuthToken, readCookie } from '../core/auth';
 import { Device, MotionEventModel } from '../core/db';
-import { applyCommandResult, closeConnection, commandAllowed, getSummaries, publishDevice, sendCommand, updateDemand, type DeviceResponse } from '../core/devices';
+import {
+    applyCommandResult,
+    closeConnection,
+    commandAllowed,
+    getSummaries,
+    publishDevice,
+    sendCommand,
+    updateDemand,
+    type DeviceResponse,
+} from '../core/devices';
 import { forgetFrames } from '../core/frames';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
@@ -29,6 +38,7 @@ interface ServerToClientEvents {
     deviceRemoved: (deviceId: string) => void;
     telemetry: (deviceId: string, telemetry: DeviceTelemetry) => void;
     motionEvent: (event: MotionEvent) => void;
+    meterUpdate: (meterId: string) => void;
 }
 
 interface EventQuery {
@@ -114,7 +124,9 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
         case 'feed':
             return int(command.portions, 1, 10) ? { cmd, portions: command.portions } : undefined;
         case 'blink':
-            return int(command.count ?? 2, 1, 10) && int(command.level ?? 30, 1, 100) ? { cmd, count: command.count ?? 2, level: command.level ?? 30 } : undefined;
+            return int(command.count ?? 2, 1, 10) && int(command.level ?? 30, 1, 100)
+                ? { cmd, count: command.count ?? 2, level: command.level ?? 30 }
+                : undefined;
         case 'thermostat':
             return typeof command.target === 'number' && command.target >= 5 && command.target <= 30 ? { cmd, target: command.target } : undefined;
         default:
@@ -352,4 +364,5 @@ export function initBrowserSocket(http: HttpServer) {
     hub.on('deviceRemoved', (deviceId) => io.to('users').emit('deviceRemoved', deviceId));
     hub.on('telemetry', (deviceId, telemetry) => io.to('users').emit('telemetry', deviceId, telemetry));
     hub.on('motionEvent', (event) => io.to('users').emit('motionEvent', event));
+    hub.on('meterUpdate', (meterId) => io.to('users').emit('meterUpdate', meterId));
 }

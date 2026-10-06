@@ -1,17 +1,17 @@
 import { Meter, MeterPeriod, MeterReading } from '../core/db';
+import { hub } from '../core/hub';
 import { logger } from '../core/logger';
 import * as source from './source';
 
 /*
  * Meters copied from the EMONI LoRaWAN server: once everything it has (every reading,
  * and the consumption per day, month and year, back to the manual readings before the
- * meter reported), then every 2 minutes only what is new. The copy is kibbl's own: the
- * page reads it, also while the source is down.
+ * meter reported), then only what is new, as soon as the source announces a reading on
+ * its live stream. The copy is kibbl's own: the page reads it, also while the source is down.
  */
 
 const log = logger('meters');
 
-const SYNC_MS = 2 * 60_000;
 const FULL_DAYS = 3650; // the source starts its days at the first reading, never earlier
 const FULL_MONTHS = 120;
 const FULL_YEARS = 50;
@@ -113,24 +113,36 @@ async function syncMeter(meter: MeterDoc) {
     return added;
 }
 
-let running = false;
-
-export async function syncAll() {
-    if (running) return;
-    running = true;
+async function syncOne(meter: MeterDoc) {
     try {
-        for (const meter of await Meter.find().lean()) {
-            try {
-                await syncMeter(meter);
-            } catch (err) {
-                const message = (err as Error).message;
-                if (meter.lastSyncError !== message) log.warn('sync failed', { meter: meter.name }, err);
-                await Meter.updateOne({ _id: meter._id }, { $set: { lastSyncError: message } });
-            }
-        }
-    } finally {
-        running = false;
+        const added = await syncMeter(meter);
+        if (added || !meter.importedAt) hub.emit('meterUpdate', meter._id);
+    } catch (err) {
+        const message = (err as Error).message;
+        if (meter.lastSyncError !== message) log.warn('sync failed', { meter: meter.name }, err);
+        await Meter.updateOne({ _id: meter._id }, { $set: { lastSyncError: message } });
+        hub.emit('meterUpdate', meter._id);
     }
+}
+
+// one sync at a time: a reading announced during a sync is fetched right after it
+let queue: Promise<unknown> = Promise.resolve();
+function enqueue(task: () => Promise<unknown>) {
+    queue = queue.then(task).catch((err) => log.error('meter sync failed', undefined, err));
+    return queue;
+}
+
+function syncAll() {
+    return enqueue(async () => {
+        for (const meter of await Meter.find().lean()) await syncOne(meter);
+    });
+}
+
+function syncDevice(devEui: string) {
+    return enqueue(async () => {
+        const meter = (await Meter.find().lean()).find((m) => m.devEui.toLowerCase() === devEui.toLowerCase());
+        if (meter) await syncOne(meter);
+    });
 }
 
 /* Meters named in METERS (uuids of configured devices on the source, comma separated)
@@ -150,13 +162,27 @@ async function seedFromEnv() {
     }
 }
 
+/* Live: the source announces each reading as it stores it; that meter's new readings are
+ * fetched right then. Every (re)connect catches up with all meters, so nothing announced
+ * while the stream was down is missed. */
 export function initMeterSync() {
-    const run = () =>
-        seedFromEnv()
-            .then(syncAll)
-            .catch((err) => log.error('meter sync failed', undefined, err));
-    run();
-    setInterval(run, SYNC_MS);
+    let down: string | null = null;
+    void seedFromEnv().then(() =>
+        source.subscribe(
+            (event) => {
+                if (event.devEui && (event.type === 'up' || event.type.endsWith('recalibrate'))) void syncDevice(event.devEui);
+            },
+            () => {
+                log.info(down ? 'live stream of the source back' : 'live stream of the source open', { url: source.sourceUrl() });
+                down = null;
+                void syncAll();
+            },
+            (err) => {
+                if (down !== err.message) log.warn('live stream of the source lost, reconnecting', { reason: err.message });
+                down = err.message;
+            },
+        ),
+    );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -170,16 +196,12 @@ export async function addMeter(uuid: string) {
         { upsert: true },
     );
     log.info('meter added', { meter: device.name, devEui: device.dev_eui });
-    void syncAll();
+    void syncDevice(device.dev_eui);
     return device;
 }
 
 export async function removeMeter(uuid: string) {
     await Promise.all([Meter.deleteOne({ _id: uuid }), MeterReading.deleteMany({ meterId: uuid }), MeterPeriod.deleteMany({ meterId: uuid })]);
-}
-
-export function syncNow() {
-    void syncAll();
 }
 
 /* ----------------------------------------------------------------------- */

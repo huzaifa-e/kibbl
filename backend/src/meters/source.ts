@@ -2,6 +2,7 @@
  * The EMONI LoRaWAN server (ttn-chirpstack-webhook, container emoni-lorawan): it takes the
  * meters' uplinks (TTN, ChirpStack, NB-IoT) and keeps every reading. kibbl only reads from
  * it, on the docker network both run on: METER_SOURCE_URL, http://emoni-lorawan:8000.
+ * New readings are announced on its live stream (/events), the history read from its api.
  */
 
 const TIMEOUT_MS = 30_000;
@@ -72,4 +73,64 @@ export async function batteryCycles(devEui: string) {
         devEui,
         cycles: 1,
     });
+}
+
+export interface SourceEvent {
+    type: string; // 'up' for a new reading, '…-recalibrate' when the source corrects a meter
+    devEui?: string;
+}
+
+const STALL_MS = 90_000; // the source sends a keepalive every 25 s; silence this long means a dead connection
+
+/* The source's live stream (server-sent events, /events): it announces every reading as
+ * soon as it is stored. Reconnects by itself, waiting longer after each failure; onOpen
+ * runs on every (re)connect, to catch up with what came while disconnected. */
+export function subscribe(onEvent: (e: SourceEvent) => void, onOpen: () => void, onError: (err: Error) => void) {
+    let retryMs = 5_000;
+    const connect = async () => {
+        const controller = new AbortController();
+        let stall: NodeJS.Timeout | undefined;
+        const alive = () => {
+            clearTimeout(stall);
+            stall = setTimeout(() => controller.abort(new Error('no keepalive from the source')), STALL_MS);
+        };
+        try {
+            const res = await fetch(`${sourceUrl()}/events`, { headers: { Accept: 'text/event-stream' }, signal: controller.signal });
+            if (!res.ok || !res.body) throw new Error(`/events: HTTP ${res.status}`);
+            alive();
+            retryMs = 5_000;
+            onOpen();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+                alive();
+                buffer += decoder.decode(chunk, { stream: true });
+                let end: number;
+                while ((end = buffer.indexOf('\n\n')) >= 0) {
+                    const message = buffer.slice(0, end);
+                    buffer = buffer.slice(end + 2);
+                    const data = message
+                        .split('\n')
+                        .filter((l) => l.startsWith('data:'))
+                        .map((l) => l.slice(5).trim())
+                        .join('\n');
+                    if (!data) continue; // a keepalive comment
+                    try {
+                        onEvent(JSON.parse(data) as SourceEvent);
+                    } catch {
+                        // not JSON: not one of ours
+                    }
+                }
+            }
+            throw new Error('the source closed the stream');
+        } catch (err) {
+            onError(err instanceof Error ? err : new Error(String(err)));
+        } finally {
+            clearTimeout(stall);
+            controller.abort();
+        }
+        setTimeout(connect, retryMs);
+        retryMs = Math.min(retryMs * 2, 5 * 60_000);
+    };
+    void connect();
 }

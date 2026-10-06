@@ -8,6 +8,7 @@ interface HubEvents {
     deviceRemoved: [string];
     telemetry: [string, DeviceTelemetry];
     motionEvent: [MotionEvent];
+    meterUpdate: [string]; // a meter's id, after new readings were stored
 }
 
 class Hub extends EventEmitter<HubEvents> {}

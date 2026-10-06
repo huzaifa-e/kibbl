@@ -2,7 +2,7 @@ import express from 'express';
 import { checkAuthMiddleware } from '../core/auth';
 import { Meter } from '../core/db';
 import { logger } from '../core/logger';
-import { addMeter, meterPeriods, meterReadings, meterState, removeMeter, syncNow } from '../meters/service';
+import { addMeter, meterPeriods, meterReadings, meterState, removeMeter } from '../meters/service';
 
 const log = logger('meters');
 
@@ -61,11 +61,6 @@ export default function initMeterRoutes(app: express.Application) {
         } catch (err) {
             res.status(404).json({ error: `No such device on the LoRaWAN server (${(err as Error).message}).` });
         }
-    });
-
-    app.post('/api/meters/:id/sync', auth, (_req, res) => {
-        syncNow();
-        res.json({ ok: true });
     });
 
     // removes the meter and kibbl's copy of its data; the LoRaWAN server keeps its own
