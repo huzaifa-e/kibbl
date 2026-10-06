@@ -90,7 +90,7 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `feed`        | feeder     | `portions` 1–10                                                              | – |
 | `thermostat`  | thermostat | `target` 5–30 (°C)                                                           | – |
 
-The server asks a camera for frames only when needed: the live rate (`STREAM_FPS`, 10) while someone watches or a snapshot is due, the motion rate (`MOTION_FPS`, 2) while motion detection is on, otherwise 0.
+The server asks a camera for frames only when needed: the live rate (`STREAM_FPS`, 30) while someone watches or a snapshot is due, the motion rate (`MOTION_FPS`, 2) while motion detection is on, otherwise 0.
 
 ## Serial commands (USB, 115200 baud)
 

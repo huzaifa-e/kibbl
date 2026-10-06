@@ -39,7 +39,10 @@ menu "kibbl."
     config KIBBL_STREAM_MAX_FPS
         int "Highest frame rate the server may ask for"
         range 1 30
-        default 15
+        default 30
+        help
+            The sensor gives about 25-30 fps up to CIF; larger frames and the uplink
+            bring it down by themselves.
 
     config KIBBL_LIGHT_MAX_PERCENT
         int "Flash led duty cycle at level 100, in percent"

@@ -42,7 +42,7 @@ const viewers = new Map<string, number>();
 const snapshotWaiters = new Map<string, number>();
 
 export function viewFps() {
-    return Number(process.env.STREAM_FPS) || 10;
+    return Number(process.env.STREAM_FPS) || 30;
 }
 
 export function motionFps() {
