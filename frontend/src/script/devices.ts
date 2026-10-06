@@ -160,7 +160,8 @@ function renderMeters() {
                 <td><b>${m.latest ? Number(m.latest.value).toLocaleString([], { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '–'}</b> <span class="text-secondary small">${escapeHtml(m.unit)}</span></td>
                 <td>${battery}</td>
                 <td class="${stale || m.lastSyncError ? 'text-warning' : 'text-secondary'}">${m.lastSyncError ? 'source not answering' : m.latest ? `read ${timeAgo(m.latest.at)}` : 'no reading yet'}</td>
-                <td class="text-end"><a class="btn btn-sm" href="/meter/${m._id}"><i class="ti ti-chart-bar me-1"></i> Open</a></td>
+                <td class="text-end"><a class="btn btn-sm" href="/meter/${m._id}"><i class="ti ti-chart-bar me-1"></i> Open</a>
+                    <button class="btn btn-sm btn-ghost-danger" data-remove-meter="${m._id}" data-name="${escapeHtml(m.name)}" title="Remove from kibbl."><i class="ti ti-trash"></i></button></td>
             </tr>`;
         })
         .join('');
@@ -187,6 +188,13 @@ function renderMeters() {
         byId('meter-result').innerHTML = successAlert(`${escapeHtml(body.name)} added: its history is being copied.`);
         setTimeout(loadMeters, 3000);
     });
+    slot.querySelectorAll<HTMLButtonElement>('[data-remove-meter]').forEach((b) =>
+        b.addEventListener('click', async () => {
+            if (!confirm(`Remove ${b.dataset.name} and kibbl.'s copy of its data? The LoRaWAN server keeps its own.`)) return;
+            await fetch(`/api/meters/${b.dataset.removeMeter}`, { method: 'DELETE' });
+            loadMeters();
+        }),
+    );
 }
 
 async function loadMeters() {
@@ -391,6 +399,7 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
     else devices.push(device);
     renderUnlessMenuOpen(); // keeps a message the user is reading
 });
+socket.on('meterUpdate', () => loadMeters());
 socket.on('deviceRemoved', (deviceId: string) => {
     devices = devices.filter((d) => d._id !== deviceId);
     renderUnlessMenuOpen();
