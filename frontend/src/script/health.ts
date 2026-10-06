@@ -13,6 +13,7 @@ import {
     type Tone,
 } from './healthCharts';
 import { SLEEP_BIN, sleepStageQuantiles, trend, type Direction, type SeriesPoint, type SleepNight } from './healthStats';
+import { orbHtml } from './orb';
 import { byId, emptyState, errorAlert, escapeHtml, localDayKey, successAlert, timeAgo } from './utils';
 
 /* Health: the data of a fitness tracker through Google Health (ported from whoofit).
@@ -252,6 +253,7 @@ function historyLine() {
             ? ` · fetching heart rate at full resolution: ${h.heartRateDays} of ${h.heartRateDaysTotal} days (${done} %)`
             : ` · fetching the history, back to ${longDate(h.reachedDay ?? st.oldestDay)} so far`;
         if (h.state === 'failed') fetch += ', paused, it goes on by itself';
+        else fetch = ` · ${orbHtml('weaving', 20, 'Fetching the history', 'thinking-orb-inline')} ${fetch.slice(3)}`;
     }
     return `<div><i class="ti ti-database me-1"></i>Stored on this server: <b>${st.days} days</b> since ${longDate(st.oldestDay)}, heart rate at full resolution for ${st.heartRateDays} days${fetch}.</div>`;
 }
@@ -472,7 +474,7 @@ async function load() {
                   )
                 : sync.error
                   ? errorAlert(`Google Health does not answer: ${escapeHtml(sync.error)}. Trying again every minute.`)
-                  : `<div class="center-loading text-center"><div class="text-secondary h2 mb-3">First sync with Google Health<span class="animated-dots"></span></div><div class="progress progress-sm mx-auto" style="max-width:320px"><div class="progress-bar progress-bar-indeterminate"></div></div></div>`);
+                  : `<div class="center-loading text-center"><div class="d-flex justify-content-center mb-3">${orbHtml('searching', 64, 'Fetching from Google Health')}</div><div class="text-secondary h2">First sync with Google Health<span class="animated-dots"></span></div></div>`);
         setTimeout(load, 5000);
         return;
     }
@@ -565,7 +567,7 @@ async function loadDrill(type: string, date: string) {
     drillChart?.destroy();
     drillChart = undefined;
     const body = byId('drill-body');
-    body.innerHTML = '<div class="text-center text-secondary py-5">Loading the day<span class="animated-dots"></span></div>';
+    body.innerHTML = `<div class="text-center text-secondary py-5"><div class="d-flex justify-content-center mb-3">${orbHtml(type === 'heart-rate' ? 'listening' : 'working', 64, 'Loading the day')}</div>Loading the day<span class="animated-dots"></span></div>`;
     byId('drill-meta').textContent = '';
 
     const { status, body: data } = await getJson(`/api/health/intraday?type=${encodeURIComponent(type)}&date=${date}`);

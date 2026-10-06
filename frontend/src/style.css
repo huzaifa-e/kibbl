@@ -92,7 +92,6 @@ html[data-bs-theme='dark'] .theme-label-dark {
     animation: kb-pulse 1.4s ease-in-out infinite;
 }
 
-
 @keyframes kb-pulse {
     50% {
         opacity: 0.25;
@@ -180,6 +179,16 @@ html[data-bs-theme='dark'] .theme-label-dark {
 
 .center-loading {
     padding: 15vh 0;
+}
+
+/* thinking orbs (script/orb.ts): a canvas that draws itself */
+.thinking-orb {
+    display: block;
+}
+
+.thinking-orb-inline {
+    display: inline-block;
+    vertical-align: -5px;
 }
 
 .text-mono {

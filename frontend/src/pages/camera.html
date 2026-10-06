@@ -35,10 +35,19 @@
                 <div class="page-body">
                     <div class="container-xl" id="container">
                         <div class="center-loading text-center">
-                            <div class="text-secondary h2 mb-3">Loading<span class="animated-dots"></span></div>
-                            <div class="progress progress-sm mx-auto" style="max-width: 320px">
-                                <div class="progress-bar progress-bar-indeterminate"></div>
+                            <div class="d-flex justify-content-center mb-3">
+                                <canvas
+                                    data-orb="working"
+                                    data-orb-size="64"
+                                    class="thinking-orb"
+                                    role="img"
+                                    aria-label="Loading"
+                                    width="64"
+                                    height="64"
+                                    style="width: 64px; height: 64px"
+                                ></canvas>
                             </div>
+                            <div class="text-secondary h2">Loading<span class="animated-dots"></span></div>
                         </div>
                     </div>
                 </div>

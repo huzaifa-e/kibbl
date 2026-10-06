@@ -7,6 +7,7 @@ import '@fontsource-variable/rubik';
 import '../style.css';
 import '../theme.css';
 import { version } from '../../../shared/version';
+import './orb';
 import { isDarkMode, setTheme } from './utils';
 
 const bc = new BroadcastChannel('kibbl');
