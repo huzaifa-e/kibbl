@@ -9,6 +9,9 @@ export let MotionEventModel: Model<MotionEventDoc>;
 export let HealthLink: Model<HealthLinkDoc>;
 export let HealthPoint: Model<HealthPointDoc>;
 export let HeartRateDay: Model<HeartRateDayDoc>;
+export let Meter: Model<MeterDoc>;
+export let MeterReading: Model<MeterReadingDoc>;
+export let MeterPeriod: Model<MeterPeriodDoc>;
 
 let isConnected = false;
 
@@ -117,6 +120,55 @@ async function init() {
     );
     heartRateDaySchema.index({ userID: 1, date: 1 });
     HeartRateDay = model<HeartRateDayDoc>('HeartRateDay', heartRateDaySchema);
+
+    /* Utility meters read from the EMONI LoRaWAN server (meters/): the meter, every reading
+     * it sent (meter value, battery, signal) and the consumption per day, month and year
+     * as that server computes it, also from manual readings before the meter reported. */
+    const meterSchema = new Schema<MeterDoc>(
+        {
+            _id: { type: String, required: true }, // the configured device's uuid on the source
+            devEui: { type: String, required: true },
+            name: { type: String, required: true },
+            deviceType: String,
+            medium: { type: String, required: true },
+            unit: { type: String, required: true },
+            battery: { type: Schema.Types.Mixed }, // full and empty voltage, the current cycle
+            addedAt: { type: Number, required: true },
+            importedAt: Number, // the one-time copy of the history is done
+            lastSyncAt: Number,
+            lastSyncError: String,
+        },
+        { versionKey: false },
+    );
+    Meter = model<MeterDoc>('Meter', meterSchema);
+
+    const meterReadingSchema = new Schema<MeterReadingDoc>(
+        {
+            meterId: { type: String, required: true },
+            at: { type: Date, required: true },
+            value: { type: Number, default: null },
+            batteryMv: { type: Number, default: null },
+            rssi: { type: Number, default: null },
+        },
+        { versionKey: false },
+    );
+    meterReadingSchema.index({ meterId: 1, at: 1 }, { unique: true });
+    MeterReading = model<MeterReadingDoc>('MeterReading', meterReadingSchema);
+
+    const meterPeriodSchema = new Schema<MeterPeriodDoc>(
+        {
+            meterId: { type: String, required: true },
+            period: { type: String, required: true, enum: ['day', 'month', 'year'] },
+            key: { type: String, required: true }, // 2026-05-21, 2026-05, 2026
+            consumption: { type: Number, default: null },
+            opening: { type: Number, default: null },
+            closing: { type: Number, default: null },
+            updatedAt: { type: Number, required: true },
+        },
+        { versionKey: false },
+    );
+    meterPeriodSchema.index({ meterId: 1, period: 1, key: 1 }, { unique: true });
+    MeterPeriod = model<MeterPeriodDoc>('MeterPeriod', meterPeriodSchema);
 
     connection.on('connected', () => {
         isConnected = true;

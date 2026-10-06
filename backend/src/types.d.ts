@@ -90,6 +90,38 @@ declare global {
         fetchedAt: number;
     }
 
+    interface MeterDoc {
+        _id: string;
+        devEui: string;
+        name: string;
+        deviceType?: string;
+        medium: string;
+        unit: string;
+        battery?: { fullMv: number; emptyMv: number; cycleStartAt?: string; cycleStartMv?: number };
+        addedAt: number;
+        importedAt?: number;
+        lastSyncAt?: number;
+        lastSyncError?: string;
+    }
+
+    interface MeterReadingDoc {
+        meterId: string;
+        at: Date;
+        value: number | null;
+        batteryMv: number | null;
+        rssi: number | null;
+    }
+
+    interface MeterPeriodDoc {
+        meterId: string;
+        period: 'day' | 'month' | 'year';
+        key: string;
+        consumption: number | null;
+        opening: number | null;
+        closing: number | null;
+        updatedAt: number;
+    }
+
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };
 }
 
