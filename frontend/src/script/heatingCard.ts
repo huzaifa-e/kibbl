@@ -36,9 +36,12 @@ function roomHtml(r: HeatingRoom) {
     </div>`;
 }
 
-// the card, or nothing while tado is not connected
-export function heatingCardHtml() {
+/* the card, or nothing while tado is not connected; only: the rooms of tado to show (a room
+ * page shows those in its room), all when left out */
+export function heatingCardHtml(only?: number[]) {
     if (!status?.connected) return '';
+    const rooms = only ? status.rooms.filter((r) => only.includes(r.id)) : status.rooms;
+    if (only && !rooms.length) return '';
     const b = status.budget;
     return `<div class="col-md-6 col-xl-4" data-heating-card>
         <div class="card h-100">
@@ -47,7 +50,7 @@ export function heatingCardHtml() {
                 <div class="card-actions text-secondary small">${escapeHtml(status.home?.name ?? 'tado')}</div>
             </div>
             <div class="card-body heat-rooms">
-                ${status.rooms.length ? status.rooms.map(roomHtml).join('') : '<div class="text-secondary">No rooms read yet.</div>'}
+                ${rooms.length ? rooms.map(roomHtml).join('') : '<div class="text-secondary">No rooms read yet.</div>'}
                 <div id="heat-result"></div>
             </div>
             <div class="card-footer text-secondary small">${status.lastPoll ? `read ${timeAgo(status.lastPoll)} · ` : ''}every ${b?.pollMinutes ?? 20} min${b?.remaining !== undefined ? ` · ${b.remaining} requests left today` : ''}</div>

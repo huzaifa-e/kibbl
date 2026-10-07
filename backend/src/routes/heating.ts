@@ -1,7 +1,8 @@
 import express from 'express';
-import type { HeatingCommand } from '../../../shared/heating';
+import type { HeatingCommand, HomeRoom } from '../../../shared/heating';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
+import { getSummaries } from '../core/devices';
 import { logger } from '../core/logger';
 import { ROOM_NAME_MAX, createRoom, deleteRoom, listRooms, moveDevice, ownRoom, renameRoom } from '../core/rooms';
 import { TadoError } from '../tado/client';
@@ -89,6 +90,25 @@ export default function initHeatingRoutes(app: express.Application) {
 
     app.get('/api/rooms', auth, async (req: RequestWithSessionInfo, res) => {
         res.json(await listRooms(user(req)));
+    });
+
+    /* Every room with its devices and tado's rooms in it; what is in no room comes last
+     * (room: null). The rooms section of the app is built from this. */
+    app.get('/api/rooms/overview', auth, async (req: RequestWithSessionInfo, res) => {
+        const [rooms, devices, heating] = await Promise.all([
+            listRooms(user(req)),
+            getSummaries({ ownerID: user(req), status: 'approved' }),
+            status(user(req)),
+        ]);
+        const known = new Set(rooms.map((r) => r._id));
+        const of = (roomId: string | null) => ({
+            devices: devices.filter((d) => (roomId ? d.roomId === roomId : !d.roomId || !known.has(d.roomId))),
+            heating: heating.rooms.filter((h) => (roomId ? h.roomId === roomId : !h.roomId || !known.has(h.roomId))),
+        });
+        const out: { room: HomeRoom | null; devices: typeof devices; heating: typeof heating.rooms }[] = rooms.map((room) => ({ room, ...of(room._id) }));
+        const rest = of(null);
+        if (rest.devices.length || rest.heating.length) out.push({ room: null, ...rest });
+        res.json(out);
     });
 
     app.post('/api/rooms', auth, async (req: RequestWithSessionInfo, res) => {

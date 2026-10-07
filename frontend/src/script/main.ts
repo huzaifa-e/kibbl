@@ -39,7 +39,13 @@ function highlightNav() {
     const path = window.location.pathname;
     for (const item of document.querySelectorAll<HTMLElement>('[data-nav-href]')) {
         const href = item.dataset.navHref!;
-        const active = href === '/' ? path === '/' || path.startsWith('/camera/') : path.startsWith(href);
+        // a device page belongs to the rooms, where its room is
+        const active =
+            href === '/'
+                ? path === '/'
+                : href === '/rooms'
+                  ? path.startsWith('/rooms') || path.startsWith('/air') || path.startsWith('/camera/')
+                  : path.startsWith(href);
         item.classList.toggle('active', active);
     }
 }

@@ -43,6 +43,13 @@ export interface HomeRoom {
     name: string;
 }
 
+// a room of the home with what stands in it, for the rooms section of the app
+export interface RoomOverview<Device> {
+    room: HomeRoom | null; // null: what is in no room
+    devices: Device[];
+    heating: HeatingRoom[];
+}
+
 // the room values a kibbl. air shows when a tado room is in its room
 export interface PairedRoom extends HeatingRoom {
     source: 'tado';

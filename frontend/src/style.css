@@ -563,3 +563,9 @@ html[data-bs-theme='dark'] .theme-label-dark {
     min-width: 3.6rem;
     opacity: 1 !important;
 }
+
+/* the rooms section: a room's latest camera picture on top of its card */
+.room-cam {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+}

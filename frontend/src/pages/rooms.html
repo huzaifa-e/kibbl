@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>Rooms · kibbl.</title>
+        <meta name="theme-color" content="#d9622b" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/img/logo.svg" />
+    </head>
+
+    <body>
+        <div class="page">
+            <!-- NAVBAR_PLACEHOLDER -->
+            <div class="page-wrapper">
+                <!-- Page header -->
+                <div class="page-header d-print-none">
+                    <div class="container-xl">
+                        <div class="row g-2 align-items-center">
+                            <div class="col">
+                                <div class="page-pretitle" id="page-pretitle">Rooms</div>
+                                <h2 class="page-title" id="page-title">…</h2>
+                            </div>
+                            <div class="col-auto ms-auto d-print-none">
+                                <div class="btn-list" id="page-actions"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Page body -->
+                <div class="page-body">
+                    <div class="container-xl" id="container">
+                        <div class="center-loading text-center">
+                            <div class="d-flex justify-content-center mb-3">
+                                <canvas
+                                    data-orb="working"
+                                    data-orb-size="64"
+                                    class="thinking-orb"
+                                    role="img"
+                                    aria-label="Loading"
+                                    width="64"
+                                    height="64"
+                                    style="width: 64px; height: 64px"
+                                ></canvas>
+                            </div>
+                            <div class="text-secondary h2">Loading<span class="animated-dots"></span></div>
+                        </div>
+                    </div>
+                </div>
+                <footer class="footer footer-transparent d-print-none">
+                    <div class="container-xl">
+                        <div class="row text-center align-items-center flex-row-reverse">
+                            <div class="col-12 col-lg-auto mt-3 mt-lg-0">
+                                <ul class="list-inline list-inline-dots mb-0">
+                                    <li class="list-inline-item">kibbl. &copy; <span id="year"></span></li>
+                                    <li class="list-inline-item" id="versionTxt">???</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+
+        <script type="module" src="/src/script/rooms.ts"></script>
+    </body>
+</html>
