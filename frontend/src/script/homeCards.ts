@@ -1,14 +1,15 @@
 import ApexCharts from 'apexcharts';
 import { baseOptions } from './activityCharts';
 import { tone } from './healthCharts';
+import { hourlyConsumption } from './meterHours';
 import { escapeHtml, timeAgo } from './utils';
 
-/* The cards next to the cameras on the home page: each meter with its consumption of the
- * last two weeks, and the resting heart rate of the last 30 days. Each one links to its page. */
+/* The cards next to the cameras on the home page: each meter with its consumption per hour of
+ * the last 24 hours, and the resting heart rate of the last 30 days. Each one links to its page. */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const METER_DAYS = 14;
+const METER_HOURS = 24;
 const charts: ApexCharts[] = [];
 
 const fmt = (v: number | null | undefined, digits = 1) =>
@@ -49,16 +50,18 @@ function sparkOptions() {
 
 async function meterCards() {
     const meters: any[] = (await json('/api/meters')) ?? [];
-    const days = await Promise.all(meters.map((m) => json(`/api/meters/${m._id}/periods?period=day`)));
+    // two days of readings: the hour before the first of the 24 needs the reading before it
+    const readings = await Promise.all(meters.map((m) => json(`/api/meters/${m._id}/readings?days=2`)));
     return meters.map((m, i) => {
-        const rows: { key: string; consumption: number | null }[] = (days[i] ?? []).slice(-METER_DAYS);
+        const hours = hourlyConsumption(readings[i] ?? [], METER_HOURS);
+        const hourLabel = (start: number) => new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const b = m.battery;
         const html = card(
             `/meter/${m._id}`,
             m.medium === 'electricity' ? 'bolt' : m.medium === 'water' ? 'droplet' : 'flame',
             tone('pumpkin'),
             m.name,
-            m.latest ? `read ${timeAgo(m.latest.at)}` : 'no reading yet',
+            m.latest ? `per hour, 24 h · read ${timeAgo(m.latest.at)}` : 'no reading yet',
             stat(fmt(m.latest?.value), m.unit, 'meter') +
                 stat(m.powerKw === null ? '–' : fmt(m.powerKw * 1000, 0), 'W', 'power') +
                 stat(fmt(m.today?.consumption, 1), m.unit, 'today') +
@@ -72,17 +75,14 @@ async function meterCards() {
                 series: [
                     {
                         name: 'Consumption',
-                        data: rows.map((r) => ({
-                            x: new Date(`${r.key}T12:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
-                            y: r.consumption === null ? null : Math.round(r.consumption * 100) / 100,
-                        })),
+                        data: hours.map((h) => ({ x: `${hourLabel(h.start)}–${hourLabel(h.start + 3600_000)}`, y: Math.round(h.consumption * 100) / 100 })),
                     },
                 ],
                 colors: [tone('pumpkin')],
                 plotOptions: { bar: { columnWidth: '70%', borderRadius: 2 } },
                 tooltip: { ...baseOptions().tooltip, y: { formatter: (v: number) => `${fmt(v, 2)} ${m.unit}` } },
             });
-        return { html, id: `home-meter-${i}`, draw, empty: !rows.length };
+        return { html, id: `home-meter-${i}`, draw, empty: !(readings[i] ?? []).length };
     });
 }
 
