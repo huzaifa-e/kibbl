@@ -9,11 +9,13 @@
 #include "KL_ioexp.h"
 #include "KL_nvs.h"
 
-#define NVS_AIR "AIR"
+#define NVS_AIR        "AIR"
+#define NVS_TEMP_ADJUST "TEMP_ADJ" // tenths of °C + 1000
 
 static SemaphoreHandle_t air_config_mutex;
 
 static air_settings_t air_settings;
+static int16_t temp_adjust = 0;
 
 /* The thresholds of ESW0002 (the original Conny firmware): 1000 and 2000 ppm after the
  * guidance of the German Environment Agency. The fan draws room air past the sensor and
@@ -47,6 +49,11 @@ static const char *fan_modes[]  = {"off", "on", "pulse", "auto"};
 void config_air_load(void) {
     air_config_mutex = xSemaphoreCreateMutex();
 
+    uint32_t stored_adjust = 1000;
+    if (nvs_queue_job(NVS_TEMP_ADJUST, &stored_adjust, 0, UINT32_T, READ) && stored_adjust >= 950 && stored_adjust <= 1050) {
+        temp_adjust = (int16_t)stored_adjust - 1000;
+    }
+
     if (!nvs_queue_job(NVS_AIR, &air_settings, sizeof(air_settings), BLOB, READ)) {
         air_settings = air_defaults;
     }
@@ -54,6 +61,33 @@ void config_air_load(void) {
 
 void config_air_reset(void) {
     nvs_remove_key(NVS_AIR);
+    nvs_remove_key(NVS_TEMP_ADJUST);
+}
+
+int16_t config_temp_adjust(void) {
+    return temp_adjust;
+}
+
+bool config_set_temp_adjust(int16_t tenths) {
+    if (tenths < -50 || tenths > 50) {
+        return false;
+    }
+    temp_adjust     = tenths;
+    uint32_t stored = (uint32_t)(tenths + 1000);
+    return nvs_queue_job(NVS_TEMP_ADJUST, &stored, 0, UINT32_T, WRITE);
+}
+
+bool config_temp_adjust_from_json(const cJSON *json, int16_t *tenths) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(json, "tempAdjust");
+    if (item == NULL) {
+        return true;
+    }
+    if (!cJSON_IsNumber(item) || item->valuedouble < -5.0 || item->valuedouble > 5.0) {
+        return false;
+    }
+    double v = item->valuedouble * 10.0;
+    *tenths  = (int16_t)(v < 0 ? v - 0.5 : v + 0.5);
+    return true;
 }
 
 void config_air_settings(air_settings_t *settings) {
@@ -182,6 +216,7 @@ void config_air_to_json(const air_settings_t *settings, cJSON *json) {
     cJSON_AddBoolToObject(json, "smoke", settings->smoke);
     cJSON_AddNumberToObject(json, "puffRise", settings->puff_rise);
     cJSON_AddNumberToObject(json, "nightFan", settings->night_fan);
+    cJSON_AddNumberToObject(json, "tempAdjust", temp_adjust / 10.0);
 }
 
 void config_fan_to_json(const air_settings_t *settings, cJSON *json) {

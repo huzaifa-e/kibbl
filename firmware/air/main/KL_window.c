@@ -15,7 +15,12 @@
 #define OPEN_TEMP_DROP      0.4f // °C, together with the CO2
 #define OPEN_CO2_ONLY_SHARE 0.35f // without the temperature (summer)
 #define OPEN_CO2_ONLY_PPM   200.0f
-#define OPEN_TEMP_ONLY      0.8f // °C within the span, while the CO2 does not rise
+#define OPEN_TEMP_ONLY      0.8f  // °C within the span, while the CO2 does not rise
+#define OPEN_TEMP_FAST      0.5f  // °C within a minute, while the CO2 does not rise
+#define OPEN_CO2_FLAT       10.0f // ppm: "does not rise"
+#define OPEN_FRESH_DROP     60.0f // ppm fallen within the span
+#define OPEN_FRESH_MARGIN   50.0f // to at most this above outside air (calibrated: 420 ppm)
+#define MIN_MEANS           3     // a minute and a half before the fast rules decide
 // the lamp and the fan warm the sensor: after a change the temperature alone does not count
 #define HEAT_SETTLE_MS (15 * 60 * 1000)
 // closed: one of them rises again
@@ -55,30 +60,48 @@ static void push_event(const char *state, int64_t now_ms, const mean_t *from, co
 }
 
 static void decide(int64_t now_ms) {
-    if (means_count < MEANS) {
+    if (means_count < MIN_MEANS) {
         return;
     }
     const mean_t *from = &means[0];
-    const mean_t *to   = &means[MEANS - 1];
-    float co2_change   = to->co2 - from->co2;
-    float temp_change  = to->temperature - from->temperature;
-    float above_out    = from->co2 - OUTDOOR_CO2_PPM;
+    const mean_t *to   = &means[means_count - 1];
+    // against the highest of the span: a short sharp drop counts as much as a slow one
+    float co2_peak  = from->co2;
+    float temp_peak = from->temperature;
+    for (int i = 1; i < means_count; i++) {
+        co2_peak  = means[i].co2 > co2_peak ? means[i].co2 : co2_peak;
+        temp_peak = means[i].temperature > temp_peak ? means[i].temperature : temp_peak;
+    }
+    float co2_drop    = co2_peak - to->co2;
+    float temp_drop   = temp_peak - to->temperature;
+    float co2_rising  = to->co2 - from->co2;
+    float above_out   = co2_peak - OUTDOOR_CO2_PPM;
+    const mean_t *min_ago = &means[means_count - 3]; // a minute back (30 s means)
+    float temp_drop_1min  = min_ago->temperature - to->temperature;
 
     if (!open) {
         float with_temp = above_out * OPEN_CO2_SHARE > OPEN_CO2_MIN_PPM ? above_out * OPEN_CO2_SHARE : OPEN_CO2_MIN_PPM;
         float co2_only  = above_out * OPEN_CO2_ONLY_SHARE > OPEN_CO2_ONLY_PPM ? above_out * OPEN_CO2_ONLY_SHARE : OPEN_CO2_ONLY_PPM;
-        bool by_co2     = (co2_change <= -with_temp && temp_change <= -OPEN_TEMP_DROP) || co2_change <= -co2_only;
-        bool by_temp    = now_ms >= heat_from && temp_change <= -OPEN_TEMP_ONLY && co2_change <= 0;
-        if (by_co2 || by_temp) {
-            open       = true;
-            opened_ms  = now_ms;
-            DEBUG_F("window: open (%.0f -> %.0f ppm, %+.1f °C in %d min)\n", from->co2, to->co2, temp_change, WINDOW_SPAN_MS / 60000);
-            push_event("open", now_ms, from, to);
+        bool by_co2     = (co2_drop >= with_temp && temp_drop >= OPEN_TEMP_DROP) || co2_drop >= co2_only;
+        // calibrated, outside air reads about 420 ppm: falling fast to it is fresh air coming in
+        bool to_outdoor = co2_drop >= OPEN_FRESH_DROP && to->co2 <= OUTDOOR_CO2_PPM + OPEN_FRESH_MARGIN;
+        // the lamp or the fan changed lately: the board, not a window, cools the sensor
+        bool by_temp    = now_ms >= heat_from && (temp_drop >= OPEN_TEMP_ONLY || temp_drop_1min >= OPEN_TEMP_FAST) && co2_rising <= OPEN_CO2_FLAT;
+        if (means_count >= MEANS ? (by_co2 || to_outdoor || by_temp) : (to_outdoor || by_temp)) {
+            open      = true;
+            opened_ms = now_ms;
+            mean_t before = {.co2 = co2_peak, .temperature = temp_peak};
+            DEBUG_F("window: open (%.0f -> %.0f ppm, %.1f -> %.1f °C)%s%s%s\n", co2_peak, to->co2, temp_peak, to->temperature, by_co2 ? " co2" : "",
+                    to_outdoor ? " to outdoor" : "", by_temp ? " temperature" : "");
+            push_event("open", now_ms, &before, to);
         }
-    } else if (now_ms - opened_ms >= MIN_OPEN_MS && (temp_change >= CLOSE_TEMP_RISE || co2_change >= CLOSE_CO2_RISE)) {
-        open = false;
-        DEBUG_F("window: closed after %lld min\n", (now_ms - opened_ms) / 60000);
-        push_event("closed", now_ms, from, to);
+    } else if (now_ms - opened_ms >= MIN_OPEN_MS) {
+        float temp_change = to->temperature - from->temperature;
+        if (temp_change >= CLOSE_TEMP_RISE || co2_rising >= CLOSE_CO2_RISE) {
+            open = false;
+            DEBUG_F("window: closed after %lld min\n", (now_ms - opened_ms) / 60000);
+            push_event("closed", now_ms, from, to);
+        }
     }
 }
 
@@ -125,7 +148,7 @@ const char *window_state(bool detecting) {
     if (open) {
         return "open";
     }
-    return means_count < MEANS ? "learning" : "closed";
+    return means_count < MIN_MEANS ? "learning" : "closed";
 }
 
 bool window_open(void) {

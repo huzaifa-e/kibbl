@@ -85,8 +85,12 @@ typedef bool (*settings_from_json_t)(const cJSON *json, air_settings_t *settings
 static const char *cmd_settings(const cJSON *req, cJSON *resp, settings_from_json_t from_json) {
     air_settings_t settings;
     config_air_settings(&settings);
-    if (!from_json(req, &settings)) {
+    int16_t temp_adjust = config_temp_adjust();
+    if (!from_json(req, &settings) || !config_temp_adjust_from_json(req, &temp_adjust)) {
         return "invalid setting";
+    }
+    if (temp_adjust != config_temp_adjust() && !config_set_temp_adjust(temp_adjust)) {
+        return "temperature adjustment not stored";
     }
     air_apply(&settings);
     if (!config_set_air_settings(&settings)) {

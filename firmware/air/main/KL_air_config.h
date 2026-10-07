@@ -51,12 +51,20 @@ void config_air_load(void);
 // forgets the stored settings (factory reset)
 void config_air_reset(void);
 
+/* Matches the temperature to a thermometer the person trusts, in tenths of °C (-50..50), on
+ * top of the correction for the warmth of the board. In a key of its own: the settings
+ * blob keeps its layout, so an update keeps the settings. */
+int16_t config_temp_adjust(void);
+bool config_set_temp_adjust(int16_t tenths);
+// "tempAdjust" in °C, -5..5, rounded to tenths; true and *tenths kept when left out
+bool config_temp_adjust_from_json(const cJSON *json, int16_t *tenths);
+
 void config_air_settings(air_settings_t *settings);
 bool config_set_air_settings(const air_settings_t *settings);
 
 /* Apply the keys present in json onto settings and range-check them; keys left out keep
  * their value. False when a key is present but invalid, settings unchanged then.
- * air: yellow, red, buzzer, asc, altitude, smoke, puffRise, nightFan
+ * air: yellow, red, buzzer, asc, altitude, smoke, puffRise, nightFan (and tempAdjust, above)
  * fan: mode (off, on, pulse, auto), level, onSeconds, offSeconds
  * lamp: mode (traffic, off, white, warm, candle, custom), colors (of red, green, yellow, white), fade */
 bool config_air_from_json(const cJSON *json, air_settings_t *settings);

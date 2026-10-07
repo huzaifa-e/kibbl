@@ -1,5 +1,7 @@
 #include "KL_air.h"
 
+#include <math.h>
+
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -53,6 +55,18 @@ static float corrected_temperature(float raw) {
         return raw - 4;
     }
     return raw - 6;
+}
+
+// saturation vapour pressure over water, hPa (Magnus)
+static float saturation(float t) {
+    return 6.112f * expf(17.62f * t / (243.12f + t));
+}
+
+/* The sensor measures the relative humidity at its own, warmer temperature: the same water
+ * in the cooler room air is a higher relative humidity. */
+static float room_humidity(float rh_sensor, float t_sensor, float t_room) {
+    float rh = rh_sensor * saturation(t_sensor) / saturation(t_room);
+    return rh > 100 ? 100 : rh < 0 ? 0 : rh;
 }
 
 static air_level_t level_of(uint16_t co2, air_level_t now) {
@@ -195,13 +209,14 @@ static void air_task(void *pvParams) {
         xSemaphoreTake(state_mutex, portMAX_DELAY);
         state.valid       = true;
         state.co2         = co2;
-        state.temperature = corrected_temperature(values.temperature);
-        state.humidity    = values.humidity;
+        // the warmth of the board, then the person's reference thermometer
+        state.temperature = corrected_temperature(values.temperature) + config_temp_adjust() / 10.0f;
+        state.humidity    = room_humidity(values.humidity, values.temperature, state.temperature);
         state.level       = level;
         xSemaphoreGive(state_mutex);
 
-        DEBUG("air: %u ppm (%.0f), %.1f °C (sensor %.1f), %.1f %%\n", co2, values.co2, corrected_temperature(values.temperature),
-              values.temperature, values.humidity);
+        DEBUG("air: %u ppm (%.0f), %.1f °C (sensor %.1f), %.1f %% (sensor %.1f)\n", co2, values.co2, state.temperature, values.temperature,
+              state.humidity, values.humidity);
     }
 }
 
