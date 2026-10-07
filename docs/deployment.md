@@ -105,7 +105,7 @@ Every request to Google goes through one queue: `HEALTH_CONCURRENCY` (4 by defau
 
 ## MCP
 
-`/mcp` is an [MCP](https://modelcontextprotocol.io) endpoint (Streamable HTTP) that lets an AI assistant read the home's data: devices and a live camera picture, motion events and activity (and the pictures kept for them), meters with readings and consumption, and the stored health history day by day or through a day. It only reads; nothing can be changed through it. Times are the server's local time.
+`/mcp` is an [MCP](https://modelcontextprotocol.io) endpoint (Streamable HTTP) that lets an AI assistant read the home's data: devices and a live camera picture, motion events and activity (and the pictures kept for them), the air of a kibbl. air, the heating, meters with readings and consumption, and the stored health history day by day or through a day. It also changes the settings a person changes in the app, through the same checks (`mcp/writeTools.ts`): the heating of tado (a temperature or off lasts 60 minutes unless asked otherwise), a kibbl. air (light, night mode and schedule, fan, thresholds, beeps, reminder, cigarette detection, temperature and humidity match), a camera (light, picture, motion detection), rooms (make, rename, move devices and tado's rooms) and the home location. Not through it: calibration, firmware updates, Wi-Fi, restarts, removing devices, factory resets, deleting events or pictures. Every change is logged with `via=assistant`. Times are the server's local time.
 
 Access is by token, one per client, created on the server and shown once (only its hash is stored):
 

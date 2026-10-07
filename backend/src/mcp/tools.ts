@@ -19,10 +19,12 @@ import { airEvents, airReadings, smokeDays } from '../core/air';
 import { weatherForUser } from '../core/weather';
 import { listRooms } from '../core/rooms';
 import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
+import { registerWriteTools } from './writeTools';
 
 /*
  * What the MCP endpoint offers: every kind of data the app has (cameras, motion,
- * meters, health, the air of a kibbl. air), read only. Times are the server's local time, which is the home's,
+ * meters, health, the air of a kibbl. air, the heating), read; and the settings a person
+ * changes in the app, written through the same checks (writeTools.ts). Times are the server's local time, which is the home's,
  * written as "YYYY-MM-DD HH:MM:SS"; days as YYYY-MM-DD.
  */
 
@@ -183,7 +185,8 @@ export function createMcpServer(session: SessionInfo) {
             instructions:
                 "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), " +
                 'utility meters and health data from a fitness tracker. ' +
-                "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends.",
+                "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends. " +
+                'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise.',
         },
     );
 
@@ -678,5 +681,6 @@ export function createMcpServer(session: SessionInfo) {
         },
     );
 
+    registerWriteTools(server, session);
     return server;
 }

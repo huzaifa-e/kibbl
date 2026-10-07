@@ -1,0 +1,324 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import type { HeatingCommand } from '../../../shared/heating';
+import { framesizes, lampColors, lampModes, fanModes } from '../../../shared/protocol';
+import { setNightSchedule } from '../core/air';
+import { applyMotionSettings, runDeviceCommand } from '../core/control';
+import { Device, User } from '../core/db';
+import { publishDevice } from '../core/devices';
+import { logger } from '../core/logger';
+import { createRoom, listRooms, moveDevice, renameRoom } from '../core/rooms';
+import { forgetHome, searchPlaces } from '../core/weather';
+import { command as heatingCommand, placeTadoRoom, publishPaired, status as heatingStatus } from '../tado/service';
+
+/*
+ * What an assistant may change through the MCP endpoint: the settings the person changes in
+ * the app, through the same checks (core/control.ts). Not offered, on purpose: calibrating
+ * (the device must stand in fresh air), firmware updates, Wi-Fi, restarts, removing devices,
+ * factory resets and deleting events or pictures. Every change is logged "via assistant".
+ */
+
+const log = logger('mcp');
+const VIA = 'assistant';
+
+const json = (data: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data) }] });
+const fail = (message: string): CallToolResult => ({ content: [{ type: 'text', text: message }], isError: true });
+const writes = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const hour = z.number().int().min(0).max(23);
+
+const lower = (s: string) => s.trim().toLowerCase();
+
+async function findOwnDevice(userID: string, ref: string, cap: string) {
+    const docs = await Device.find({ ownerID: userID, status: 'approved', caps: cap }).lean();
+    const r = lower(ref);
+    return docs.find((d) => d._id.toLowerCase() === r) ?? docs.find((d) => lower(d.name) === r) ?? (r ? undefined : docs.length === 1 ? docs[0] : undefined);
+}
+
+async function findRoom(userID: string, ref: string) {
+    const r = lower(ref);
+    return (await listRooms(userID)).find((x) => x._id === ref.trim() || lower(x.name) === r);
+}
+
+export function registerWriteTools(server: McpServer, session: SessionInfo) {
+    const who = session.email;
+
+    server.registerTool(
+        'kibbl_heating_set',
+        {
+            title: 'Set the heating',
+            description:
+                'Changes a tado room: a temperature, off, or back to its schedule. A temperature or off lasts 60 minutes unless until says otherwise ' +
+                '(until next_change: to the next change of the schedule; until_changed: until changed again). The room is a tado room name or the room of the home it is in (kibbl_heating lists them).',
+            inputSchema: {
+                room: z.string().describe('tado room or room of the home, e.g. "Living Room"'),
+                mode: z.enum(['temperature', 'off', 'schedule']),
+                temperature: z.number().min(5).max(25).optional().describe('°C, for mode temperature'),
+                until: z.enum(['timer', 'next_change', 'until_changed']).default('timer'),
+                minutes: z.number().int().min(5).max(1440).default(60).describe('for until timer'),
+            },
+            annotations: writes,
+        },
+        async ({ room, mode, temperature, until, minutes }) => {
+            const h = await heatingStatus(session.userID);
+            if (!h.connected) return fail('tado is not connected (Devices, Heating · tado).');
+            const home = await findRoom(session.userID, room);
+            const target = h.rooms.find((x) => lower(x.name) === lower(room)) ?? (home ? h.rooms.find((x) => x.roomId === home._id) : undefined);
+            if (!target) return fail(`No tado room "${room}". tado rooms: ${h.rooms.map((x) => x.name).join(', ') || 'none'}.`);
+            if (mode === 'temperature' && temperature === undefined) return fail('mode temperature needs a temperature (5-25 °C).');
+            const u = until === 'next_change' ? 'next' : until === 'until_changed' ? 'manual' : 'timer';
+            const cmd: HeatingCommand =
+                mode === 'schedule'
+                    ? { mode: 'schedule' }
+                    : mode === 'off'
+                      ? { mode: 'off', until: u, minutes }
+                      : { mode: 'temperature', celsius: Math.round(temperature! * 2) / 2, until: u, minutes };
+            try {
+                await heatingCommand(session.userID, target.id, cmd);
+            } catch (err) {
+                return fail((err as Error).message);
+            }
+            log.info('heating set', { room: target.name, ...cmd, user: who, via: VIA });
+            return json({ ok: true, room: target.name, set: cmd, note: 'tado reports the new state within a minute (kibbl_heating)' });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_air_set',
+        {
+            title: 'Set a kibbl. air',
+            description:
+                'Changes a kibbl. air (CO2 traffic light): any of the light (lamp_mode traffic shows the air, white, warm, candle, off, custom with lamp_colors), fading, ' +
+                'night mode now (light off, quiet), the fan, the thresholds of yellow and red (ppm), beeps at yellow/red, the reminder to air (a beep every so many minutes while the air is bad), ' +
+                'cigarette detection and its sensitivity, the fan limit at night, and the match of temperature (°C added) and humidity (a factor) to a reference. blink flashes it to find it. ' +
+                'Only the fields given change. Calibration is not possible from here: the device has to stand in fresh air.',
+            inputSchema: {
+                device: z.string().default('').describe('the kibbl. air by name or id; the only one if left empty'),
+                lamp_mode: z.enum(lampModes).optional(),
+                lamp_colors: z.array(z.enum(lampColors)).max(4).optional().describe('for lamp_mode custom'),
+                lamp_fade: z.boolean().optional(),
+                night: z.boolean().optional().describe('night mode now; the night schedule switches it again later (kibbl_air_night_schedule)'),
+                fan_mode: z.enum(fanModes).optional(),
+                fan_level: z.number().int().min(1).max(100).optional(),
+                fan_on_seconds: z.number().int().min(1).max(3600).optional(),
+                fan_off_seconds: z.number().int().min(1).max(3600).optional(),
+                yellow: z.number().int().min(400).max(5000).optional(),
+                red: z.number().int().min(400).max(10000).optional(),
+                buzzer: z.boolean().optional().describe('beep when it turns yellow or red'),
+                remind_minutes: z.number().int().min(0).max(60).optional().describe('beep every so many minutes while the air is bad, 0 off'),
+                remind_from: z.enum(['yellow', 'red']).optional(),
+                smoke_detection: z.boolean().optional(),
+                smoke_sensitivity: z.enum(['high', 'medium', 'low']).optional(),
+                night_fan: z.number().int().min(0).max(100).optional(),
+                temperature_adjust: z.number().min(-5).max(5).optional().describe('°C on top of the correction for the warmth of the device'),
+                humidity_factor: z.number().min(0.7).max(1.3).optional(),
+                blink: z.boolean().optional().describe('flash the white light 5 times'),
+            },
+            annotations: writes,
+        },
+        async (args) => {
+            const doc = await findOwnDevice(session.userID, args.device, 'air');
+            if (!doc) return fail(`No kibbl. air "${args.device}". kibbl_devices lists the devices.`);
+            const cmds: Record<string, unknown>[] = [];
+            const lamp: Record<string, unknown> = { cmd: 'lamp' };
+            if (args.lamp_mode) lamp.mode = args.lamp_mode;
+            if (args.lamp_colors) lamp.colors = args.lamp_colors;
+            if (args.lamp_fade !== undefined) lamp.fade = args.lamp_fade;
+            if (Object.keys(lamp).length > 1) cmds.push(lamp);
+            if (args.night !== undefined) cmds.push({ cmd: 'night', on: args.night });
+            const fan: Record<string, unknown> = { cmd: 'fan' };
+            if (args.fan_mode) fan.mode = args.fan_mode;
+            if (args.fan_level !== undefined) fan.level = args.fan_level;
+            if (args.fan_on_seconds !== undefined) fan.onSeconds = args.fan_on_seconds;
+            if (args.fan_off_seconds !== undefined) fan.offSeconds = args.fan_off_seconds;
+            if (Object.keys(fan).length > 1) cmds.push(fan);
+            const config: Record<string, unknown> = { cmd: 'air_config' };
+            const rise = { high: 100, medium: 150, low: 250 } as const;
+            for (const [key, value] of Object.entries({
+                yellow: args.yellow,
+                red: args.red,
+                buzzer: args.buzzer,
+                remindMinutes: args.remind_minutes,
+                remindFrom: args.remind_from,
+                smoke: args.smoke_detection,
+                puffRise: args.smoke_sensitivity ? rise[args.smoke_sensitivity] : undefined,
+                nightFan: args.night_fan,
+                tempAdjust: args.temperature_adjust,
+                humidityFactor: args.humidity_factor,
+            })) {
+                if (value !== undefined) config[key] = value;
+            }
+            if (Object.keys(config).length > 1) cmds.push(config);
+            if (args.blink) cmds.push({ cmd: 'blink', count: 5 });
+            if (!cmds.length) return fail('Nothing to change: give at least one setting.');
+            const results = [];
+            for (const c of cmds) {
+                const resp = await runDeviceCommand(doc, c, who, VIA);
+                results.push({ command: c.cmd, ok: resp.ok, error: resp.error });
+            }
+            return json({ device: doc.name, results });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_air_night_schedule',
+        {
+            title: 'Night schedule of a kibbl. air',
+            description:
+                'Night mode every night (light off, quiet, fan limited) from one hour to another, local time; enabled false switches the schedule off.',
+            inputSchema: { device: z.string().default(''), enabled: z.boolean(), from: hour.default(22), to: hour.default(7) },
+            annotations: writes,
+        },
+        async ({ device, enabled, from, to }) => {
+            const doc = await findOwnDevice(session.userID, device, 'night');
+            if (!doc) return fail(`No kibbl. air "${device}".`);
+            await setNightSchedule(doc._id, { enabled, from, to });
+            await publishDevice(doc._id);
+            log.info('night schedule', { device: doc._id, night: enabled ? `${from}-${to}h` : 'off', user: who, via: VIA });
+            return json({ ok: true, device: doc.name, schedule: { enabled, from, to } });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_camera_set',
+        {
+            title: 'Set a camera',
+            description:
+                'Changes a kibbl. cam: its white light (0-100), picture (framesize, quality 4-63 lower is better, flips, brightness/contrast/saturation -2..2) and motion detection ' +
+                '(on/off, sensitivity, quiet hours from-to local time, flashing the light on motion, keeping a picture of each event). Only the fields given change.',
+            inputSchema: {
+                camera: z.string().describe('the camera by name or id'),
+                light: z.number().int().min(0).max(100).optional(),
+                blink: z.boolean().optional().describe('flash the light to find it'),
+                framesize: z.enum(framesizes).optional(),
+                quality: z.number().int().min(4).max(63).optional(),
+                vflip: z.boolean().optional(),
+                hmirror: z.boolean().optional(),
+                brightness: z.number().int().min(-2).max(2).optional(),
+                contrast: z.number().int().min(-2).max(2).optional(),
+                saturation: z.number().int().min(-2).max(2).optional(),
+                motion: z.boolean().optional(),
+                motion_sensitivity: z.enum(['low', 'medium', 'high']).optional(),
+                quiet_from: hour.optional(),
+                quiet_to: hour.optional(),
+                motion_blink: z.boolean().optional(),
+                keep_pictures: z.boolean().optional(),
+            },
+            annotations: writes,
+        },
+        async (args) => {
+            const doc = await findOwnDevice(session.userID, args.camera, 'camera');
+            if (!doc) return fail(`No camera "${args.camera}". kibbl_devices lists them.`);
+            const results: { change: string; ok: boolean; error?: string }[] = [];
+            if (args.light !== undefined) {
+                const r = await runDeviceCommand(doc, { cmd: 'light', level: args.light }, who, VIA);
+                results.push({ change: 'light', ok: r.ok, error: r.error });
+            }
+            if (args.blink) {
+                const r = await runDeviceCommand(doc, { cmd: 'blink', count: 5, level: 60 }, who, VIA);
+                results.push({ change: 'blink', ok: r.ok, error: r.error });
+            }
+            const picture: Record<string, unknown> = { cmd: 'camera' };
+            for (const key of ['framesize', 'quality', 'vflip', 'hmirror', 'brightness', 'contrast', 'saturation'] as const) {
+                if (args[key] !== undefined) picture[key] = args[key];
+            }
+            if (Object.keys(picture).length > 1) {
+                const r = await runDeviceCommand(doc, picture, who, VIA);
+                results.push({ change: 'picture', ok: r.ok, error: r.error });
+            }
+            const motion = {
+                enabled: args.motion,
+                sensitivity: args.motion_sensitivity,
+                quietFrom: args.quiet_from,
+                quietTo: args.quiet_to,
+                blink: args.motion_blink,
+                keepPictures: args.keep_pictures,
+            };
+            if (Object.values(motion).some((v) => v !== undefined)) {
+                const m = await applyMotionSettings(doc, motion, who, VIA);
+                results.push({ change: `motion detection ${m.enabled ? 'on' : 'off'}`, ok: true });
+            }
+            if (!results.length) return fail('Nothing to change: give at least one setting.');
+            return json({ camera: doc.name, results });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_rooms_edit',
+        {
+            title: 'Rooms of the home',
+            description:
+                'Makes a room, renames one, or moves a device (kibbl. air, camera) or a tado room into a room. A kibbl. air in the same room as a tado room shows the temperature of tado and ' +
+                'humidity and switches its heating off while a window is open. room "" with move takes it out of every room.',
+            inputSchema: {
+                action: z.enum(['create', 'rename', 'move']),
+                room: z.string().describe('the room (for create: its name)'),
+                new_name: z.string().max(40).optional().describe('for rename'),
+                device: z.string().optional().describe('for move: a device by name or id'),
+                tado_room: z.string().optional().describe('for move: a tado room by name'),
+            },
+            annotations: writes,
+        },
+        async ({ action, room, new_name, device, tado_room }) => {
+            if (action === 'create') {
+                if (!room.trim() || room.trim().length > 40) return fail('A name of 1 to 40 characters.');
+                const made = await createRoom(session.userID, room);
+                log.info('room made', { room: made.name, user: who, via: VIA });
+                return json({ ok: true, room: made.name });
+            }
+            const target = room.trim() ? await findRoom(session.userID, room) : null;
+            if (room.trim() && !target) return fail(`No room "${room}". Rooms: ${(await listRooms(session.userID)).map((r) => r.name).join(', ') || 'none'}.`);
+            if (action === 'rename') {
+                if (!target || !new_name?.trim()) return fail('rename needs the room and a new_name.');
+                await renameRoom(session.userID, target._id, new_name);
+                await publishPaired(session.userID);
+                log.info('room renamed', { from: target.name, to: new_name.trim(), user: who, via: VIA });
+                return json({ ok: true, room: new_name.trim() });
+            }
+            if (device) {
+                const docs = await Device.find({ ownerID: session.userID, status: 'approved' }).lean();
+                const doc = docs.find((d) => d._id.toLowerCase() === lower(device)) ?? docs.find((d) => lower(d.name) === lower(device));
+                if (!doc) return fail(`No device "${device}".`);
+                await moveDevice(session.userID, doc._id, target?._id ?? null);
+                await publishPaired(session.userID);
+                log.info('device moved', { device: doc._id, room: target?.name ?? 'none', user: who, via: VIA });
+                return json({ ok: true, device: doc.name, room: target?.name ?? null });
+            }
+            if (tado_room) {
+                const h = await heatingStatus(session.userID);
+                const t = h.rooms.find((x) => lower(x.name) === lower(tado_room));
+                if (!t) return fail(`No tado room "${tado_room}".`);
+                await placeTadoRoom(session.userID, t.id, target?._id ?? null);
+                log.info('tado room moved', { tado: t.name, room: target?.name ?? 'none', user: who, via: VIA });
+                return json({ ok: true, tado_room: t.name, room: target?.name ?? null });
+            }
+            return fail('move needs a device or a tado_room.');
+        },
+    );
+
+    server.registerTool(
+        'kibbl_home_location_set',
+        {
+            title: 'Home location',
+            description:
+                'Sets where the home is, by the name of a town or city, for the weather outside (the climate hints of a kibbl. air). Kept to about a kilometre.',
+            inputSchema: { place: z.string().min(2).max(80) },
+            annotations: writes,
+        },
+        async ({ place }) => {
+            const found = (await searchPlaces(place).catch(() => []))[0];
+            if (!found) return fail(`No place "${place}" found.`);
+            const home = { latitude: Math.round(found.latitude * 100) / 100, longitude: Math.round(found.longitude * 100) / 100, name: found.name };
+            await User.updateOne({ _id: session.userID }, { home });
+            forgetHome(session.userID);
+            log.info('home location set', { place: home.name, user: who, via: VIA });
+            return json({ ok: true, home: home.name });
+        },
+    );
+}
