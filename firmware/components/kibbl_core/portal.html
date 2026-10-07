@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>kibbl. setup</title>
+        <style>
+            :root {
+                --bg: #f6efe4;
+                --card: #fffaf2;
+                --text: #2a1a12;
+                --muted: #7a6656;
+                --accent: #d9622b;
+                --line: #e4d6c3;
+                --bad: #a63d1f;
+                --good: #3d7a73;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #160d08;
+                    --card: #22150e;
+                    --text: #f3e6cf;
+                    --muted: #b49c86;
+                    --line: #3b2a1f;
+                    --bad: #ec8a55;
+                    --good: #6fb3aa;
+                }
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                font: 16px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+                background: var(--bg);
+                color: var(--text);
+            }
+            main {
+                max-width: 420px;
+                margin: 0 auto;
+                padding: 24px 16px;
+            }
+            h1 {
+                font-size: 26px;
+                margin: 0 0 4px;
+            }
+            .brand {
+                color: var(--accent);
+            }
+            .muted {
+                color: var(--muted);
+                font-size: 14px;
+            }
+            .card {
+                background: var(--card);
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 16px;
+                margin-top: 16px;
+            }
+            label {
+                display: block;
+                font-weight: 600;
+                margin: 12px 0 6px;
+            }
+            select,
+            input {
+                width: 100%;
+                padding: 11px 12px;
+                font-size: 16px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: var(--bg);
+                color: var(--text);
+            }
+            button {
+                width: 100%;
+                margin-top: 16px;
+                padding: 13px;
+                font-size: 17px;
+                font-weight: 600;
+                border: 0;
+                border-radius: 8px;
+                background: var(--accent);
+                color: #fff;
+            }
+            button.link {
+                background: none;
+                color: var(--accent);
+                width: auto;
+                padding: 4px 0;
+                margin: 4px 0 0;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            button:disabled {
+                opacity: 0.6;
+            }
+            details {
+                margin-top: 12px;
+            }
+            summary {
+                color: var(--muted);
+                font-size: 14px;
+            }
+            .row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            .error {
+                color: var(--bad);
+                margin-top: 12px;
+            }
+            .ok {
+                color: var(--good);
+                font-weight: 600;
+            }
+            .code {
+                font: 700 32px/1.2 ui-monospace, Menlo, monospace;
+                letter-spacing: 3px;
+                text-align: center;
+                padding: 14px;
+                margin: 12px 0;
+                border: 2px dashed var(--accent);
+                border-radius: 10px;
+                user-select: all;
+            }
+            ol {
+                padding-left: 20px;
+                margin: 8px 0 0;
+            }
+            .hidden {
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1><span class="brand">kibbl.</span> setup</h1>
+            <div class="muted" id="device"></div>
+
+            <form class="card" id="form">
+                <label for="network">Your Wi-Fi</label>
+                <div class="row">
+                    <select id="network"><option>Looking for networks…</option></select>
+                </div>
+                <button type="button" class="link" id="rescan">Look again</button>
+                <input id="other" class="hidden" placeholder="Name of the network" maxlength="32" autocapitalize="off" autocorrect="off" />
+                <label for="password">Password</label>
+                <input id="password" type="password" maxlength="63" autocomplete="off" />
+                <button type="button" class="link" id="show">Show password</button>
+                <details>
+                    <summary>Server address</summary>
+                    <input id="server" maxlength="127" autocapitalize="off" autocorrect="off" />
+                    <div class="muted">Leave it, unless your kibbl. server is another one.</div>
+                </details>
+                <div class="error hidden" id="error"></div>
+                <button type="submit" id="connect">Connect</button>
+            </form>
+
+            <div class="card hidden" id="busy"><div id="busy-text">Connecting…</div></div>
+
+            <div class="card hidden" id="done">
+                <div class="ok" id="done-text"></div>
+                <p>To add it to your account, keep this code:</p>
+                <div class="code" id="code"></div>
+                <ol>
+                    <li>Switch this phone back to your usual Wi-Fi.</li>
+                    <li>Open kibbl.: <b>Devices</b>, <b>Add with a code</b>, and enter the code.</li>
+                </ol>
+                <p class="muted" id="app"></p>
+                <p class="muted">This setup Wi-Fi closes in a few minutes by itself.</p>
+            </div>
+        </main>
+
+        <script>
+            const $ = (id) => document.getElementById(id);
+            let polling;
+
+            function show(id) {
+                for (const x of ['form', 'busy', 'done']) $(x).classList.toggle('hidden', x !== id);
+            }
+            function error(text) {
+                $('error').textContent = text || '';
+                $('error').classList.toggle('hidden', !text);
+            }
+
+            async function scan() {
+                $('network').innerHTML = '<option>Looking for networks…</option>';
+                try {
+                    const nets = await (await fetch('/scan')).json();
+                    const opts = nets.map((n) => {
+                        const o = document.createElement('option');
+                        o.value = n.ssid;
+                        const bars = n.rssi > -60 ? '▂▄▆█' : n.rssi > -70 ? '▂▄▆' : n.rssi > -80 ? '▂▄' : '▂';
+                        o.textContent = `${n.ssid}  ${bars}${n.secure ? '' : '  (open)'}`;
+                        return o;
+                    });
+                    $('network').innerHTML = '';
+                    opts.forEach((o) => $('network').appendChild(o));
+                    const other = document.createElement('option');
+                    other.value = '';
+                    other.textContent = 'Another network…';
+                    $('network').appendChild(other);
+                    $('other').classList.toggle('hidden', nets.length > 0);
+                } catch {
+                    $('network').innerHTML = '<option value="">Another network…</option>';
+                    $('other').classList.remove('hidden');
+                }
+            }
+
+            async function status() {
+                return (await fetch('/status')).json();
+            }
+
+            function poll() {
+                clearInterval(polling);
+                polling = setInterval(async () => {
+                    let s;
+                    try {
+                        s = await status();
+                    } catch {
+                        return; // the phone may lose the setup Wi-Fi for a moment while the device joins
+                    }
+                    if (s.state === 'connected') {
+                        clearInterval(polling);
+                        $('done-text').textContent = `Connected to ${s.ssid}.`;
+                        $('code').textContent = s.claim.slice(0, 4) + '-' + s.claim.slice(4);
+                        $('app').textContent = s.app;
+                        show('done');
+                    } else if (s.state === 'failed') {
+                        clearInterval(polling);
+                        show('form');
+                        error(s.error);
+                    }
+                }, 1000);
+            }
+
+            $('network').addEventListener('change', () => $('other').classList.toggle('hidden', $('network').value !== ''));
+            $('rescan').addEventListener('click', scan);
+            $('show').addEventListener('click', () => {
+                const p = $('password');
+                p.type = p.type === 'password' ? 'text' : 'password';
+                $('show').textContent = p.type === 'password' ? 'Show password' : 'Hide password';
+            });
+
+            $('form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                error('');
+                const ssid = $('network').value || $('other').value.trim();
+                if (!ssid) return error('Choose a network.');
+                $('busy-text').textContent = `Connecting to ${ssid}…`;
+                show('busy');
+                try {
+                    const r = await (
+                        await fetch('/connect', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ssid, password: $('password').value, server: $('server').value.trim() }),
+                        })
+                    ).json();
+                    if (!r.ok) {
+                        show('form');
+                        return error(r.error);
+                    }
+                    poll();
+                } catch {
+                    poll(); // the answer may be lost while the device switches channels
+                }
+            });
+
+            status()
+                .then((s) => {
+                    $('device').textContent = `Device ${s.deviceId}`;
+                    $('server').value = s.server;
+                })
+                .catch(() => undefined);
+            scan();
+        </script>
+    </body>
+</html>

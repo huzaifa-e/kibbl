@@ -131,10 +131,13 @@ void app_main(void) {
 
 /* ----------------------------------------------------------------------- */
 
-/* Starts what needs the home network once there is an ip address and the
- * provisioning access point (port 80) is gone. */
+/* Starts what needs the home network once there is an ip address: the server at once
+ * (the setup page waits for it to pair the device), the local page and the name on the
+ * home network once the setup portal is gone (it has port 80). */
 void network_task(void *pvParams) {
     xEventGroupWaitBits(wifi_event_group, WIFI_GOT_IP_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+    stream_start();
+
     while (xEventGroupGetBits(wifi_event_group) & WIFI_PROV_ACTIVE_BIT) {
         delay_ms(500);
     }
@@ -148,8 +151,6 @@ void network_task(void *pvParams) {
 #if CONFIG_KIBBL_LOCAL_HTTP
     local_http_start();
 #endif
-
-    stream_start();
 
     vTaskDelete(NULL);
 }

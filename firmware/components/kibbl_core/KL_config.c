@@ -5,6 +5,7 @@
 
 #include "esp_mac.h"
 #include "esp_random.h"
+#include "mbedtls/sha256.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -15,12 +16,18 @@
 #define NVS_SERVER_URL    "SERVER_URL"
 #define NVS_DEVICE_SECRET "DEV_SECRET"
 #define NVS_LOCAL_KEY     "LOCAL_KEY"
+#define NVS_CLAIM_CODE    "CLAIM_CODE"
+
+// no 0/O, 1/I/L, 5/S, 8/B: read from a phone screen and typed in elsewhere
+static const char claim_alphabet[] = "ACDEFGHJKMNPQRTUVWXYZ234679";
 
 static SemaphoreHandle_t config_mutex;
 
 static char device_id[DEVICE_ID_LEN + 1];
 static char device_secret[DEVICE_SECRET_LEN + 1];
 static char local_key[LOCAL_KEY_LEN + 1];
+static char claim_code[CLAIM_CODE_LEN + 1];
+static char claim_hash[65];
 static char server_url[SERVER_URL_MAX];
 
 /* ----------------------------------------------------------------------- */
@@ -63,6 +70,36 @@ static void load_or_create(const char *key, char *value, size_t hex_len) {
     DEBUG("%s created\n", key);
 }
 
+static bool is_claim_code(const char *str) {
+    if (strlen(str) != CLAIM_CODE_LEN) {
+        return false;
+    }
+    for (size_t i = 0; i < CLAIM_CODE_LEN; i++) {
+        if (strchr(claim_alphabet, str[i]) == NULL) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void load_claim_code(void) {
+    if (!nvs_queue_job(NVS_CLAIM_CODE, claim_code, sizeof(claim_code), STRING, READ) || !is_claim_code(claim_code)) {
+        for (size_t i = 0; i < CLAIM_CODE_LEN; i++) {
+            claim_code[i] = claim_alphabet[esp_random() % (sizeof(claim_alphabet) - 1)];
+        }
+        claim_code[CLAIM_CODE_LEN] = '\0';
+        if (!nvs_queue_job(NVS_CLAIM_CODE, claim_code, 0, STRING, WRITE)) {
+            DEBUG_F_ERROR("%s not stored, a new one is made on the next boot\n", NVS_CLAIM_CODE);
+        }
+    }
+
+    uint8_t digest[32];
+    mbedtls_sha256((const unsigned char *)claim_code, CLAIM_CODE_LEN, digest, 0);
+    for (int i = 0; i < 32; i++) {
+        snprintf(&claim_hash[2 * i], 3, "%02x", digest[i]);
+    }
+}
+
 void config_load(void) {
     config_mutex = xSemaphoreCreateMutex();
 
@@ -72,6 +109,7 @@ void config_load(void) {
 
     load_or_create(NVS_DEVICE_SECRET, device_secret, DEVICE_SECRET_LEN);
     load_or_create(NVS_LOCAL_KEY, local_key, LOCAL_KEY_LEN);
+    load_claim_code();
 
     if (!nvs_queue_job(NVS_SERVER_URL, server_url, sizeof(server_url), STRING, READ) || server_url[0] == '\0') {
         strlcpy(server_url, CONFIG_KIBBL_SERVER_URL, sizeof(server_url));
@@ -83,6 +121,7 @@ void config_reset(void) {
     nvs_remove_key(NVS_SERVER_URL);
     nvs_remove_key(NVS_DEVICE_SECRET);
     nvs_remove_key(NVS_LOCAL_KEY);
+    nvs_remove_key(NVS_CLAIM_CODE);
 }
 
 const char *config_device_id(void) {
@@ -95,6 +134,14 @@ const char *config_device_secret(void) {
 
 const char *config_local_key(void) {
     return local_key;
+}
+
+const char *config_claim_code(void) {
+    return claim_code;
+}
+
+const char *config_claim_hash(void) {
+    return claim_hash;
 }
 
 /* ----------------------------------------------------------------------- */

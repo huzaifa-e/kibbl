@@ -26,8 +26,8 @@ typedef enum {
 
 extern EventGroupHandle_t wifi_event_group;
 
-/* Starts station mode with the stored network, or SoftAP provisioning ("KIBBL-xxxxxx",
- * ESP SoftAP Prov app, proof of possession CONFIG_KIBBL_PROV_POP) when none is stored.
+/* Starts station mode with the stored network, or the setup portal (KL_portal: the
+ * Wi-Fi "kibbl-xxxx" with a page to choose the network) when none is stored.
  * Needs the default event loop. */
 void wifi_start(void);
 

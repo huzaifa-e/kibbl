@@ -84,20 +84,20 @@ void app_main(void) {
 
 /* ----------------------------------------------------------------------- */
 
-/* Starts what needs the home network once there is an ip address and the
- * provisioning access point is gone. */
+/* Starts what needs the home network once there is an ip address: the server at once
+ * (the setup page waits for it to pair the device), the name on the home network once
+ * the setup portal is gone. */
 void network_task(void *pvParams) {
     xEventGroupWaitBits(wifi_event_group, WIFI_GOT_IP_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+    stream_start();
+
     while (xEventGroupGetBits(wifi_event_group) & WIFI_PROV_ACTIVE_BIT) {
         delay_ms(500);
     }
-
     if (mdns_init() == ESP_OK) {
         mdns_hostname_set(wifi_hostname());
         mdns_instance_name_set("kibbl. air");
     }
-
-    stream_start();
 
     vTaskDelete(NULL);
 }

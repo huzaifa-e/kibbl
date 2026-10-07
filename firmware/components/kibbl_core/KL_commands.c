@@ -67,8 +67,12 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
     product_add_info(json, source);
 
     if (source == CMD_SOURCE_SERIAL) {
-        // the server url goes to the person holding the device only
+        // the server url and the pairing code go to the person holding the device only
         cJSON_AddStringToObject(json, "server", config_server_url());
+        cJSON_AddStringToObject(json, "claimCode", config_claim_code());
+    } else {
+        // the server takes a device into the account of who types the code (Devices, Add with a code)
+        cJSON_AddStringToObject(json, "claimHash", config_claim_hash());
     }
 }
 
