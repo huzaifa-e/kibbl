@@ -1,5 +1,6 @@
 import './main';
 import { version } from '../../../shared/version';
+import { load as loadAssistant } from './assistant';
 import { byId, errorAlert, isDarkMode, setTheme, successAlert } from './utils';
 
 function render() {
@@ -49,7 +50,12 @@ function render() {
                     <div class="card-footer text-secondary small">kibbl. ${version}</div>
                 </div>
             </div>
+            <div class="col-12">
+                <div class="card" id="assistant-card"></div>
+            </div>
         </div>`;
+
+    void loadAssistant(byId('assistant-card'));
 
     byId('dark-mode').addEventListener('change', (e) => setTheme((e.target as HTMLInputElement).checked ? 'dark' : 'light'));
 
