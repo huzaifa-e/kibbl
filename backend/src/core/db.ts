@@ -66,6 +66,7 @@ async function init() {
         air: { type: Schema.Types.Mixed },
         fanSettings: { type: Schema.Types.Mixed },
         lamp: { type: Schema.Types.Mixed },
+        claimHash: String,
         night: {
             enabled: { type: Boolean, default: nightDefaults.enabled },
             from: { type: Number, default: nightDefaults.from },

@@ -28,7 +28,8 @@ One ESP-IDF project per product (`cam/`, `air/`) on the shared component `compon
 | `KL_stream`     | websocket to the server: hello, telemetry, commands, frames at the server's rate |
 | `KL_local_http` | page and mjpeg stream on the home network (port 80/81, local key) |
 | `KL_commands`   | the command set of serial and server (`docs/protocol.md`) |
-| `KL_wifi_prov`  | SoftAP provisioning (`KIBBL-xxxxxx`, security 1), reconnect with back-off, scan, network change with fallback |
+| `KL_wifi_prov`  | station with the stored network, the setup portal without one, reconnect with back-off, scan, network change with fallback |
+| `KL_portal`     | setup without a cable: the open Wi-Fi `kibbl-xxxx`, a page on it (`portal.html`, captive: a name server answers every name with 192.168.4.1, every other path redirects) to pick the network and the server, the result and the pairing code; closes 3 min after the network was joined |
 | `KL_camera_config` | camera settings in nvs |
 | `KL_ota`        | https/http ota into the other slot; kept once it reached the server or ran 5 min, else rolled back |
 | `KL_light`      | flash led pwm, capped at `CONFIG_KIBBL_LIGHT_MAX_PERCENT` |

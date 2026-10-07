@@ -29,7 +29,7 @@ Table of Contents
 
 An ESP32 camera at home streams live video to a server, which shows it in a web app and records when pets or people move in front of it. Further devices (pet feeder, heating, switches) join the same server over the same protocol.
 
-* **Firmware**: ESP-IDF in C, conventions of ESW0009. Wi-Fi provisioning over SoftAP, one outbound websocket to the server (works behind the home router), jpeg frames at the rate the server asks for, local stream on the home network, firmware updates over the air with rollback.
+* **Firmware**: ESP-IDF in C, conventions of ESW0009. Wi-Fi setup from a phone (the device's own Wi-Fi with a setup page and a pairing code) or over USB, one outbound websocket to the server (works behind the home router), jpeg frames at the rate the server asks for, local stream on the home network, firmware updates over the air with rollback.
 * **Server**: Node/TypeScript as in the enny-cloud-app-service. Pairs devices (trust on first use, approved in the app), relays the stream as mjpeg, detects motion and logs it as activity; a picture of each movement is kept only where the camera's settings allow it, and deleted with its event after `RETENTION_DAYS`.
 * **App**: live view with snapshot and full screen, camera and light controls, motion sensitivity, quiet hours and whether pictures are kept, activity heatmap with the usual range per hour, timeline, device management with firmware upload.
 * **Air**: a kibbl. air (the Conny CO2 traffic light with a new firmware) shows the CO₂ of a room on its light and in the app, gives health hints on temperature and humidity (cold, heat, dry air, mould on outer walls), counts cigarettes, notices open windows and warns of a possible fire (next to a smoke alarm, not instead of one); a lamp with fading looks and a night mode on schedule.
@@ -88,7 +88,7 @@ In a folder whose path contains parentheses, add `-B <build dir outside of it>` 
 
 **In the app** (Chrome or Edge on a computer): plug the camera in by USB, open **Devices → Set up over USB**, pick the port, name it, choose the Wi-Fi from the scan and enter the password. The app writes the network and the server address over the cable, the server approves the device on its first connection, and the dialog waits until it is online. Later Wi-Fi changes: Devices → Actions → **Wi-Fi network**; a network that does not work is undone after 30 s.
 
-Without a computer: after the first flash the red led blinks slowly and the camera opens the Wi-Fi **KIBBL-xxxxxx**; connect it with the *ESP SoftAP Prov* app (proof of possession `kibbl-setup`), then approve it under Devices. The led blips every 3 s while it is connected.
+**With a phone, no cable:** a device without a network opens the Wi-Fi **kibbl-xxxx** (the red led of the camera blinks slowly, the kibbl. air blinks white). Join it with the phone: the setup page opens by itself (else `http://192.168.4.1`). Choose the home Wi-Fi and its password; once connected the page shows a pairing code. Back on the usual Wi-Fi, **Devices → Add with a code** puts the device into your account. The setup Wi-Fi closes 3 minutes after the device joined. The led of the camera blips every 3 s while it is connected.
 
 Power cycling the camera three times within 10 s each forgets the Wi-Fi and starts provisioning again.
 

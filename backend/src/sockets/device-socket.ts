@@ -103,7 +103,7 @@ async function authenticate(req: IncomingMessage): Promise<{ deviceId: string; a
     }
     await Device.create({
         _id: deviceId,
-        name: `Camera ${deviceId.slice(-4)}`,
+        name: `Device ${deviceId.slice(-4)}`,
         secretHash: hash,
         status: 'pending',
         caps: [],

@@ -100,9 +100,25 @@ function render() {
                 <span class="hud-icon hud-pine"><i class="ti ti-plug-connected"></i></span>
                 <div class="flex-fill">
                     <div class="fw-bold">Add or move a device</div>
-                    <div class="text-secondary small">Plug it into this computer: choose its Wi-Fi and name here, and it joins your home by itself.</div>
+                    <div class="text-secondary small">With a phone: the device opens its own Wi-Fi, a page there connects it to yours and gives a code to enter here. Or plug it into this computer.</div>
                 </div>
-                ${usb}
+                <div class="btn-list">
+                    <button class="btn btn-primary" data-action="claim"><i class="ti ti-qrcode me-1"></i> Add with a code</button>
+                    ${usb.replace('btn-primary', 'btn-outline-primary')}
+                </div>
+            </div>
+            <div class="card-body border-top d-none" id="claim-panel">
+                <ol class="mb-3">
+                    <li>A new device opens the Wi-Fi <b>kibbl-xxxx</b> by itself. To set up one that had a network: hold the button of a kibbl. air for 10 seconds; switch a kibbl. cam off and on three times, each within 10 seconds.</li>
+                    <li>Join <b>kibbl-xxxx</b> with your phone. The setup page opens (else go to <span class="text-mono">192.168.4.1</span>).</li>
+                    <li>Choose your Wi-Fi and its password. When it says <i>connected</i>, it shows a code.</li>
+                    <li>Back on your usual Wi-Fi, enter the code here.</li>
+                </ol>
+                <form class="row g-2 align-items-end" id="claim-form">
+                    <div class="col-sm-4"><label class="form-label">Code</label><input class="form-control text-mono text-uppercase" id="claim-code" placeholder="ABCD-EFGH" maxlength="9" autocomplete="off" required /></div>
+                    <div class="col-sm-5"><label class="form-label">Name</label><input class="form-control" id="claim-name" placeholder="Living room" maxlength="40" required /></div>
+                    <div class="col-sm-3"><button class="btn btn-primary w-100" type="submit">Add</button></div>
+                </form>
             </div>
         </div>
         ${pending.length ? `<h3 class="mb-2">Waiting for approval</h3><div class="row row-cards mb-4">${pending.map(pendingCard).join('')}</div>` : ''}
@@ -300,6 +316,11 @@ async function onAction(action: string, deviceId: string) {
         setupOverUsb(() => devices);
         return;
     }
+    if (action === 'claim') {
+        byId('claim-panel').classList.toggle('d-none');
+        byId('claim-code').focus();
+        return;
+    }
     const d = devices.find((x) => x._id === deviceId);
     if (!d) return;
 
@@ -372,6 +393,26 @@ async function offerPluggedDevice() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // a device set up over its own Wi-Fi: the code its setup page showed
+    byId('container').addEventListener('submit', async (e) => {
+        if ((e.target as HTMLElement).id !== 'claim-form') return;
+        e.preventDefault();
+        const code = byId<HTMLInputElement>('claim-code').value;
+        const name = byId<HTMLInputElement>('claim-name').value.trim();
+        const res = await request<{ ok: boolean; error?: string; deviceId?: string }>('claimDevice', code, name);
+        if (!res.ok) {
+            result(errorAlert(res.error ?? 'Not added.'));
+            return;
+        }
+        const added = devices.find((d) => d._id === res.deviceId);
+        const link = added?.caps.includes('air')
+            ? ` <a href="/air/${res.deviceId}">Open it</a>`
+            : added?.caps.includes('camera')
+              ? ` <a href="/camera/${res.deviceId}">Live view</a>`
+              : '';
+        result(successAlert(`${escapeHtml(name)} is part of your home now.${link}`));
+    });
+
     byId('container').addEventListener('click', (e) => {
         const el = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
         if (!el || el.classList.contains('disabled')) return;

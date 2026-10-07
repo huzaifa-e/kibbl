@@ -39,6 +39,8 @@ declare global {
         fanSettings?: FanSettings;
         lamp?: LampSettings;
         night?: NightSchedule;
+        // sha256 of the pairing code the device shows on its setup page (KL_portal)
+        claimHash?: string;
         lastSeen?: number;
         createdAt: number;
     }

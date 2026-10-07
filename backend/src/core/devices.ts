@@ -229,6 +229,7 @@ export async function handleHello(deviceId: string, msg: Record<string, unknown>
             air: typeof msg.air === 'object' ? (msg.air as AirSettings) : undefined,
             fanSettings: typeof msg.fanSettings === 'object' ? (msg.fanSettings as FanSettings) : undefined,
             lamp: typeof msg.lamp === 'object' ? (msg.lamp as LampSettings) : undefined,
+            claimHash: typeof msg.claimHash === 'string' && /^[0-9a-f]{64}$/.test(msg.claimHash) ? msg.claimHash : undefined,
             lastSeen: Date.now(),
         },
     );

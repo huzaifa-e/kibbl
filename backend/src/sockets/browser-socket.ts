@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import {
@@ -60,6 +61,7 @@ interface ClientToServerEvents {
     getDevices: (cb: Callback<DeviceSummary[]>) => void;
     deviceCommand: (deviceId: string, command: Record<string, unknown>, cb: Callback<DeviceResponse>) => void;
     approveDevice: (deviceId: string, cb: Callback<Result>) => void;
+    claimDevice: (code: string, name: string, cb: Callback<Result & { deviceId?: string }>) => void;
     renameDevice: (deviceId: string, name: string, cb: Callback<Result>) => void;
     removeDevice: (deviceId: string, cb: Callback<Result>) => void;
     setMotionSettings: (deviceId: string, settings: Partial<MotionSettings>, cb: Callback<Result>) => void;
@@ -79,6 +81,11 @@ const isString = (v: unknown, max = 64): v is string => typeof v === 'string' &&
 const isDeviceID = (v: unknown): v is string => typeof v === 'string' && /^[0-9A-F]{12}$/.test(v);
 const isUUID = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v);
 const isCallback = (cb: unknown): cb is Callback<never> => typeof cb === 'function';
+
+// pairing codes typed per account: a few wrong ones are typos, many are guessing
+const CLAIM_TRIES = 10;
+const CLAIM_WINDOW_MS = 10 * 60_000;
+const claimTries = new Map<string, number[]>();
 
 // the device, when this user may use it (their own, or for the admin a pending one nobody owns)
 async function usableDevice(socket: BrowserSocket, deviceId: unknown) {
@@ -254,6 +261,47 @@ function registerEvents(socket: BrowserSocket) {
         await updateDemand(deviceId);
         await publishDevice(deviceId);
         cb({ ok: true });
+    });
+
+    /* A device set up over its own Wi-Fi (the setup page) is pending without an owner: the
+     * pairing code its page showed takes it into the account of who types it. */
+    socket.on('claimDevice', async (code, name, cb) => {
+        if (!isCallback(cb)) return;
+        const userID = socket.data.session.userID;
+        const tries = (claimTries.get(userID) ?? []).filter((t) => Date.now() - t < CLAIM_WINDOW_MS);
+        if (tries.length >= CLAIM_TRIES) {
+            cb({ ok: false, error: 'Too many codes tried. Wait a few minutes.' });
+            return;
+        }
+        tries.push(Date.now());
+        claimTries.set(userID, tries);
+
+        const clean = typeof code === 'string' ? code.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+        if (clean.length !== 8 || !isString(name?.trim?.(), 40)) {
+            cb({ ok: false, error: 'The code has 8 letters and digits, the name 1 to 40 characters.' });
+            return;
+        }
+        const claimHash = crypto.createHash('sha256').update(clean).digest('hex');
+        const doc = await Device.findOneAndUpdate(
+            { claimHash, status: 'pending', ownerID: { $exists: false } },
+            { $set: { status: 'approved', ownerID: userID, name: name.trim() }, $unset: { claimHash: 1 } },
+        ).lean();
+        if (!doc) {
+            log.warn('pairing code not matched', { user: socket.data.session.email });
+            cb({
+                ok: false,
+                error: 'No device waits with this code. Is it online (the setup page said connected)? A device that already has an owner has to be removed by them first.',
+            });
+            return;
+        }
+        claimTries.delete(userID);
+        forgetOwner(doc._id);
+        log.info('device paired with its code', { device: doc._id, user: socket.data.session.email });
+        hub.emit('deviceRemoved', doc._id, null); // gone from the admin's waiting list
+        setDeviceApproved(doc._id);
+        await updateDemand(doc._id);
+        await publishDevice(doc._id);
+        cb({ ok: true, deviceId: doc._id });
     });
 
     socket.on('renameDevice', async (deviceId, name, cb) => {
