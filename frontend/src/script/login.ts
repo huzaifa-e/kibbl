@@ -2,6 +2,11 @@ import './main';
 import { byId, errorAlert } from './utils';
 
 document.addEventListener('DOMContentLoaded', () => {
+    fetch('/api/account/options')
+        .then((r) => r.json())
+        .then((o: { signup: boolean }) => byId('signupLink').classList.toggle('d-none', !o.signup))
+        .catch(() => undefined);
+
     const form = byId<HTMLFormElement>('loginForm');
     const button = byId<HTMLButtonElement>('loginBtn');
     const alertContainer = byId('alertContainer');

@@ -1,5 +1,6 @@
 import express from 'express';
 import { version } from '../../../shared/version';
+import { default as initAccountRoutes } from './account';
 import { default as initAuthRoutes } from './auth';
 import { default as initFirmwareRoutes } from './firmware';
 import { default as initHealthRoutes } from './health';
@@ -14,6 +15,7 @@ export function initRoutes(app: express.Application) {
     });
 
     initAuthRoutes(app);
+    initAccountRoutes(app);
     initStreamRoutes(app);
     initFirmwareRoutes(app);
     initHealthRoutes(app);

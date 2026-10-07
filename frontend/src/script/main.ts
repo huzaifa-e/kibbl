@@ -19,7 +19,8 @@ bc.addEventListener('message', (event) => {
 });
 
 async function checkLoggedIn() {
-    if (document.getElementById('loginForm') || document.getElementById('errorPage')) {
+    // the pages before a login: log in, sign up, forgotten and new password, errors
+    if (document.querySelector('#loginForm, form[data-form], #errorPage')) {
         return;
     }
     const response = await fetch('/api/loggedIn');

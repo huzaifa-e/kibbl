@@ -6,6 +6,9 @@ import { AUTH_COOKIE, checkAuthToken } from '../core/auth';
 const pages = [
     { name: 'index', path: '', auth: true },
     { name: 'login', path: 'login', auth: false },
+    { name: 'signup', path: 'signup', auth: false },
+    { name: 'forgot', path: 'forgot', auth: false },
+    { name: 'reset', path: 'reset', auth: false },
     { name: 'camera', path: 'camera/:deviceID', auth: true },
     { name: 'activity', path: 'activity', auth: true },
     { name: 'health', path: 'health', auth: true },
