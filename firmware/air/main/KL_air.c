@@ -36,6 +36,7 @@ static volatile uint16_t calibrate_ppm = 0; // > 0: a calibration runs
 static int64_t calibrate_start         = 0;
 static int64_t detectors_from          = 0; // millis() from which smoke, window and fire rates run again
 static bool calibrate_sent             = false;
+static volatile bool detecting         = true; // false while smoke, window and fire rates pause
 
 /* ----------------------------------------------------------------------- */
 
@@ -155,19 +156,20 @@ static void air_task(void *pvParams) {
 
         /* the detectors take every reading, the light the mean. While a calibration runs and
          * the device is carried around they pause, and start over after it */
-        bool detecting = calibrate_ppm == 0 && now >= detectors_from;
-        if (detecting && !detected_before) {
+        bool detecting_now = calibrate_ppm == 0 && now >= detectors_from;
+        if (detecting_now && !detected_before) {
             smoke_reset();
             window_reset();
         }
-        detected_before = detecting;
-        if (detecting) {
+        detected_before = detecting_now;
+        detecting       = detecting_now;
+        if (detecting_now) {
             if (settings.smoke) {
                 smoke_feed(values.co2, settings.puff_rise, now);
             }
             window_feed(values.co2, values.temperature, now);
         }
-        fire_feed(values.co2, values.temperature, now, detecting); // 60 °C at the sensor counts always
+        fire_feed(values.co2, values.temperature, now, detecting_now); // 60 °C at the sensor counts always
 
         samples[sample_count % MEAN_SAMPLES] = values.co2;
         sample_count++;
@@ -245,6 +247,10 @@ bool air_calibrate(uint16_t ppm) {
 
 bool air_calibrating(void) {
     return calibrate_ppm != 0;
+}
+
+bool air_detecting(void) {
+    return calibrate_ppm == 0 && detecting;
 }
 
 void air_set_night(bool on) {

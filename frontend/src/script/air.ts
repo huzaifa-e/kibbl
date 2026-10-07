@@ -147,6 +147,8 @@ function renderTiles() {
     const d = device!;
     const s = d.online ? d.air?.state : undefined;
     const settings = d.air?.settings;
+    // while a calibration runs the device does not watch the window, whatever an older firmware reports
+    const windowState = s ? (s.calibrating ? 'paused' : s.window) : undefined;
     const levelText: Record<string, string> = { green: 'fresh', yellow: 'time to air', red: 'air now', none: 'measuring' };
     byId('air-tiles').innerHTML =
         tile(
@@ -183,11 +185,17 @@ function renderTiles() {
         ) +
         tile(
             'window',
-            s?.window === 'open' ? 'var(--tblr-orange)' : tone('olive'),
+            windowState === 'open' ? 'var(--tblr-orange)' : windowState === 'paused' ? 'var(--tblr-secondary)' : tone('olive'),
             'Window',
-            s ? (s.window === 'open' ? 'open' : 'closed') : '–',
+            windowState ?? '–',
             '',
-            s?.night ? '<i class="ti ti-moon"></i> night mode' : s?.calibrating ? 'calibrating' : '',
+            s?.calibrating
+                ? 'detection paused while calibrating'
+                : windowState === 'paused'
+                  ? 'detection paused while it settles'
+                  : s?.night
+                    ? '<i class="ti ti-moon"></i> night mode'
+                    : '',
         );
 
     const alerts: string[] = [];

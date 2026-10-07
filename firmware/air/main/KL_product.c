@@ -36,7 +36,7 @@ static void add_state(cJSON *json) {
     }
     cJSON_AddStringToObject(json, "level", air_level_name(state.level));
     cJSON_AddNumberToObject(json, "fan", fan_level_now());
-    cJSON_AddStringToObject(json, "window", window_open() ? "open" : "closed");
+    cJSON_AddStringToObject(json, "window", !air_detecting() ? "paused" : window_open() ? "open" : "closed");
     cJSON_AddBoolToObject(json, "night", air_night());
     cJSON_AddBoolToObject(json, "calibrating", air_calibrating());
     cJSON_AddNumberToObject(json, "puffs", smoke_puffs_now());

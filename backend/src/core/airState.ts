@@ -15,7 +15,7 @@ export function parseAirState(msg: Record<string, unknown>): AirState | undefine
         humidity: num('humidity'),
         level: levels.includes(msg.level as AirLevel) ? (msg.level as AirLevel) : 'none',
         fan: num('fan') ?? 0,
-        window: msg.window === 'open' ? 'open' : 'closed',
+        window: msg.window === 'open' || msg.window === 'paused' ? msg.window : 'closed',
         night: msg.night === true,
         calibrating: msg.calibrating === true,
         puffs: num('puffs') ?? 0,

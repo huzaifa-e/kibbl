@@ -39,6 +39,8 @@ void air_apply(const air_settings_t *settings);
  * stands in fresh air, then the sensor takes the value. False while one runs. */
 bool air_calibrate(uint16_t ppm);
 bool air_calibrating(void);
+// false while the detectors pause: during a calibration and CALIBRATE_SETTLE_MS after it
+bool air_detecting(void);
 
 /* Night mode, sent by the server on the schedule of the device: the lamp off, the buzzer
  * muted, the fan at most at nightFan. Not stored: a restart is day until the server
