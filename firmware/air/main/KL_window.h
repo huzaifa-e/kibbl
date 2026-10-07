@@ -18,6 +18,9 @@ extern "C" {
  * the sensor. Drops count from the highest of the 30 s means over the last WINDOW_SPAN_MS;
  * closed again when the temperature or the CO2 rise. A window that was open before the
  * device measured is not seen: it notices the opening.
+ *
+ * A steep fall of the raw readings (a trend over 60 s, from a level that was not lower
+ * before, unlike a cigarette's puff) counts within about a minute.
  */
 
 #define WINDOW_SPAN_MS  (3 * 60 * 1000)

@@ -14,6 +14,7 @@ typedef enum {
     TONE_CALIBRATE_START,
     TONE_CALIBRATE_END,
     TONE_LOGGED, // a cigarette logged with the button
+    TONE_WINDOW, // a window was seen opening
 } buzzer_tone_t;
 
 bool buzzer_setup(void);

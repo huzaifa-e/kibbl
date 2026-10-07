@@ -2,6 +2,7 @@
 
 #include "cJSON.h"
 
+#include "KL_buzzer.h"
 #include "KL_events.h"
 #include "KL_serial.h"
 
@@ -68,6 +69,9 @@ static void push_event(const char *state, int64_t now_ms, const mean_t *from, co
     } else if (opened_at_start) {
         // found open after a restart, not seen opening: shown, no alert (an update while the air is fresh)
         cJSON_AddBoolToObject(json, "atStart", true);
+    } else {
+        // seen opening: a short tone says it was noticed (muted at night like all of them)
+        buzzer_play(TONE_WINDOW);
     }
     events_push(json);
 }
@@ -126,7 +130,67 @@ static void decide(int64_t now_ms) {
     }
 }
 
+/* The fast rule, on the raw readings (every 2 s): the CO2 of a room with an open window falls
+ * by its excess over outside air times 10-20 air changes an hour, ~25 ppm a minute at
+ * 150 ppm above it; people leaving a shut room make under 1 ppm a minute. A trend line
+ * through the last 60 s and the last 30 s, both steep enough, and FAST_MIN_FALL ppm in all:
+ * open within about a minute. */
+#define FAST_SAMPLES      30    // 60 s of readings
+#define FAST_MIN_RATE     8.0f  // ppm a minute at least
+#define FAST_EXCESS_SHARE 0.06f // or this share of the excess over fresh air a minute, if more
+#define FAST_MIN_FALL     15.0f // ppm between the first and the last of the 60 s
+#define FAST_FROM_STEADY  20.0f // ppm the level before may lie below the start of the fall
+
+static float fast_co2[FAST_SAMPLES];
+static int64_t fast_at[FAST_SAMPLES];
+static int fast_count = 0; // readings in the ring, at most FAST_SAMPLES
+static int fast_head  = 0; // where the next goes
+
+// ppm a minute of the n newest readings, by least squares
+static float fast_slope(int n) {
+    float sx = 0, sy = 0, sxx = 0, sxy = 0;
+    int64_t t0 = fast_at[(fast_head - 1 + FAST_SAMPLES) % FAST_SAMPLES];
+    for (int i = 0; i < n; i++) {
+        int k   = (fast_head - 1 - i + 2 * FAST_SAMPLES) % FAST_SAMPLES;
+        float x = (float)(fast_at[k] - t0) / 60000.0f; // minutes, negative into the past
+        float y = fast_co2[k];
+        sx += x, sy += y, sxx += x * x, sxy += x * y;
+    }
+    float d = n * sxx - sx * sx;
+    return d != 0 ? (n * sxy - sx * sy) / d : 0;
+}
+
+static void fast_rule(float co2, float temperature, int64_t now_ms) {
+    fast_co2[fast_head] = co2;
+    fast_at[fast_head]  = now_ms;
+    fast_head           = (fast_head + 1) % FAST_SAMPLES;
+    if (fast_count < FAST_SAMPLES) {
+        fast_count++;
+    }
+    if (open || fast_count < FAST_SAMPLES) {
+        return;
+    }
+    float oldest = fast_co2[fast_head]; // the slot written next holds the oldest
+    float excess = co2 - fresh_max;
+    float need   = excess * FAST_EXCESS_SHARE > FAST_MIN_RATE ? excess * FAST_EXCESS_SHARE : FAST_MIN_RATE;
+    float slope60 = fast_slope(FAST_SAMPLES);
+    float slope30 = fast_slope(FAST_SAMPLES / 2);
+    /* a cigarette's puff spikes and falls back to where it came from: the level before the 60 s
+     * (the oldest 30 s mean, 2-3 minutes back) must not be lower than at their start */
+    bool from_steady = means_count >= MIN_MEANS && means[0].co2 >= oldest - FAST_FROM_STEADY;
+    if (from_steady && slope60 <= -need && slope30 <= -need && oldest - co2 >= FAST_MIN_FALL) {
+        open            = true;
+        opened_ms       = now_ms;
+        opened_at_start = false;
+        mean_t before = {.co2 = oldest, .temperature = temperature};
+        mean_t now    = {.co2 = co2, .temperature = temperature};
+        DEBUG_F("window: open (CO2 falling %.0f ppm/min, %.0f -> %.0f ppm in 60 s)\n", -slope60, oldest, co2);
+        push_event("open", now_ms, &before, &now);
+    }
+}
+
 void window_feed(float co2, float temperature, int64_t now_ms) {
+    fast_rule(co2, temperature, now_ms);
     if (sum_count == 0) {
         mean_start = now_ms;
     }
@@ -153,6 +217,7 @@ void window_feed(float co2, float temperature, int64_t now_ms) {
 
 void window_reset(void) {
     start_guess = false;
+    fast_count  = 0;
     means_count = 0;
     sum_count   = 0;
     sum_co2 = sum_temp = 0;

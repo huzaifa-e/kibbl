@@ -24,6 +24,8 @@ static const note_t tone_red[]             = {{850, 110, 100}, {850, 110, 100}, 
 static const note_t tone_calibrate_start[] = {{300, 180, 80}, {500, 280, 100}};
 static const note_t tone_calibrate_end[]   = {{500, 280, 100}, {300, 180, 80}};
 static const note_t tone_logged[]          = {{620, 110, 95}, {735, 180, 100}};
+// two rising tones, softer than the alarms: fresh air comes in
+static const note_t tone_window[]          = {{660, 90, 70}, {990, 140, 0}};
 // the temporal pattern of smoke alarms (ISO 8201): three tones, a pause
 static const note_t tone_alarm[] = {{3100, 500, 500}, {3100, 500, 500}, {3100, 500, 1500}};
 
@@ -37,6 +39,7 @@ static const struct {
     [TONE_CALIBRATE_START] = {tone_calibrate_start, sizeof(tone_calibrate_start) / sizeof(note_t)},
     [TONE_CALIBRATE_END]   = {tone_calibrate_end, sizeof(tone_calibrate_end) / sizeof(note_t)},
     [TONE_LOGGED]          = {tone_logged, sizeof(tone_logged) / sizeof(note_t)},
+    [TONE_WINDOW]          = {tone_window, sizeof(tone_window) / sizeof(note_t)},
 };
 
 static bool available       = false;
