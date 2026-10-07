@@ -38,14 +38,14 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
 
 ```sh
 └── kibbl/
-    ├── firmware/                 ESP-IDF project (C)
-    │   ├── main/
-    │   │   ├── main.c            entry point app_main()
-    │   │   ├── KL_*.c / KL_*.h   modules, one task each (see docs/architecture.md)
-    │   │   ├── Kconfig.projbuild board, server url, provisioning pop
-    │   │   └── web/index.html    local stream page
-    │   ├── kibbl_partition_tbl.csv  two OTA slots on 4 MB flash
-    │   ├── sdkconfig.defaults
+    ├── firmware/                 ESP-IDF (C), one project per product
+    │   ├── components/kibbl_core/  shared: server link, commands, wifi, ota, nvs, serial;
+    │   │                         KL_product.h is what a product implements
+    │   ├── cam/                  kibbl. cam (ESP32-CAM, Freenove S3)
+    │   │   ├── main/             camera, frames, light, local stream page (web/index.html)
+    │   │   └── sdkconfig.defaults, kibbl_partition_tbl.csv
+    │   ├── air/                  kibbl. air (Conny CO2 traffic light EHW0001-0013, ESP32-C3)
+    │   │   └── main/             SCD30, traffic light, fan, buzzer, button, smoke and window detection
     │   ├── create_build_info.sh  FW_VERSION for CI builds
     │   └── env.sh                ESP-IDF v5.1.6 environment
     ├── backend/                  server (TypeScript, Express, socket.io, ws, MongoDB)
@@ -72,12 +72,14 @@ Module files start with KL_ (for kibbl.) to distinguish them from ESP-IDF and co
 ### Firmware
 
 ```sh
-cd firmware
-source env.sh                                    # ESP-IDF v5.1.6
-idf.py set-target esp32                          # esp32s3 for the Freenove board
-idf.py menuconfig                                # kibbl.: board, server url, pop
+source firmware/env.sh                           # ESP-IDF v5.1.6
+cd firmware/cam                                  # or firmware/air (the Conny)
+idf.py set-target esp32                          # esp32s3 for the Freenove board, esp32c3 for air
+idf.py menuconfig                                # kibbl. core: server url, pop; kibbl. cam: board
 idf.py -p /dev/cu.usbserial-XXXX -b 460800 flash monitor
 ```
+
+The Conny is flashed through the EHW0016 Tag-Connect adapter with its FlipFlop jumpers on **Off** (`(16) Programming Adapter` README), at 115200 baud.
 
 In a folder whose path contains parentheses, add `-B <build dir outside of it>` to every `idf.py` call (ESP-IDF 5.1 quotes that path wrongly).
 

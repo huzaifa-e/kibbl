@@ -15,19 +15,44 @@
 
 Modules follow ESW0009: one encapsulated task per `KL_*.c` file (the prefix ESW0009 spells `IC_`), `DEBUG*` macros for the serial output, settings in nvs through `KL_nvs`.
 
+One ESP-IDF project per product (`cam/`, `air/`) on the shared component `components/kibbl_core`: `KL_stream`, `KL_commands`, `KL_wifi_prov`, `KL_config` (server url, device secret, local key), `KL_ota`, `KL_nvs`, `KL_serial`, `KL_time`. The core calls the product through `KL_product.h` (info, its commands, telemetry, the stream work, what stops for an update, factory reset) and shows its status through `KL_status_led.h`; each product implements both in its `main` (linked as `WHOLE_ARCHIVE`, nothing in `main` calls the hooks itself).
+
+### kibbl. cam (`cam/`)
+
 | Module          | Task |
 | --------------- | ---- |
-| `main.c`        | boot order, network start, serial commands, three-power-cycle Wi-Fi reset |
+| `main.c`        | boot order, network start, three-power-cycle Wi-Fi reset |
+| `KL_product`    | the core's hooks: camera info and commands, frames to the server at its rate |
 | `KL_camera`     | esp32-camera driver, jpeg, settings applied to the sensor |
 | `KL_frame`      | one camera task at the highest rate any consumer asks for; the latest frame is copied out per consumer, so a slow upload never holds a driver buffer |
 | `KL_stream`     | websocket to the server: hello, telemetry, commands, frames at the server's rate |
 | `KL_local_http` | page and mjpeg stream on the home network (port 80/81, local key) |
 | `KL_commands`   | the command set of serial and server (`docs/protocol.md`) |
 | `KL_wifi_prov`  | SoftAP provisioning (`KIBBL-xxxxxx`, security 1), reconnect with back-off, scan, network change with fallback |
-| `KL_config`     | server url, device secret, local key, camera settings |
+| `KL_camera_config` | camera settings in nvs |
 | `KL_ota`        | https/http ota into the other slot; kept once it reached the server or ran 5 min, else rolled back |
 | `KL_light`      | flash led pwm, capped at `CONFIG_KIBBL_LIGHT_MAX_PERCENT` |
 | `KL_status_led` | red led: slow = provisioning, fast = connecting, three blinks = Wi-Fi connected, blip = online, double = no camera |
+
+### kibbl. air (`air/`): the Conny CO2 traffic light
+
+ISIS IC EHW0001-0013 with a new firmware (the original ESW0002 is backed up in `(40) Conny/backup`). ESP32-C3; the SCD30 and an io expander (PCA9554 or PCF8574A, found at boot) on one I2C bus (IO4/IO5, 100 kHz); the leds (red, green, amber, neutral white, on/off through constant current drivers) and the WDI of the external watchdog MAX6371 are expander pins. Everything below runs without the network; events wait for the server.
+
+| Module          | Task |
+| --------------- | ---- |
+| `main.c`        | boot order: the watchdog feed first, then the measurement, then the network |
+| `KL_product`    | the core's hooks: state, commands (`air_config`, `fan`, `lamp`, `blink`, `night`, `calibrate`), telemetry, events |
+| `KL_air`        | the measurement task: SCD30 every 2 s, the mean of 3 for the traffic light with 50 ppm hysteresis, buzzer, fan auto, the detectors, forced recalibration, night mode; temperature corrected for the warmth of the board (ESW0002's measurements: 4-12 °C by leds and fan) |
+| `KL_smoke`      | cigarettes from CO2 puffs of exhaled smoke (a short spike above a slow baseline, back within 90 s; 3 puffs within 4 min); the button logs one by hand, the event says whether a press belongs to it |
+| `KL_window`     | an open window: 30 s means over 3 min, the CO2 falling towards 420 ppm with the temperature, or steeply alone; closed when either rises |
+| `KL_events`     | the events queue (32), sent in order with their age once the server is reached |
+| `KL_scd30`      | Sensirion SCD30 over I2C with crc, settings written only when they differ (they live in its flash) |
+| `KL_ioexp`      | the expander, the power-on flag (it keeps its state over an ESP reset), the watchdog feed task (1 s) |
+| `KL_lamp`       | the traffic light task: blinks, provisioning and errors in white, night off, modes traffic/off/white/warm/candle/custom colours; a change fades over 0.6 s by switching fast between the old and the new look |
+| `KL_fan`        | pwm 25 kHz: off, on, pulse, auto (from yellow), capped at night |
+| `KL_buzzer`     | the tones of ESW0002 on a timer, muted at night |
+| `KL_button`     | short press: a cigarette logged; held 10 s: the Wi-Fi forgotten |
+| `KL_air_config` | thresholds, buzzer, asc, altitude, lamp, fan, smoke, night fan in nvs |
 
 Memory: frames live in PSRAM (4 MB on the ESP32-CAM); the driver keeps two UXGA-sized jpeg buffers, the hub and each consumer one copy that grows with the frame.
 

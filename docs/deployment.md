@@ -165,12 +165,16 @@ Set `DEVICE_BASE_URL` to that url (`docker compose up -d --force-recreate app`) 
 ## Firmware
 
 ```bash
-cd firmware
-source env.sh
-idf.py -B ~/esp/builds/kibbl-fw set-target esp32
-idf.py -B ~/esp/builds/kibbl-fw -p /dev/cu.usbserial-XXXX -b 460800 flash monitor
+source firmware/env.sh
+cd firmware/cam
+idf.py -B ~/esp/builds/kibbl-cam set-target esp32
+idf.py -B ~/esp/builds/kibbl-cam -p /dev/cu.usbserial-XXXX -b 460800 flash monitor
+
+cd ../air                                        # the Conny (kibbl. air), EHW0016 adapter, FlipFlop Off
+idf.py -B ~/esp/builds/kibbl-air set-target esp32c3
+idf.py -B ~/esp/builds/kibbl-air -p /dev/cu.usbserial-XXXX -b 115200 flash monitor
 ```
 
 `-B` puts the build outside the repository folder: ESP-IDF 5.1 cannot build in a path with parentheses (`(39) home-monitor`). In a checkout without them `idf.py build` works as usual. 921600 baud is too fast for the ESP32-CAM-MB adapter.
 
-Updates after the first flash: Devices → Actions → Update firmware with `build/KIBBL-FW.bin`. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+Updates after the first flash: Devices → Actions → Update firmware with `KIBBL-FW.bin` (cam) or `KIBBL-AIR.bin` (air) from the build folder. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.

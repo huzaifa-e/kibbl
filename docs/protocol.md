@@ -60,6 +60,19 @@ The device pings every 10 s; the server closes a connection that was silent for 
 { "type": "telemetry", "uptime": 3600, "rssi": -61, "heap": 150000, "psram": 3300000, "cameraFps": 2, "fps": 2, "frameBytes": 24500 }
 ```
 
+A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mean of 3 readings), `temperature` (°C, corrected for the warmth of the board), `humidity`, `level` (`none`, `green`, `yellow`, `red`), `fan` (pwm % now), `window` (`open`, `closed`), `night`, `calibrating`, `puffs` (of a cigarette going on); its hello also `air`, `fanSettings` and `lamp` (the settings below), `sensor`, `expander`, `powerOn`.
+
+### `event` (kibbl. air)
+
+```json
+{ "type": "event", "event": "smoke", "source": "auto", "puffs": 5, "durationSeconds": 240, "peakPpm": 1310, "button": false, "delaySeconds": 240, "ageSeconds": 0 }
+{ "type": "event", "event": "smoke", "source": "button", "ageSeconds": 0 }
+{ "type": "event", "event": "window", "state": "open", "co2": 640, "co2Before": 1020, "temperatureChange": -0.9, "ageSeconds": 0 }
+{ "type": "event", "event": "window", "state": "closed", "co2": 610, "co2Before": 580, "temperatureChange": 0.4, "openSeconds": 720, "ageSeconds": 0 }
+```
+
+The device has no clock: an event happened `ageSeconds` (it waited for the server) plus `delaySeconds` (a cigarette is known only 4 min after its last puff) before it arrived. A cigarette found by the detector with `button: true` was logged with the button already and counts once.
+
 ### `response` (to every command)
 
 ```json
@@ -84,11 +97,16 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `stream`      | camera     | `fps` 0–255 (capped by the device, 15 on the ESP32-CAM); 0 stops             | – |
 | `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2 | `camera`: all settings |
 | `light`       | light      | `level` 0–100                                                                | `light` |
-| `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level | – |
+| `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level (air: `count` only) | – |
 | `ota`         | ota        | `url`: http(s) url of an application image                                   | – (downloads, restarts) |
 | `switch`      | switch     | `channel` (string), `on` (bool)                                              | – |
 | `feed`        | feeder     | `portions` 1–10                                                              | – |
 | `thermostat`  | thermostat | `target` 5–30 (°C)                                                           | – |
+| `air_config`  | air        | any of `yellow` 400–5000, `red` 400–10000 (> yellow), `buzzer`, `asc`, `altitude` 0–3000, `smoke`, `puffRise` 30–2000, `nightFan` 0–100 | `air`, `fanSettings`, `lamp` |
+| `fan`         | fan        | any of `mode` (`off`, `on`, `pulse`, `auto`), `level` 1–100, `onSeconds`/`offSeconds` 1–3600 | as `air_config` |
+| `lamp`        | lamp       | any of `mode` (`traffic`, `off`, `white`, `warm`, `candle`, `custom`), `colors` (of `red`, `green`, `yellow`, `white`, for custom), `fade` | as `air_config` |
+| `night`       | night      | `on` (bool): lamp off, buzzer muted, fan at most `nightFan`; not stored, the server sends it on its schedule | `night` |
+| `calibrate`   | calibrate  | `ppm` 400–2000 (420): 5 min in fresh air, then the sensor takes the value     | `pending`, `seconds` |
 
 The server asks a camera for frames only when needed: the live rate (`STREAM_FPS`, 30) while someone watches or a snapshot is due, the motion rate (`MOTION_FPS`, 2) while motion detection is on, otherwise 0.
 

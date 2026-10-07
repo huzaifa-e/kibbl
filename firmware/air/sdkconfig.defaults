@@ -1,0 +1,24 @@
+# Conny CO2 traffic light EHW0001-0013: ESP32-C3-WROOM-02-H4
+CONFIG_IDF_TARGET="esp32c3"
+
+# flash and partitions
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="kibbl_partition_tbl.csv"
+CONFIG_PARTITION_TABLE_FILENAME="kibbl_partition_tbl.csv"
+
+# an update that never reaches the server is rolled back on the next reset
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# the server may run without TLS on a home or office LAN
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# the console and the serial commands on UART0 (programming header pins 9/10). GPIO18/19,
+# the pins of the USB-Serial-JTAG, are the button and UART1 on this board
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
