@@ -4,6 +4,7 @@ import type { Weather } from '../../../shared/climate';
 import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
 import { comfortCardHtml, freshnessCardHtml } from './airCard';
+import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
@@ -161,17 +162,19 @@ async function loadAirExtras() {
 
 function renderOthers() {
     const list = others();
-    byId('other-devices').innerHTML = list
-        .map((d) =>
-            // a kibbl. air: two cards of the usual size, its controls are on its own page
-            d.caps.includes('air')
-                ? `<div class="col-md-6 col-xl-4">${freshnessCardHtml(d, weather, lastOpen.get(d._id))}</div><div class="col-md-6 col-xl-4">${comfortCardHtml(d)}</div>`
-                : `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`,
-        )
-        .join('');
+    byId('other-devices').innerHTML =
+        list
+            .map((d) =>
+                // a kibbl. air: two cards of the usual size, its controls are on its own page
+                d.caps.includes('air')
+                    ? `<div class="col-md-6 col-xl-4">${freshnessCardHtml(d, weather, lastOpen.get(d._id))}</div><div class="col-md-6 col-xl-4">${comfortCardHtml(d)}</div>`
+                    : `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`,
+            )
+            .join('') + heatingCardHtml();
     // the controls listen on the container: bound once, not on every redraw
     if (!othersBound) {
         bindControls(byId('other-devices'), (id) => devices.find((d) => d._id === id));
+        bindHeatingCard(byId('other-devices'), renderOthers);
         othersBound = true;
     }
 }
@@ -240,7 +243,13 @@ async function load() {
     renderChart();
     void renderHomeCards(byId('camera-grid'));
     void loadAirExtras();
+    void loadHeatingCard().then(() => rendered && renderOthers());
 }
+
+// tado read its rooms or a change went through: the heating card shows it
+socket.on('heatingUpdate', () => {
+    void loadHeatingCard().then(() => rendered && renderOthers());
+});
 
 // a window opened: the card of its kibbl. air says so
 socket.on('airEvent', (event: AirEvent) => {

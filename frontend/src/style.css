@@ -552,3 +552,14 @@ html[data-bs-theme='dark'] .theme-label-dark {
     opacity: 0.7;
     margin-top: 0.4rem;
 }
+
+/* the heating card of the home page: one block per room of tado */
+.heat-room + .heat-room {
+    border-top: 1px solid var(--tblr-border-color);
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+}
+.heat-value {
+    min-width: 3.6rem;
+    opacity: 1 !important;
+}
