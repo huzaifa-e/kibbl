@@ -166,8 +166,10 @@ bool product_stream_work(bool connected) {
 void product_stream_disconnected(void) {
 }
 
-// nothing competes with the download: the measurement goes on, the watchdog is fed
+// nothing competes with the download: the measurement goes on, the watchdog is fed; the
+// lamp shows that an update runs
 void product_ota_prepare(void) {
+    lamp_set_updating(true);
 }
 
 void product_reset(void) {

@@ -12,6 +12,7 @@
 #define BLINK_ON_MS     150
 #define BLINK_OFF_MS    150
 #define FADE_PERIOD_US  8000 // 125 Hz while a fade runs
+#define UPDATE_HOLD_MS  400  // between the fades of the update: the idle task and the download get the cpu
 
 static TaskHandle_t lamp_task_handle = NULL;
 
@@ -25,6 +26,7 @@ static volatile status_led_state status = LED_OFF;
 static volatile bool calibrating        = false;
 static volatile bool night              = false;
 static volatile bool alarm              = false;
+static volatile bool updating           = false;
 
 // flashes still to show, before the lamp goes back to its mode
 static volatile uint8_t blinks      = 0;
@@ -108,6 +110,12 @@ static void lamp_task(void *pvParams) {
             if (step(LAMP_MASK_RED, 250)) {
                 step(0, 250);
             }
+        } else if (updating) {
+            static const uint8_t cycle[] = {LAMP_MASK_RED, LAMP_MASK_YELLOW, LAMP_MASK_GREEN, LAMP_MASK_WHITE};
+            static uint8_t next          = 0;
+            fade_to(cycle[next]);
+            next = (next + 1) % sizeof(cycle);
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(UPDATE_HOLD_MS));
         } else if (blinks > 0) {
             flash(&blinks);
         } else if (wifi_blinks > 0) {
@@ -162,6 +170,11 @@ void lamp_set_level(air_level_t new_level) {
         level = new_level;
         wake();
     }
+}
+
+void lamp_set_updating(bool on) {
+    updating = on;
+    wake();
 }
 
 void lamp_set_alarm(bool on) {

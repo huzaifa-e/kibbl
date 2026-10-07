@@ -44,6 +44,10 @@ void lamp_blink(uint8_t count);
 // the fire alarm: red flashing, before everything else and also at night
 void lamp_set_alarm(bool alarm);
 
+/* a firmware update runs: the colours fade one into the next, round and round, until the
+ * device restarts (also at night: someone started it just now) */
+void lamp_set_updating(bool updating);
+
 // slow white blinking while a calibration runs
 void lamp_set_calibrating(bool calibrating);
 
