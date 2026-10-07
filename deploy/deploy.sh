@@ -1,16 +1,18 @@
 #!/bin/bash
 # Deploys the server to jhubuntu (or HOST): copies the repository, builds the image
-# there and restarts it. The server's .env and data/ are never overwritten.
+# there and restarts it. The server's .env and data/ are never overwritten. It reaches
+# jhubuntu over Tailscale, which works in the office and away from it.
 #
 #   ./deploy/deploy.sh            first run: creates .env from .env.example and stops
-#   HOST=other ./deploy/deploy.sh
-#   HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/deploy.sh   over Tailscale, away from the office
+#   HOST=other SSH_PORT=22 ./deploy/deploy.sh
+#   HOST=jh@10.0.1.99 ./deploy/deploy.sh                      on the office network, without Tailscale
 
 set -euo pipefail
 
-HOST="${HOST:-jhubuntu}"
+HOST="${HOST:-jh@100.84.217.119}"
+SSH_PORT="${SSH_PORT:-4711}"
 REMOTE_DIR="${REMOTE_DIR:-kibbl}"
-SSH=(ssh ${SSH_PORT:+-p "$SSH_PORT"})
+SSH=(ssh -p "$SSH_PORT" -o ConnectTimeout=20)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "Copying to $HOST:$REMOTE_DIR"

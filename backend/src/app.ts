@@ -6,6 +6,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import http from 'node:http';
 import sirv from 'sirv';
+import { version } from '../package.json';
 import db from './core/db';
 import { ensureAdminUser } from './core/auth';
 import { logger } from './core/logger';
@@ -75,6 +76,8 @@ async function main() {
 
     const httpServer = http.createServer(app);
 
+    // which version runs, without a login: to check a deployment
+    app.get('/api/version', (_req, res) => res.json({ version }));
     initRoutes(app);
     initBrowserSocket(httpServer);
     initDeviceSocket(httpServer);
@@ -104,7 +107,7 @@ async function main() {
     const port = Number(process.env.PORT);
     const ip = process.env.IP || '0.0.0.0';
     httpServer.listen(port, ip, () => {
-        log.info('listening', { url: `http://${ip}:${port}`, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, env: process.env.NODE_ENV });
+        log.info('listening', { version, url: `http://${ip}:${port}`, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, env: process.env.NODE_ENV });
     });
 }
 

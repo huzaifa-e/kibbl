@@ -12,6 +12,8 @@ fi
 # Get branch name for adding branch name to version
 # $2 is optional, $3 the product prefix (KIBBL for the cam, KIBBL-AIR); run in the project
 prefix="${3:-KIBBL}"
+# the version number of the product, raised with every change to its firmware
+version="$(tr -d '[:space:]' < VERSION)"
 
 rm -f $build_info_file
 
@@ -24,7 +26,7 @@ echo "#ifndef BUILD_INFO_H" >> $build_info_file
 echo "#define BUILD_INFO_H" >> $build_info_file
 
 # add dynamic information
-echo "#define FW_VERSION \"$prefix-$1$2\"" >> $build_info_file
+echo "#define FW_VERSION \"$prefix-$version-$1$2\"" >> $build_info_file
 
 # end of include guard
 echo "#endif" >> $build_info_file

@@ -45,9 +45,9 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
     │   ├── cam/                  kibbl. cam (ESP32-CAM, Freenove S3)
     │   │   ├── main/             camera, frames, light, local stream page (web/index.html)
     │   │   └── sdkconfig.defaults, kibbl_partition_tbl.csv
-    │   ├── air/                  kibbl. air (Conny CO2 traffic light EHW0001-0013, ESP32-C3)
+    │   ├── air/                  kibbl. air (Conny CO2 traffic light EHW0001-0013, ESP32-C3); VERSION
     │   │   └── main/             SCD30, traffic light, fan, buzzer, button, smoke and window detection
-    │   ├── create_build_info.sh  FW_VERSION for CI builds
+    │   ├── create_build_info.sh  FW_VERSION for CI builds (product, VERSION, commit)
     │   └── env.sh                ESP-IDF v5.1.6 environment
     ├── backend/                  server (TypeScript, Express, socket.io, ws, MongoDB)
     │   ├── src/core/             devices, frames, motion, auth, storage

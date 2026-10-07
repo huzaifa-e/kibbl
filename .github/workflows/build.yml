@@ -34,12 +34,13 @@ jobs:
                   fi
                   p="${{ matrix.prefix }}"
                   ../create_build_info.sh "${GITHUB_SHA::8}" "$branch" "$p"
+                  v="$(tr -d '[:space:]' < VERSION)"
                   idf.py set-target ${{ matrix.target }}
                   idf.py build
                   mkdir -p artifacts
-                  cp build/${{ matrix.image }}.bin "artifacts/$p-${GITHUB_SHA::8}$branch.bin"
+                  cp build/${{ matrix.image }}.bin "artifacts/$p-$v-${GITHUB_SHA::8}$branch.bin"
                   # decodes crash addresses the device prints
-                  cp build/${{ matrix.image }}.elf "artifacts/$p-${GITHUB_SHA::8}$branch.elf"
+                  cp build/${{ matrix.image }}.elf "artifacts/$p-$v-${GITHUB_SHA::8}$branch.elf"
                   cp build/bootloader/bootloader.bin "artifacts/$p-bootloader.bin"
                   cp build/partition_table/partition-table.bin "artifacts/$p-partition-table.bin"
                   cp build/ota_data_initial.bin "artifacts/$p-ota-data-initial.bin"

@@ -13,7 +13,8 @@ const plugins = [
     {
         name: 'inject-partials',
         transformIndexHtml(html: string): string {
-            const navbar = readFileSync(resolve(__dirname, 'src', 'partials', '_navbar.html'), 'utf-8');
+            const { version } = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
+            const navbar = readFileSync(resolve(__dirname, 'src', 'partials', '_navbar.html'), 'utf-8').replace('<!-- APP_VERSION -->', version);
             html = html.replace('<!-- NAVBAR_PLACEHOLDER -->', navbar);
 
             // Runs before first render: the stored or system theme, so a dark page never flashes white

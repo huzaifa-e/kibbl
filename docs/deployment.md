@@ -14,7 +14,7 @@ The first run copies the repository and creates `~/kibbl/.env` with a random `JW
 * `DEVICE_BASE_URL`: the server as the cameras reach it, for firmware downloads and as the address the app writes into a device set up over USB (`DEVICE_SOCKET_URL` overrides the latter)
 * `COOKIE_SECURE=true` once the app is served over https
 
-Then run `./deploy/deploy.sh` again. Away from the office, over Tailscale: `HOST=jh@100.84.217.119 SSH_PORT=4711 ./deploy/deploy.sh`. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
+Then run `./deploy/deploy.sh` again. It connects over Tailscale (`jh@100.84.217.119`, port 4711), in the office and away from it; on the office network without Tailscale: `HOST=jh@10.0.1.99 ./deploy/deploy.sh`. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
 
 ## Logs
 
@@ -177,4 +177,13 @@ idf.py -B ~/esp/builds/kibbl-air -p /dev/cu.usbserial-XXXX -b 115200 flash monit
 
 `-B` puts the build outside the repository folder: ESP-IDF 5.1 cannot build in a path with parentheses (`(39) home-monitor`). In a checkout without them `idf.py build` works as usual. 921600 baud is too fast for the ESP32-CAM-MB adapter.
 
-Updates after the first flash: Devices → Actions → Update firmware with `KIBBL-FW.bin` (cam) or `KIBBL-AIR.bin` (air) from the build folder. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+Updates after the first flash: Devices → Actions → Update firmware with `KIBBL-FW.bin` (cam) or `KIBBL-AIR.bin` (air) from the build folder, or `KIBBL-AIR-<version>-<commit>.bin` from the `firmware-air-…` artifact of the CI build. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+
+## Versions
+
+Every change raises a version number, so what runs where can be told apart:
+
+* the app: `version` in `package.json`, `backend/package.json` and `frontend/package.json` (and their entries in `package-lock.json`), all the same. The sidebar shows it, `GET /api/version` returns it without a login (`curl http://jhubuntu:8790/api/version` after a deployment), the server logs it at start.
+* the firmware: `firmware/air/VERSION` and `firmware/cam/VERSION`, one per product. The image carries `KIBBL-AIR-<version>-<commit>` (CI) or `KIBBL-AIR-<version>-WIP` (a local build), which the device list shows.
+
+A fix raises the last number, a new feature the middle one.

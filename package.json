@@ -1,6 +1,6 @@
 {
     "name": "kibbl",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "kibbl.: pet camera, feeder and home devices, with server and web app",
     "author": "Huzaifa Ejaz",
     "private": true,
