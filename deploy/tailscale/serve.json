@@ -1,0 +1,17 @@
+{
+    "TCP": { "443": { "HTTPS": true } },
+    "Web": {
+        "${TS_CERT_DOMAIN}:443": {
+            "Handlers": {
+                "/mcp": { "Proxy": "http://app:8790/mcp" },
+                "/authorize": { "Proxy": "http://app:8790/authorize" },
+                "/token": { "Proxy": "http://app:8790/token" },
+                "/register": { "Proxy": "http://app:8790/register" },
+                "/revoke": { "Proxy": "http://app:8790/revoke" },
+                "/.well-known/oauth-protected-resource": { "Proxy": "http://app:8790/.well-known/oauth-protected-resource" },
+                "/.well-known/oauth-authorization-server": { "Proxy": "http://app:8790/.well-known/oauth-authorization-server" }
+            }
+        }
+    },
+    "AllowFunnel": { "${TS_CERT_DOMAIN}:443": true }
+}

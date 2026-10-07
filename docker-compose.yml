@@ -44,6 +44,29 @@ services:
         logging: *logging
         depends_on:
             - app
+    # the public https address of the MCP endpoint for connectors (OAuth): its own device on the
+    # tailnet, https://kibbl.<tailnet>.ts.net, with Tailscale Funnel on 443 and only the MCP and
+    # OAuth paths published (deploy/tailscale/serve.json). Not started by deploy.sh; the first start
+    # needs an auth key, after that the login is kept in data/tailscale:
+    # TS_AUTHKEY=tskey-... docker compose --profile connector up -d connector
+    connector:
+        image: tailscale/tailscale:latest
+        container_name: kibbl-connector
+        hostname: kibbl
+        profiles: ['connector']
+        restart: unless-stopped
+        environment:
+            - TS_AUTHKEY=${TS_AUTHKEY:-}
+            - TS_HOSTNAME=kibbl
+            - TS_STATE_DIR=/var/lib/tailscale
+            - TS_SERVE_CONFIG=/config/serve.json
+            - TS_USERSPACE=true
+        logging: *logging
+        volumes:
+            - './data/tailscale:/var/lib/tailscale'
+            - './deploy/tailscale:/config:ro'
+        depends_on:
+            - app
     mongo:
         image: mongo:7
         container_name: kibbl-mongo
