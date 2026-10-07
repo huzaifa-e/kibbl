@@ -1,4 +1,4 @@
-menu "kibbl."
+menu "kibbl. cam"
 
     choice KIBBL_BOARD
         prompt "Camera board"
@@ -14,20 +14,6 @@ menu "kibbl."
             bool "Freenove ESP32-S3-WROOM CAM"
             depends on IDF_TARGET_ESP32S3
     endchoice
-
-    config KIBBL_SERVER_URL
-        string "Server websocket url"
-        default "ws://10.0.1.99:8790/device/socket"
-        help
-            Where the device sends its frames and takes its commands from. wss:// is
-            checked against the ESP-IDF certificate bundle. The serial command
-            {"cmd":"server","url":"..."} overrides it and keeps the value in nvs.
-
-    config KIBBL_PROV_POP
-        string "Wi-Fi provisioning proof of possession"
-        default "kibbl-setup"
-        help
-            Asked by the ESP SoftAP Prov app while the device is unprovisioned.
 
     config KIBBL_LOCAL_HTTP
         bool "Local stream on the home network"

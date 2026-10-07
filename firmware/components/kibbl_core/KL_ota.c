@@ -11,8 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "KL_camera.h"
-#include "KL_frame.h"
+#include "KL_product.h"
 #include "KL_serial.h"
 #include "KL_time.h"
 
@@ -26,15 +25,8 @@ static char ota_url[OTA_URL_MAX];
 static void ota_task(void *pvParams) {
     DEBUG_F("ota: downloading %s\n", ota_url);
 
-    // the stream competes for the same link and PSRAM
-    for (int i = 0; i < FRAME_CONSUMERS; i++) {
-        frame_set_demand((frame_consumer_t)i, 0);
-    }
-    /* The camera keeps capturing without consumers; with the cache paused for the flash
-     * writes its interrupt trips the watchdog and the board resets halfway (TG1WDT).
-     * The frame task lets go of its frame within one frame time once nobody asks. */
-    delay_ms(300);
-    camera_stop();
+    // the product stops what competes for the link, the memory and the flash
+    product_ota_prepare();
 
     esp_http_client_config_t http_config = {
         .url               = ota_url,
@@ -53,7 +45,7 @@ static void ota_task(void *pvParams) {
         esp_restart();
     }
 
-    // the camera is stopped for good: a restart brings it back, on the image that runs now
+    // what the product stopped comes back with the restart, on the image that runs now
     DEBUG_F_ERROR("ota: failed (%s), restarting\n", esp_err_to_name(err));
     delay_ms(500);
     esp_restart();

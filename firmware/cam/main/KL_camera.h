@@ -11,7 +11,7 @@ extern "C" {
 
 #include "esp_camera.h"
 
-#include "KL_config.h"
+#include "KL_camera_config.h"
 
 // powers the sensor and starts the driver; false when no sensor answers
 bool camera_init(void);

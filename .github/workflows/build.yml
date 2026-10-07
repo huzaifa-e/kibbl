@@ -9,31 +9,44 @@ jobs:
         runs-on: ubuntu-latest
         # the ESP-IDF version ESW0009 is built with
         container: espressif/idf:v5.1.6
+        strategy:
+            matrix:
+                include:
+                    # kibbl. cam (ESP32-CAM) and kibbl. air (Conny, ESP32-C3) on the shared kibbl_core
+                    - project: cam
+                      target: esp32
+                      prefix: KIBBL
+                      image: KIBBL-FW
+                    - project: air
+                      target: esp32c3
+                      prefix: KIBBL-AIR
+                      image: KIBBL-AIR
         steps:
             - uses: actions/checkout@v4
             - name: Build
               shell: bash
-              working-directory: firmware
+              working-directory: firmware/${{ matrix.project }}
               run: |
                   . $IDF_PATH/export.sh
                   branch=""
                   if [ "$GITHUB_REF_NAME" != "main" ]; then
                       branch="-${GITHUB_REF_NAME//\//-}"
                   fi
-                  ./create_build_info.sh "${GITHUB_SHA::8}" "$branch"
-                  idf.py set-target esp32
+                  p="${{ matrix.prefix }}"
+                  ../create_build_info.sh "${GITHUB_SHA::8}" "$branch" "$p"
+                  idf.py set-target ${{ matrix.target }}
                   idf.py build
                   mkdir -p artifacts
-                  cp build/KIBBL-FW.bin "artifacts/KIBBL-${GITHUB_SHA::8}$branch.bin"
+                  cp build/${{ matrix.image }}.bin "artifacts/$p-${GITHUB_SHA::8}$branch.bin"
                   # decodes crash addresses the device prints
-                  cp build/KIBBL-FW.elf "artifacts/KIBBL-${GITHUB_SHA::8}$branch.elf"
-                  cp build/bootloader/bootloader.bin artifacts/KIBBL-bootloader.bin
-                  cp build/partition_table/partition-table.bin artifacts/KIBBL-partition-table.bin
-                  cp build/ota_data_initial.bin artifacts/KIBBL-ota-data-initial.bin
+                  cp build/${{ matrix.image }}.elf "artifacts/$p-${GITHUB_SHA::8}$branch.elf"
+                  cp build/bootloader/bootloader.bin "artifacts/$p-bootloader.bin"
+                  cp build/partition_table/partition-table.bin "artifacts/$p-partition-table.bin"
+                  cp build/ota_data_initial.bin "artifacts/$p-ota-data-initial.bin"
             - uses: actions/upload-artifact@v4
               with:
-                  name: firmware-${{ github.sha }}
-                  path: firmware/artifacts
+                  name: firmware-${{ matrix.project }}-${{ github.sha }}
+                  path: firmware/${{ matrix.project }}/artifacts
 
     app:
         runs-on: ubuntu-latest

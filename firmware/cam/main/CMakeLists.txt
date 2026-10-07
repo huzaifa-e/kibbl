@@ -6,8 +6,11 @@ if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/BUILD_INFO.h")
         "#ifndef BUILD_INFO_H\n#define BUILD_INFO_H\n#define FW_VERSION \"KIBBL-WIP\"\n#endif\n")
 endif()
 
+# WHOLE_ARCHIVE: kibbl_core calls the product hooks (KL_product.c), which nothing in
+# main calls itself, so the linker would drop them otherwise
 idf_component_register(SRC_DIRS "."
                     INCLUDE_DIRS "."
-                    EMBED_TXTFILES "web/index.html")
+                    EMBED_TXTFILES "web/index.html"
+                    WHOLE_ARCHIVE)
 
 target_compile_options(${COMPONENT_LIB} PRIVATE "-Wformat" "-Wno-format-zero-length" "-Wextra" "-Wno-unused-parameter")

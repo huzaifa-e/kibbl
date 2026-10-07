@@ -15,8 +15,8 @@
 
 #include "KL_commands.h"
 #include "KL_config.h"
-#include "KL_frame.h"
 #include "KL_ota.h"
+#include "KL_product.h"
 #include "KL_serial.h"
 #include "KL_status_led.h"
 #include "KL_time.h"
@@ -28,8 +28,8 @@
 #define CMD_QUEUE_LEN         8
 #define CMD_MAX_LEN           2048  // longest command json taken from the server
 #define TELEMETRY_INTERVAL_MS 10000
-#define FRAME_SEND_TIMEOUT_MS 5000
-#define FRAME_WAIT_MS         200   // the command queue is read at least this often
+#define SEND_TIMEOUT_MS       5000
+#define CMD_WAIT_MS           200   // the command queue is read at least this often while idle
 
 static esp_websocket_client_handle_t client = NULL;
 static QueueHandle_t cmd_queue;
@@ -72,7 +72,7 @@ static void ws_event_handler(void *arg, esp_event_base_t base, int32_t event_id,
             DEBUG_F("server disconnected\n");
         }
         connected = false;
-        frame_set_demand(FRAME_CONSUMER_SERVER, 0);
+        product_stream_disconnected();
         rx_reset();
         if (xEventGroupGetBits(wifi_event_group) & WIFI_GOT_IP_BIT) {
             set_status_led(LED_FAST);
@@ -131,14 +131,9 @@ static void ws_event_handler(void *arg, esp_event_base_t base, int32_t event_id,
 /* ----------------------------------------------------------------------- */
 
 static void send_json(cJSON *json) {
-    char *str = cJSON_PrintUnformatted(json);
-    if (str == NULL) {
-        return;
-    }
-    if (esp_websocket_client_send_text(client, str, strlen(str), pdMS_TO_TICKS(FRAME_SEND_TIMEOUT_MS)) < 0) {
+    if (!stream_send_json(json)) {
         DEBUG_ERROR("sending json failed\n");
     }
-    free(str);
 }
 
 static void send_hello(void) {
@@ -149,7 +144,7 @@ static void send_hello(void) {
     cJSON_Delete(json);
 }
 
-static void send_telemetry(uint8_t sent_fps) {
+static void send_telemetry(void) {
     int rssi    = 0;
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "type", "telemetry");
@@ -158,10 +153,7 @@ static void send_telemetry(uint8_t sent_fps) {
         cJSON_AddNumberToObject(json, "rssi", rssi);
     }
     cJSON_AddNumberToObject(json, "heap", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    cJSON_AddNumberToObject(json, "psram", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    cJSON_AddNumberToObject(json, "cameraFps", frame_fps());
-    cJSON_AddNumberToObject(json, "fps", sent_fps);
-    cJSON_AddNumberToObject(json, "frameBytes", frame_last_size());
+    product_add_telemetry(json);
     send_json(json);
     cJSON_Delete(json);
 }
@@ -185,13 +177,7 @@ static void run_command(char *str) {
 }
 
 static void stream_task(void *pvParams) {
-    frame_copy_t copy = {0};
-
     int64_t last_telemetry = 0;
-    int64_t last_frame     = 0;
-    int64_t second_start   = millis();
-    uint8_t sent           = 0;
-    uint8_t sent_fps       = 0;
 
     while (1) {
         char *cmd = NULL;
@@ -206,29 +192,14 @@ static void stream_task(void *pvParams) {
 
         if (connected && millis() - last_telemetry >= TELEMETRY_INTERVAL_MS) {
             last_telemetry = millis();
-            send_telemetry(sent_fps);
+            send_telemetry();
         }
 
-        if (!connected || frame_demand(FRAME_CONSUMER_SERVER) == 0) {
-            // nothing to send: wait for a command instead (the frame buffer is kept for the next stream)
-            if (xQueueReceive(cmd_queue, &cmd, pdMS_TO_TICKS(FRAME_WAIT_MS)) == pdTRUE) {
+        if (!product_stream_work(connected)) {
+            // nothing to send: wait for a command instead
+            if (xQueueReceive(cmd_queue, &cmd, pdMS_TO_TICKS(CMD_WAIT_MS)) == pdTRUE) {
                 run_command(cmd);
             }
-        } else if (!frame_due(FRAME_CONSUMER_SERVER, &last_frame)) {
-            delay_ms(5);
-        } else if (frame_copy_latest(&copy, FRAME_WAIT_MS)) {
-            int wlen = esp_websocket_client_send_bin(client, (const char *)copy.buf, copy.len, pdMS_TO_TICKS(FRAME_SEND_TIMEOUT_MS));
-            if (wlen < 0) {
-                DEBUG_ERROR("frame of %u bytes not sent\n", (unsigned)copy.len);
-            } else {
-                sent++;
-            }
-        }
-
-        if (millis() - second_start >= 1000) {
-            sent_fps     = sent;
-            sent         = 0;
-            second_start = millis();
         }
     }
 }
@@ -265,8 +236,25 @@ void stream_start(void) {
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, ws_event_handler, NULL);
     esp_websocket_client_start(client);
 
-    // core 0 with wifi: the camera task has core 1
+    // core 0 with wifi: the camera task has core 1 of the ESP32
     xTaskCreatePinnedToCore(stream_task, "stream_task", STREAM_STACK_SIZE, NULL, 4, NULL, 0);
+}
+
+bool stream_send_json(cJSON *json) {
+    if (!connected) {
+        return false;
+    }
+    char *str = cJSON_PrintUnformatted(json);
+    if (str == NULL) {
+        return false;
+    }
+    bool sent = esp_websocket_client_send_text(client, str, strlen(str), pdMS_TO_TICKS(SEND_TIMEOUT_MS)) >= 0;
+    free(str);
+    return sent;
+}
+
+bool stream_send_bin(const uint8_t *buf, size_t len) {
+    return connected && esp_websocket_client_send_bin(client, (const char *)buf, len, pdMS_TO_TICKS(SEND_TIMEOUT_MS)) >= 0;
 }
 
 void stream_announce(void) {

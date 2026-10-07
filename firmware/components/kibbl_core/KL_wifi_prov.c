@@ -152,7 +152,7 @@ void wifi_start(void) {
     ESP_ERROR_CHECK(wifi_prov_mgr_is_provisioned(&provisioned));
 
     if (!provisioned) {
-        char service_name[12];
+        char service_name[16]; // "KIBBL-" and 6 hex characters
         get_device_service_name(service_name, sizeof(service_name));
 
         connect_state = WIFI_NOT_PROVISIONED;

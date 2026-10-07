@@ -9,13 +9,9 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 
-#include "BUILD_INFO.h"
-#include "KL_camera.h"
 #include "KL_config.h"
-#include "KL_frame.h"
-#include "KL_hw.h"
-#include "KL_light.h"
 #include "KL_ota.h"
+#include "KL_product.h"
 #include "KL_serial.h"
 #include "KL_time.h"
 #include "KL_wifi_prov.h"
@@ -28,7 +24,7 @@ static void restart_cb(void *arg) {
     esp_restart();
 }
 
-static void restart_later(void) {
+void restart_later(void) {
     if (restart_timer == NULL) {
         const esp_timer_create_args_t args = {
             .callback = restart_cb,
@@ -48,15 +44,9 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
     char ip[16];
     int rssi = 0;
 
-    cJSON_AddStringToObject(json, "fw", FW_VERSION);
+    cJSON_AddStringToObject(json, "fw", product_fw_version());
     // "deviceId", not "id": a response carries the "id" of its request
     cJSON_AddStringToObject(json, "deviceId", config_device_id());
-    cJSON_AddStringToObject(json, "model", PRODUCT_MODEL); // the product, as the app names it
-    cJSON_AddStringToObject(json, "board", BOARD_NAME);
-    cJSON_AddStringToObject(json, "sensor", camera_sensor_name());
-    if (!camera_ready()) {
-        cJSON_AddStringToObject(json, "cameraError", camera_last_error());
-    }
     cJSON_AddStringToObject(json, "hostname", wifi_hostname());
     if (wifi_ip_string(ip, sizeof(ip))) {
         cJSON_AddStringToObject(json, "ip", ip);
@@ -71,98 +61,46 @@ void commands_add_info(cJSON *json, cmd_source_t source) {
     }
     cJSON_AddNumberToObject(json, "uptime", (double)(millis() / 1000));
     cJSON_AddNumberToObject(json, "heap", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    cJSON_AddNumberToObject(json, "psram", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cJSON_AddNumberToObject(json, "resetReason", esp_reset_reason());
 
-    /* what the device can do; the server builds its controls from this list. A kibbl. cam
-     * is a camera even while its module does not answer: the app shows cameraError then. */
-    cJSON *caps = cJSON_AddArrayToObject(json, "caps");
-    cJSON_AddItemToArray(caps, cJSON_CreateString("camera"));
-    if (light_available()) {
-        cJSON_AddItemToArray(caps, cJSON_CreateString("light"));
-        cJSON_AddItemToArray(caps, cJSON_CreateString("blink"));
-    }
-    cJSON_AddItemToArray(caps, cJSON_CreateString("ota"));
-
-    camera_settings_t settings;
-    config_camera_settings(&settings);
-    config_camera_to_json(&settings, cJSON_AddObjectToObject(json, "camera"));
-    cJSON_AddNumberToObject(json, "light", light_get());
+    // model, board, caps and the state of the product
+    product_add_info(json, source);
 
     if (source == CMD_SOURCE_SERIAL) {
-        // the secrets of the local page and the server url go to the person holding the device only
+        // the server url goes to the person holding the device only
         cJSON_AddStringToObject(json, "server", config_server_url());
-        cJSON_AddStringToObject(json, "localKey", config_local_key());
-#if CONFIG_KIBBL_LOCAL_HTTP
-        if (ip[0] != '\0') {
-            char url[64];
-            snprintf(url, sizeof(url), "http://%s/?key=%s", ip, config_local_key());
-            cJSON_AddStringToObject(json, "localUrl", url);
-        }
-#endif
     }
 }
 
 /* ----------------------------------------------------------------------- */
 
-static const char *json_string(const cJSON *req, const char *key) {
+const char *json_string(const cJSON *req, const char *key) {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(req, key);
     return cJSON_IsString(item) ? item->valuestring : NULL;
 }
 
-static const char *cmd_camera(const cJSON *req, cJSON *resp) {
-    camera_settings_t settings;
-    config_camera_settings(&settings);
-    if (!config_camera_from_json(req, &settings)) {
-        return "invalid camera setting";
+bool json_int_in_range(const cJSON *json, const char *key, int min, int max, int *out) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(json, key);
+    if (item == NULL) {
+        return true; // left out, keeps its value
     }
-    if (!camera_apply(&settings)) {
-        return "camera did not take the settings";
+    if (!cJSON_IsNumber(item) || item->valueint < min || item->valueint > max) {
+        return false;
     }
-    if (!config_set_camera_settings(&settings)) {
-        return "settings applied, not stored";
-    }
-    config_camera_to_json(&settings, cJSON_AddObjectToObject(resp, "camera"));
-    return NULL;
+    *out = item->valueint;
+    return true;
 }
 
-static const char *cmd_light(const cJSON *req, cJSON *resp) {
-    const cJSON *level = cJSON_GetObjectItemCaseSensitive(req, "level");
-    if (!light_available()) {
-        return "no light on this board";
+bool json_bool(const cJSON *json, const char *key, bool *out) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(json, key);
+    if (item == NULL) {
+        return true;
     }
-    if (!cJSON_IsNumber(level) || level->valueint < 0 || level->valueint > 100) {
-        return "level must be 0 to 100";
+    if (!cJSON_IsBool(item)) {
+        return false;
     }
-    light_set((uint8_t)level->valueint);
-    cJSON_AddNumberToObject(resp, "light", light_get());
-    return NULL;
-}
-
-// a short flash of the white light: the server sends it when it sees motion
-static const char *cmd_blink(const cJSON *req, cJSON *resp) {
-    const cJSON *count = cJSON_GetObjectItemCaseSensitive(req, "count");
-    const cJSON *level = cJSON_GetObjectItemCaseSensitive(req, "level");
-    if (!light_available()) {
-        return "no light on this board";
-    }
-    int n = cJSON_IsNumber(count) ? count->valueint : 2;
-    int l = cJSON_IsNumber(level) ? level->valueint : 30;
-    if (n < 1 || n > 10 || l < 1 || l > 100) {
-        return "count 1 to 10, level 1 to 100";
-    }
-    light_blink((uint8_t)n, (uint8_t)l);
-    return NULL;
-}
-
-static const char *cmd_stream(const cJSON *req, cJSON *resp) {
-    const cJSON *fps = cJSON_GetObjectItemCaseSensitive(req, "fps");
-    if (!cJSON_IsNumber(fps) || fps->valueint < 0 || fps->valueint > 255) {
-        return "fps must be 0 to 255";
-    }
-    // capped by CONFIG_KIBBL_STREAM_MAX_FPS in the frame hub
-    frame_set_demand(FRAME_CONSUMER_SERVER, (uint8_t)fps->valueint);
-    return NULL;
+    *out = cJSON_IsTrue(item);
+    return true;
 }
 
 /* Over serial (the setup in the app, or a terminal) the network is taken at once, also
@@ -248,14 +186,6 @@ cJSON *commands_handle(const cJSON *req, cmd_source_t source) {
         error = "no cmd";
     } else if (strcmp(cmd, "info") == 0) {
         commands_add_info(resp, source);
-    } else if (strcmp(cmd, "camera") == 0) {
-        error = cmd_camera(req, resp);
-    } else if (strcmp(cmd, "blink") == 0) {
-        error = cmd_blink(req, resp);
-    } else if (strcmp(cmd, "light") == 0) {
-        error = cmd_light(req, resp);
-    } else if (strcmp(cmd, "stream") == 0) {
-        error = cmd_stream(req, resp);
     } else if (strcmp(cmd, "ota") == 0) {
         error = cmd_ota(req, resp);
     } else if (strcmp(cmd, "reboot") == 0) {
@@ -273,8 +203,9 @@ cJSON *commands_handle(const cJSON *req, cmd_source_t source) {
     } else if (serial && strcmp(cmd, "factory_reset") == 0) {
         // a new device secret: the server sees a new device that has to be approved again
         config_reset();
+        product_reset();
         wifi_reset_credentials();
-    } else {
+    } else if (!product_command(cmd, req, resp, source, &error)) {
         error = "unknown cmd";
     }
 
@@ -283,4 +214,27 @@ cJSON *commands_handle(const cJSON *req, cmd_source_t source) {
         cJSON_AddStringToObject(resp, "error", error);
     }
     return resp;
+}
+
+/* ----------------------------------------------------------------------- */
+
+void serial_cmd_task(void *pvParams) {
+    while (1) {
+        cJSON *req = get_serial_req();
+        if (req == NULL) {
+            continue; // get_serial_req() waits 20 ms for input
+        }
+
+        cJSON *resp = commands_handle(req, CMD_SOURCE_SERIAL);
+        cJSON_Delete(req);
+
+        if (resp != NULL) {
+            char *str = cJSON_PrintUnformatted(resp);
+            if (str != NULL) {
+                DEBUG_F_PLAIN("%s\n", str);
+                free(str);
+            }
+            cJSON_Delete(resp);
+        }
+    }
 }

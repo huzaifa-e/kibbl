@@ -17,10 +17,9 @@
 #include "mdns.h"
 #include "sdkconfig.h"
 
-#include "cJSON.h"
-
 #include "BUILD_INFO.h"
 #include "KL_camera.h"
+#include "KL_camera_config.h"
 #include "KL_commands.h"
 #include "KL_config.h"
 #include "KL_frame.h"
@@ -44,7 +43,6 @@
 
 #define NVS_QUICK_RESETS "QUICK_RST"
 
-void serial_cmd_task(void *pvParams);
 void network_task(void *pvParams);
 
 /* ----------------------------------------------------------------------- */
@@ -97,6 +95,7 @@ void app_main(void) {
     nvs_setup();
     debug_status_init();
     config_load();
+    config_camera_load();
     DEBUG_F("device id %s, server %s\n", config_device_id(), config_server_url());
 
     status_led_setup();
@@ -153,27 +152,4 @@ void network_task(void *pvParams) {
     stream_start();
 
     vTaskDelete(NULL);
-}
-
-/* ----------------------------------------------------------------------- */
-
-void serial_cmd_task(void *pvParams) {
-    while (1) {
-        cJSON *req = get_serial_req();
-        if (req == NULL) {
-            continue; // get_serial_req() waits 20 ms for input
-        }
-
-        cJSON *resp = commands_handle(req, CMD_SOURCE_SERIAL);
-        cJSON_Delete(req);
-
-        if (resp != NULL) {
-            char *str = cJSON_PrintUnformatted(resp);
-            if (str != NULL) {
-                DEBUG_F_PLAIN("%s\n", str);
-                free(str);
-            }
-            cJSON_Delete(resp);
-        }
-    }
 }

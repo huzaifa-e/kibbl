@@ -1,20 +1,14 @@
-#ifndef KL_CONFIG_H
-#define KL_CONFIG_H
+#ifndef KL_CAMERA_CONFIG_H
+#define KL_CAMERA_CONFIG_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 #include "cJSON.h"
-
-#define SERVER_URL_MAX    128
-#define DEVICE_SECRET_LEN 32 // hex characters
-#define LOCAL_KEY_LEN     16 // hex characters
-#define DEVICE_ID_LEN     12 // mac address in hex, no separators
 
 typedef struct {
     uint8_t framesize; // framesize_t of esp32-camera
@@ -26,18 +20,11 @@ typedef struct {
     int8_t saturation; // -2..2
 } camera_settings_t;
 
-// reads the stored settings, creates the device secret and the local key on the first boot
-void config_load(void);
+// reads the stored camera settings, the defaults when none are stored; after nvs_setup()
+void config_camera_load(void);
 
-// wipes everything config_load() reads, the secrets included; wifi is not touched
-void config_reset(void);
-
-const char *config_device_id(void);
-const char *config_device_secret(void);
-const char *config_local_key(void);
-
-const char *config_server_url(void);
-bool config_set_server_url(const char *url);
+// forgets the stored camera settings (factory reset)
+void config_camera_reset(void);
 
 void config_camera_settings(camera_settings_t *settings);
 bool config_set_camera_settings(const camera_settings_t *settings);
@@ -51,4 +38,4 @@ void config_camera_to_json(const camera_settings_t *settings, cJSON *json);
 }
 #endif
 
-#endif /* KL_CONFIG_H */
+#endif /* KL_CAMERA_CONFIG_H */

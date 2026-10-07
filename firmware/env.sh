@@ -16,3 +16,9 @@ if ! command -v xtensa-esp32-elf-gcc > /dev/null; then
         [ -d "$dir" ] && export PATH="$dir:$PATH"
     done
 fi
+# riscv32-esp-elf (esp32c3, kibbl-air): the version this idf asks for
+if ! command -v riscv32-esp-elf-gcc > /dev/null; then
+    for dir in "$HOME"/.espressif/tools/riscv32-esp-elf/esp-12.2.0_*/riscv32-esp-elf/bin; do
+        [ -d "$dir" ] && export PATH="$dir:$PATH"
+    done
+fi
