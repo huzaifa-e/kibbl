@@ -59,6 +59,14 @@ bool config_set_temp_adjust(int16_t tenths);
 // "tempAdjust" in °C, -5..5, rounded to tenths; true and *tenths kept when left out
 bool config_temp_adjust_from_json(const cJSON *json, int16_t *tenths);
 
+/* Matches the humidity to a hygrometer the person trusts, as a factor in thousandths
+ * (700..1300). A factor rather than points: the error comes from converting the humidity
+ * from the warm sensor to the room, and that scales with the value. Its own key too. */
+uint16_t config_humidity_factor(void);
+bool config_set_humidity_factor(uint16_t permille);
+// "humidityFactor" 0.7..1.3; true and *permille kept when left out
+bool config_humidity_factor_from_json(const cJSON *json, uint16_t *permille);
+
 void config_air_settings(air_settings_t *settings);
 bool config_set_air_settings(const air_settings_t *settings);
 

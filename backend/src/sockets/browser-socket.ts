@@ -177,6 +177,12 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
                 if (typeof v !== 'number' || !Number.isFinite(v) || v < -5 || v > 5) return undefined;
                 out.tempAdjust = Math.round(v * 10) / 10;
             }
+            // a factor on the humidity, to match a hygrometer the person trusts
+            if (command.humidityFactor !== undefined) {
+                const v = command.humidityFactor;
+                if (typeof v !== 'number' || !Number.isFinite(v) || v < 0.7 || v > 1.3) return undefined;
+                out.humidityFactor = Math.round(v * 1000) / 1000;
+            }
             return out;
         }
         case 'fan': {

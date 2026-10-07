@@ -211,7 +211,10 @@ static void air_task(void *pvParams) {
         state.co2         = co2;
         // the warmth of the board, then the person's reference thermometer
         state.temperature = corrected_temperature(values.temperature) + config_temp_adjust() / 10.0f;
-        state.humidity    = room_humidity(values.humidity, values.temperature, state.temperature);
+        state.humidity    = room_humidity(values.humidity, values.temperature, state.temperature) * config_humidity_factor() / 1000.0f;
+        if (state.humidity > 100) {
+            state.humidity = 100;
+        }
         state.level       = level;
         xSemaphoreGive(state_mutex);
 

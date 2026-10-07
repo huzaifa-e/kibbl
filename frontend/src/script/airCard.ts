@@ -27,6 +27,16 @@ function comfort(t: number | undefined, rh: number | undefined) {
     return 'Pleasant';
 }
 
+// the CO2 in words a person uses: how the air feels, not parts per million
+function airWord(co2: number | undefined) {
+    if (co2 === undefined) return '–';
+    if (co2 < 600) return 'Very fresh';
+    if (co2 < 800) return 'Fresh';
+    if (co2 < 1000) return 'Okay';
+    if (co2 < 1400) return 'Stuffy';
+    return 'Very stuffy';
+}
+
 function windowLine(state: AirState | undefined, lastOpen: AirEvent | undefined) {
     if (state?.window === 'open') return 'A window is open now.';
     if (state?.window === 'paused') return 'Calibrating: windows are not watched right now.';
@@ -78,7 +88,11 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
     const f = freshness(s?.co2);
     const t = s?.temperature;
     const rh = s?.humidity;
-    const outside = weather ? `<span class="air-outside"><i class="ti ti-cloud"></i> ${Math.round(weather.temperature)}°</span>` : '';
+    const outside = weather
+        ? `<span class="air-outside" title="${escapeHtml(weather.description ?? '')}"><i class="ti ti-${weather.icon ?? 'cloud'}"></i> ${Math.round(weather.temperature)}°</span>`
+        : '';
+    // OpenWeather asks to be named where its data is shown
+    const credit = weather?.source === 'openweather' ? '<div class="air-credit">Weather data © OpenWeather</div>' : '';
     const offline = d.online ? '' : `<div class="text-secondary small px-3 pb-2">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`;
     // landscape: freshness and comfort side by side, stacked on a phone
     return `<div class="card air-card" data-air-card="${d._id}">
@@ -86,6 +100,7 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
         <a href="/air/${d._id}" class="air-freshness text-reset text-decoration-none">
             <div class="air-freshness-head"><span>Air freshness</span>${outside}</div>
             ${scene(f, s, lastOpen)}
+            ${credit}
             ${offline}
         </a>
         <div class="air-comfort">
@@ -94,7 +109,7 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
             <div class="air-comfort-values">
                 <div><div class="air-comfort-caption">Temperature</div><div class="air-comfort-value">${t === undefined ? '–' : `${t.toFixed(1)}°`}</div></div>
                 <div><div class="air-comfort-caption">Humidity</div><div class="air-comfort-value">${rh === undefined ? '–' : `${Math.round(rh)}%`}</div></div>
-                <div><div class="air-comfort-caption">CO₂</div><div class="air-comfort-value">${s?.co2 ?? '–'}<small> ppm</small></div></div>
+                <div title="${s?.co2 !== undefined ? `${s.co2} ppm CO₂` : ''}"><div class="air-comfort-caption">Air</div><div class="air-comfort-value">${airWord(s?.co2)}</div></div>
             </div>
         </div>
         </div>

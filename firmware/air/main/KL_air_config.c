@@ -11,11 +11,13 @@
 
 #define NVS_AIR        "AIR"
 #define NVS_TEMP_ADJUST "TEMP_ADJ" // tenths of °C + 1000
+#define NVS_HUM_FACTOR  "HUM_FACT" // thousandths
 
 static SemaphoreHandle_t air_config_mutex;
 
 static air_settings_t air_settings;
-static int16_t temp_adjust = 0;
+static int16_t temp_adjust      = 0;
+static uint16_t humidity_factor = 1000;
 
 /* The thresholds of ESW0002 (the original Conny firmware): 1000 and 2000 ppm after the
  * guidance of the German Environment Agency. The fan draws room air past the sensor and
@@ -54,6 +56,11 @@ void config_air_load(void) {
         temp_adjust = (int16_t)stored_adjust - 1000;
     }
 
+    uint32_t stored_factor = 1000;
+    if (nvs_queue_job(NVS_HUM_FACTOR, &stored_factor, 0, UINT32_T, READ) && stored_factor >= 700 && stored_factor <= 1300) {
+        humidity_factor = (uint16_t)stored_factor;
+    }
+
     if (!nvs_queue_job(NVS_AIR, &air_settings, sizeof(air_settings), BLOB, READ)) {
         air_settings = air_defaults;
     }
@@ -62,6 +69,7 @@ void config_air_load(void) {
 void config_air_reset(void) {
     nvs_remove_key(NVS_AIR);
     nvs_remove_key(NVS_TEMP_ADJUST);
+    nvs_remove_key(NVS_HUM_FACTOR);
 }
 
 int16_t config_temp_adjust(void) {
@@ -87,6 +95,31 @@ bool config_temp_adjust_from_json(const cJSON *json, int16_t *tenths) {
     }
     double v = item->valuedouble * 10.0;
     *tenths  = (int16_t)(v < 0 ? v - 0.5 : v + 0.5);
+    return true;
+}
+
+uint16_t config_humidity_factor(void) {
+    return humidity_factor;
+}
+
+bool config_set_humidity_factor(uint16_t permille) {
+    if (permille < 700 || permille > 1300) {
+        return false;
+    }
+    humidity_factor = permille;
+    uint32_t stored = permille;
+    return nvs_queue_job(NVS_HUM_FACTOR, &stored, 0, UINT32_T, WRITE);
+}
+
+bool config_humidity_factor_from_json(const cJSON *json, uint16_t *permille) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(json, "humidityFactor");
+    if (item == NULL) {
+        return true;
+    }
+    if (!cJSON_IsNumber(item) || item->valuedouble < 0.7 || item->valuedouble > 1.3) {
+        return false;
+    }
+    *permille = (uint16_t)(item->valuedouble * 1000.0 + 0.5);
     return true;
 }
 
@@ -217,6 +250,7 @@ void config_air_to_json(const air_settings_t *settings, cJSON *json) {
     cJSON_AddNumberToObject(json, "puffRise", settings->puff_rise);
     cJSON_AddNumberToObject(json, "nightFan", settings->night_fan);
     cJSON_AddNumberToObject(json, "tempAdjust", temp_adjust / 10.0);
+    cJSON_AddNumberToObject(json, "humidityFactor", humidity_factor / 1000.0);
 }
 
 void config_fan_to_json(const air_settings_t *settings, cJSON *json) {

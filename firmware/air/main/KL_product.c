@@ -86,8 +86,12 @@ static const char *cmd_settings(const cJSON *req, cJSON *resp, settings_from_jso
     air_settings_t settings;
     config_air_settings(&settings);
     int16_t temp_adjust = config_temp_adjust();
-    if (!from_json(req, &settings) || !config_temp_adjust_from_json(req, &temp_adjust)) {
+    uint16_t humidity_factor = config_humidity_factor();
+    if (!from_json(req, &settings) || !config_temp_adjust_from_json(req, &temp_adjust) || !config_humidity_factor_from_json(req, &humidity_factor)) {
         return "invalid setting";
+    }
+    if (humidity_factor != config_humidity_factor() && !config_set_humidity_factor(humidity_factor)) {
+        return "humidity adjustment not stored";
     }
     if (temp_adjust != config_temp_adjust() && !config_set_temp_adjust(temp_adjust)) {
         return "temperature adjustment not stored";

@@ -20,6 +20,9 @@ export interface Weather {
     temperature: number; // °C
     humidity: number; // %RH
     at: number; // when it was measured
+    source?: 'openweather' | 'open-meteo'; // OpenWeather asks to be named where its data is shown
+    icon?: string; // tabler icon of the sky: sun, moon, cloud, cloud-rain, ...
+    description?: string; // "overcast clouds"
 }
 
 // where a home is, for the weather outside; chosen in the settings of the app

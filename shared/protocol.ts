@@ -132,6 +132,7 @@ export interface AirSettings {
     puffRise: number;
     nightFan: number;
     tempAdjust?: number; // °C added to the corrected temperature, to match a reference thermometer
+    humidityFactor?: number; // 0.7-1.3 on the humidity, to match a reference hygrometer
 }
 
 export interface FanSettings {

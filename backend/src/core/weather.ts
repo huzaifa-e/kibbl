@@ -4,7 +4,8 @@ import { logger } from './logger';
 
 /*
  * The weather outside a home, for the climate hints of a kibbl. air (shared/climate.ts):
- * temperature and humidity from Open-Meteo (free, no account) at the location each account
+ * temperature and humidity from OpenWeather (OPENWEATHER_API_KEY) or else Open-Meteo (free,
+ * no account) at the location each account
  * chose in its settings; HOME_LATITUDE and HOME_LONGITUDE of the server stand in for an
  * account without one. Fetched when asked for and kept 15 minutes per place.
  */
@@ -26,15 +27,85 @@ function serverHome(): HomeLocation | null {
     return { latitude: lat, longitude: lon, name: 'set on the server' };
 }
 
+// the sky as a tabler icon, from OpenWeather's icon code ("04n") or Open-Meteo's WMO code
+function owmIcon(code: string) {
+    const night = code.endsWith('n');
+    switch (code.slice(0, 2)) {
+        case '01':
+            return night ? 'moon' : 'sun';
+        case '02':
+            return night ? 'cloud-moon' : 'cloud-sun';
+        case '09':
+        case '10':
+            return 'cloud-rain';
+        case '11':
+            return 'cloud-storm';
+        case '13':
+            return 'snowflake';
+        case '50':
+            return 'mist';
+        default:
+            return 'cloud';
+    }
+}
+
+function wmoIcon(code: number, day: boolean) {
+    if (code === 0) return day ? 'sun' : 'moon';
+    if (code <= 2) return day ? 'cloud-sun' : 'cloud-moon';
+    if (code === 45 || code === 48) return 'mist';
+    if (code >= 95) return 'cloud-storm';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snowflake';
+    if (code >= 51) return 'cloud-rain';
+    return 'cloud';
+}
+
+/* OpenWeather (OPENWEATHER_API_KEY, the free current weather): its values come from stations
+ * near the place, the ones a person sees in other weather apps. Open-Meteo, from weather
+ * models, without a key, when there is none. */
+async function fetchOpenWeather(lat: number, lon: number, key: string): Promise<Weather> {
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&lang=en&appid=${encodeURIComponent(key)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`OpenWeather: HTTP ${res.status}`);
+    const body = (await res.json()) as { main?: { temp?: number; humidity?: number }; weather?: { icon?: string; description?: string }[] };
+    if (typeof body.main?.temp !== 'number' || typeof body.main.humidity !== 'number') throw new Error('OpenWeather: no current values');
+    const sky = body.weather?.[0];
+    return {
+        temperature: body.main.temp,
+        humidity: body.main.humidity,
+        at: Date.now(),
+        source: 'openweather',
+        icon: sky?.icon ? owmIcon(sky.icon) : 'cloud',
+        description: sky?.description,
+    };
+}
+
+async function fetchOpenMeteo(lat: number, lon: number): Promise<Weather> {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,is_day`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`);
+    const body = (await res.json()) as { current?: { temperature_2m?: number; relative_humidity_2m?: number; weather_code?: number; is_day?: number } };
+    const c = body.current;
+    if (typeof c?.temperature_2m !== 'number' || typeof c.relative_humidity_2m !== 'number') throw new Error('Open-Meteo: no current values');
+    return {
+        temperature: c.temperature_2m,
+        humidity: c.relative_humidity_2m,
+        at: Date.now(),
+        source: 'open-meteo',
+        icon: wmoIcon(c.weather_code ?? 3, c.is_day !== 0),
+    };
+}
+
 async function fetchWeather(lat: number, lon: number): Promise<Weather | null> {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m`;
+    const key = process.env.OPENWEATHER_API_KEY?.trim();
+    if (key) {
+        try {
+            return await fetchOpenWeather(lat, lon, key);
+        } catch (err) {
+            log.warn('OpenWeather failed, Open-Meteo instead', { lat, lon }, err);
+        }
+    }
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { current?: { temperature_2m?: number; relative_humidity_2m?: number } };
-        const c = body.current;
-        if (typeof c?.temperature_2m !== 'number' || typeof c.relative_humidity_2m !== 'number') throw new Error('no current values');
-        return { temperature: c.temperature_2m, humidity: c.relative_humidity_2m, at: Date.now() };
+        return await fetchOpenMeteo(lat, lon);
     } catch (err) {
         log.warn('outdoor weather not fetched', { lat, lon }, err);
         return null;
@@ -97,5 +168,6 @@ export async function searchPlaces(query: string): Promise<Place[]> {
 }
 
 export function initWeather() {
+    log.info('weather outside from', { source: process.env.OPENWEATHER_API_KEY?.trim() ? 'OpenWeather' : 'Open-Meteo' });
     if (!serverHome()) log.info('no HOME_LATITUDE/HOME_LONGITUDE: accounts without a home location go without the weather outside');
 }

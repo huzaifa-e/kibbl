@@ -228,7 +228,7 @@ const HINT_COLORS: Record<HintLevel, string> = { alert: 'var(--tblr-red)', warn:
 function renderClimate() {
     const s = device!.online ? device!.air?.state : undefined;
     byId('climate-outdoor').innerHTML = weather
-        ? `<i class="ti ti-cloud"></i> outside ${weather.temperature.toFixed(1)} °C · ${Math.round(weather.humidity)} %`
+        ? `<i class="ti ti-${weather.icon ?? 'cloud'}"></i> outside ${weather.temperature.toFixed(1)} °C · ${Math.round(weather.humidity)} %${weather.description ? ` · ${escapeHtml(weather.description)}` : ''}${weather.source === 'openweather' ? ' · <span title="Weather data © OpenWeather">© OpenWeather</span>' : ''}`
         : '<a href="/settings">set the home location</a> for the weather outside';
     const hints = s ? climateHints(s, weather) : [];
     byId('climate-hints').innerHTML = hints.length
@@ -474,14 +474,25 @@ function renderSettings() {
                     <span class="form-check-label">Calibrate itself (needs fresh air every day)</span>
                 </label>
                 <hr class="my-3" />
-                <div class="form-label">Temperature like your thermometer</div>
-                <div class="text-secondary small mb-2">The device warms its own sensor; this corrects for it, but every place is a bit different. Enter what a thermometer you trust next to it shows${s?.tempAdjust ? ` (now corrected by ${s.tempAdjust > 0 ? '+' : ''}${s.tempAdjust.toFixed(1)} °C)` : ''}; the humidity follows.</div>
-                <div class="input-group input-group-flat">
-                    <input type="number" class="form-control" id="temp-reference" min="0" max="40" step="0.1" placeholder="${d.air?.state?.temperature?.toFixed(1) ?? '21.0'}" ${off} />
-                    <span class="input-group-text">°C</span>
-                    <button class="btn" id="temp-match" ${off}>Match</button>
+                <div class="form-label">Like your thermometer</div>
+                <div class="text-secondary small mb-2">The device warms its own sensor; this corrects for it, but every place is a bit different. Enter what a thermometer you trust (tado, a hygrometer) shows next to it${
+                    s?.tempAdjust || (s?.humidityFactor && s.humidityFactor !== 1)
+                        ? ` (now ${s?.tempAdjust ? `${s.tempAdjust > 0 ? '+' : ''}${s.tempAdjust.toFixed(1)} °C` : ''}${s?.tempAdjust && s?.humidityFactor && s.humidityFactor !== 1 ? ', ' : ''}${s?.humidityFactor && s.humidityFactor !== 1 ? `humidity ×${s.humidityFactor.toFixed(2)}` : ''})`
+                        : ''
+                }.</div>
+                <div class="row g-2">
+                    <div class="col-6"><div class="input-group input-group-flat">
+                        <input type="number" class="form-control" id="temp-reference" min="0" max="40" step="0.1" placeholder="${d.air?.state?.temperature?.toFixed(1) ?? '21.0'}" ${off} />
+                        <span class="input-group-text">°C</span>
+                    </div></div>
+                    <div class="col-6"><div class="input-group input-group-flat">
+                        <input type="number" class="form-control" id="humidity-reference" min="10" max="95" step="1" placeholder="${d.air?.state?.humidity !== undefined ? Math.round(d.air.state.humidity) : '50'}" ${off} />
+                        <span class="input-group-text">%</span>
+                    </div></div>
                 </div>
-                ${s?.tempAdjust ? `<button class="btn btn-link btn-sm px-0 mt-1" id="temp-reset" ${off}>Back to the plain correction</button>` : ''}
+                <div class="text-secondary small mt-1">Either one or both.</div>
+                <button class="btn w-100 mt-2" id="temp-match" ${off}>Match</button>
+                ${s?.tempAdjust || (s?.humidityFactor && s.humidityFactor !== 1) ? `<button class="btn btn-link btn-sm px-0 mt-1" id="temp-reset" ${off}>Back to the plain correction</button>` : ''}
             </div>
         </div>`;
 }
@@ -506,21 +517,32 @@ function bindSettings() {
             }
             if ((await airConfig({ yellow, red })).ok) byId('air-result').innerHTML = successAlert('Thresholds saved on the device.');
         } else if (el.id === 'temp-match') {
-            const reference = Number(byId<HTMLInputElement>('temp-reference').value);
-            const shown = device!.air?.state?.temperature;
-            if (!reference || shown === undefined) return;
+            const state = device!.air?.state;
+            const now = device!.air?.settings;
+            const tRef = byId<HTMLInputElement>('temp-reference').value;
+            const hRef = byId<HTMLInputElement>('humidity-reference').value;
+            const fields: Record<string, number> = {};
             // what it shows now already holds the old adjustment
-            const adjust = Math.round((reference - (shown - (device!.air?.settings?.tempAdjust ?? 0))) * 10) / 10;
-            if (Math.abs(adjust) > 5) {
-                byId('air-result').innerHTML = errorAlert(`That is ${adjust.toFixed(1)} °C off: more than 5 °C. Is the thermometer next to the device?`);
-                return;
+            if (tRef && state?.temperature !== undefined) {
+                const adjust = Math.round((Number(tRef) - (state.temperature - (now?.tempAdjust ?? 0))) * 10) / 10;
+                if (Math.abs(adjust) > 5) {
+                    byId('air-result').innerHTML = errorAlert(`That is ${adjust.toFixed(1)} °C off, more than 5 °C. Is the thermometer next to the device?`);
+                    return;
+                }
+                fields.tempAdjust = adjust;
             }
-            if ((await airConfig({ tempAdjust: adjust })).ok)
-                byId('air-result').innerHTML = successAlert(
-                    `Temperature adjusted by ${adjust > 0 ? '+' : ''}${adjust.toFixed(1)} °C; the next readings show it.`,
-                );
+            if (hRef && state?.humidity) {
+                const factor = Math.round((Number(hRef) / (state.humidity / (now?.humidityFactor ?? 1))) * 1000) / 1000;
+                if (factor < 0.7 || factor > 1.3) {
+                    byId('air-result').innerHTML = errorAlert('The humidity differs by more than 30 %. Is the hygrometer next to the device?');
+                    return;
+                }
+                fields.humidityFactor = factor;
+            }
+            if (!Object.keys(fields).length) return;
+            if ((await airConfig(fields)).ok) byId('air-result').innerHTML = successAlert('Matched; the next readings (within 10 s) show it.');
         } else if (el.id === 'temp-reset') {
-            if ((await airConfig({ tempAdjust: 0 })).ok) byId('air-result').innerHTML = successAlert('Back to the plain correction.');
+            if ((await airConfig({ tempAdjust: 0, humidityFactor: 1 })).ok) byId('air-result').innerHTML = successAlert('Back to the plain correction.');
         } else if (el.id === 'calibrate') {
             if (!confirm('Is the device outside or at a wide open window now? It takes the air of the next 6 minutes as 420 ppm.')) return;
             const resp = await command({ cmd: 'calibrate', ppm: 420 });
