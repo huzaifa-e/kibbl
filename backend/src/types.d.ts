@@ -122,6 +122,14 @@ declare global {
         updatedAt: number;
     }
 
+    interface AccessTokenDoc {
+        _id: string;
+        userID: string;
+        name: string;
+        createdAt: number;
+        lastUsedAt?: number;
+    }
+
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };
 }
 

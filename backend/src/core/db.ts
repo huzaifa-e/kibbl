@@ -12,6 +12,7 @@ export let HeartRateDay: Model<HeartRateDayDoc>;
 export let Meter: Model<MeterDoc>;
 export let MeterReading: Model<MeterReadingDoc>;
 export let MeterPeriod: Model<MeterPeriodDoc>;
+export let AccessToken: Model<AccessTokenDoc>;
 
 let isConnected = false;
 
@@ -169,6 +170,19 @@ async function init() {
     );
     meterPeriodSchema.index({ meterId: 1, period: 1, key: 1 }, { unique: true });
     MeterPeriod = model<MeterPeriodDoc>('MeterPeriod', meterPeriodSchema);
+
+    // tokens for the MCP endpoint (mcp/): only their hash, the token is shown once
+    const accessTokenSchema = new Schema<AccessTokenDoc>(
+        {
+            _id: { type: String, required: true }, // sha256 of the token, hex
+            userID: { type: String, required: true, index: true },
+            name: { type: String, required: true },
+            createdAt: { type: Number, required: true },
+            lastUsedAt: Number,
+        },
+        { versionKey: false },
+    );
+    AccessToken = model<AccessTokenDoc>('AccessToken', accessTokenSchema);
 
     connection.on('connected', () => {
         isConnected = true;

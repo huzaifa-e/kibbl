@@ -59,7 +59,7 @@ async function main() {
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
-        if (!db.isConnected() && req.path.startsWith('/api')) {
+        if (!db.isConnected() && (req.path.startsWith('/api') || req.path === '/mcp')) {
             res.sendStatus(503);
             return;
         }

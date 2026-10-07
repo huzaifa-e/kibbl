@@ -88,6 +88,22 @@ The health history is **stored on this server**: after connecting, the server fe
 
 Every request to Google goes through one queue: `HEALTH_CONCURRENCY` (4 by default) at once for all users, pages of 10 000 points (the API's maximum), heart rate as a partial response with only the values. A 429 from Google pauses the whole queue for as long as it asks; a network error or a 5xx is tried again after 2, 4 and 8 s. A day opened on the page goes ahead of the history fetch. `/api/health/status` shows the queue (`requests.running`, `requests.waiting`).
 
+## MCP
+
+`/mcp` is an [MCP](https://modelcontextprotocol.io) endpoint (Streamable HTTP) that lets an AI assistant read the home's data: devices and a live camera picture, motion events and activity (and the pictures kept for them), meters with readings and consumption, and the stored health history day by day or through a day. It only reads; nothing can be changed through it. Times are the server's local time.
+
+Access is by token, one per client, created on the server and shown once (only its hash is stored):
+
+```bash
+docker exec kibbl-app node mcp-token.js create user@example.com "laptop"
+docker exec kibbl-app node mcp-token.js list
+docker exec kibbl-app node mcp-token.js revoke "laptop"
+```
+
+A client is given the url (`http://<server>:8790/mcp`, on the home network or over Tailscale) and the header `Authorization: Bearer <token>`.
+
+Whatever a tool returns goes to the model provider with the conversation, health data and camera pictures included. A connector in a hosted assistant (web, phone) needs the endpoint on a fixed public https address and OAuth, which `/mcp` does not have yet.
+
 ## Meters
 
 Meters (electricity, gas, water) come from the EMONI LoRaWAN server running on the same host (`ttn-chirpstack-webhook`, container `emoni-lorawan`). The app joins its docker network (`METER_SOURCE_NETWORK`, default `ttn-chirpstack-webhook_default`, which must exist before `docker compose up`) and reads its api at `METER_SOURCE_URL` (default `http://emoni-lorawan:8000`); it only reads.

@@ -1,0 +1,520 @@
+import { readFile } from 'node:fs/promises';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import { productName } from '../../../shared/protocol';
+import { version } from '../../../shared/version';
+import { Device, HealthLink, Meter, MotionEventModel } from '../core/db';
+import { getLive, summarize } from '../core/devices';
+import { freshFrame } from '../core/frames';
+import { imageRoot, resolveInside } from '../core/storage';
+import { INTRADAY } from '../health/extract';
+import { configured } from '../health/google';
+import { INTRADAY_TYPES, intraday, summary, syncStatus, trackers } from '../health/service';
+import { storageStats } from '../health/store';
+import { meterPeriods, meterReadings, meterState } from '../meters/service';
+
+/*
+ * What the MCP endpoint offers: every kind of data the app has (cameras, motion,
+ * meters, health), read only. Times are the server's local time, which is the home's,
+ * written as "YYYY-MM-DD HH:MM:SS"; days as YYYY-MM-DD.
+ */
+
+const DAY_MS = 24 * 3600_000;
+const SNAPSHOT_MAX_AGE_MS = 5000;
+const SNAPSHOT_TIMEOUT_MS = 6000;
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+export function localDay(time: number) {
+    const d = new Date(time);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function localTime(time: number | null | undefined) {
+    if (typeof time !== 'number') return null;
+    const d = new Date(time);
+    return `${localDay(time)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// the local midnight that starts a day, moved by whole days (a day of a clock change is 23 or 25 h)
+function dayStart(day: string, addDays = 0) {
+    const [y, m, d] = day.split('-').map(Number);
+    return new Date(y, m - 1, d + addDays).getTime();
+}
+
+/* A range of whole local days, both included: missing ends default to the last
+ * `defaultDays` days up to today. start and end are times, end excluded. */
+export function dayRange(from: string | undefined, to: string | undefined, defaultDays: number) {
+    const last = to ?? localDay(Date.now());
+    const first = from ?? localDay(dayStart(last, 1 - defaultDays));
+    return { from: first, to: last, start: dayStart(first), end: dayStart(last, 1) };
+}
+
+const json = (data: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data) }] });
+const fail = (message: string): CallToolResult => ({ content: [{ type: 'text', text: message }], isError: true });
+
+/* Evenly thinned to at most max points: each kept point stands for a run of samples,
+ * with its mean, lowest and highest value. */
+export function thinSamples(points: { t: string; value: number }[], max: number) {
+    if (points.length <= max) return points;
+    const size = Math.ceil(points.length / max);
+    const out = [];
+    for (let i = 0; i < points.length; i += size) {
+        const run = points.slice(i, i + size);
+        const values = run.map((p) => p.value);
+        const mean = values.reduce((s, v) => s + v, 0) / values.length;
+        out.push({ t: run[0].t, value: Math.round(mean * 10) / 10, min: Math.min(...values), max: Math.max(...values) });
+    }
+    return out;
+}
+
+const day = z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('a day, YYYY-MM-DD');
+const readOnly = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+
+/* ----------------------------------------------------------------------- */
+
+// a camera or other device by its id or its name, any case
+async function findDevice(ref: string) {
+    const docs = await Device.find({ status: 'approved' }).lean();
+    const lower = ref.trim().toLowerCase();
+    return docs.find((d) => d._id === ref.trim().toUpperCase()) ?? docs.find((d) => d.name.toLowerCase() === lower);
+}
+
+async function findMeter(ref: string) {
+    const meters = await Meter.find().lean();
+    const lower = ref.trim().toLowerCase();
+    return meters.find((m) => m._id === lower) ?? meters.find((m) => m.name.toLowerCase() === lower);
+}
+
+// what the app shows of a device, without the hardware inside it
+function deviceInfo(doc: DeviceDoc) {
+    const s = summarize(doc);
+    return {
+        id: s._id,
+        name: s.name,
+        product: productName(s.model, s.caps),
+        online: s.online,
+        last_seen: localTime(s.lastSeen),
+        added: localTime(s.createdAt),
+        firmware: s.fw ?? null,
+        capabilities: s.caps,
+        motion: s.motion,
+        camera: s.camera ?? null,
+        camera_error: s.cameraError ?? null,
+        signal_dbm: s.telemetry?.rssi ?? null,
+        uptime_s: s.telemetry?.uptime ?? null,
+        viewers: s.viewers,
+    };
+}
+
+function meterInfo(state: Awaited<ReturnType<typeof meterState>>) {
+    return {
+        id: state._id,
+        name: state.name,
+        medium: state.medium,
+        unit: state.unit,
+        latest: state.latest ? { at: localTime(state.latest.at), value: state.latest.value, signal_dbm: state.latest.rssi } : null,
+        power_kw: state.powerKw,
+        today: state.today,
+        battery: state.battery
+            ? {
+                  mv: state.battery.mv,
+                  percent: state.battery.percent,
+                  at: localTime(state.battery.at),
+                  drain_mv_per_day: state.battery.drainMvPerDay,
+                  days_left: state.battery.daysLeft,
+              }
+            : null,
+        readings: state.readings,
+        since: localTime(state.since),
+        last_sync: localTime(state.lastSyncAt),
+        last_sync_error: state.lastSyncError,
+    };
+}
+
+/* ----------------------------------------------------------------------- */
+
+// the health series of the summary, smallest stored range that holds the window
+async function healthSeries(userID: string, from: string) {
+    const ageDays = Math.ceil((Date.now() - dayStart(from)) / DAY_MS) + 1;
+    const range = ageDays <= 30 ? '30' : ageDays <= 90 ? '90' : ageDays <= 365 ? '365' : 'all';
+    const data = (await summary(userID, range)) as { series: Record<string, unknown[]>; discovered: Record<string, unknown[]> } | undefined;
+    if (!data) return undefined;
+    return { ...data.series, ...data.discovered } as Record<string, { date: string | null; [key: string]: unknown }[]>;
+}
+
+const METRIC_NOTES: Record<string, string> = {
+    resting_hr: 'resting heart rate, bpm',
+    hrv: 'heart rate variability, ms',
+    spo2: 'blood oxygen, % (low, high)',
+    respiratory_rate: 'breaths per minute',
+    skin_temp: 'nightly skin temperature, °C, with baseline',
+    sleep: 'per night: hours (value) and minutes per stage; the date is the day the night ended',
+    exercise: 'workouts: type, calories, average heart rate, active zone minutes',
+    active_zone_minutes: 'minutes a day',
+    sedentary: 'sedentary hours a day',
+    hr_zones: 'the latest personal heart rate zones',
+    breathing_stages: 'breaths per minute per night, by sleep stage',
+};
+
+/* ----------------------------------------------------------------------- */
+
+export function createMcpServer(session: SessionInfo) {
+    const server = new McpServer(
+        { name: 'kibbl', title: 'kibbl.', version },
+        {
+            instructions:
+                "kibbl. is the user's home: cameras with motion detection, utility meters and health data from a fitness tracker. " +
+                "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends.",
+        },
+    );
+
+    server.registerTool(
+        'kibbl_overview',
+        {
+            title: 'Overview',
+            description:
+                "What the home has: cameras and other devices, meters and their latest values, the health data stored, the server's time and time zone.",
+            annotations: readOnly,
+        },
+        async () => {
+            const [devices, meters, link, stats] = await Promise.all([
+                Device.find({ status: 'approved' }).sort({ createdAt: 1 }).lean(),
+                Meter.find().sort({ addedAt: 1 }).lean(),
+                configured() ? HealthLink.findById(session.userID, { connectedAt: 1 }).lean() : null,
+                storageStats(session.userID),
+            ]);
+            const states = await Promise.all(meters.map(meterState));
+            return json({
+                now: localTime(Date.now()),
+                time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                user: session.name,
+                devices: devices.map((d) => {
+                    const s = summarize(d);
+                    return { id: s._id, name: s.name, product: productName(s.model, s.caps), online: s.online, last_seen: localTime(s.lastSeen) };
+                }),
+                meters: states.map((m) => ({ id: m._id, name: m.name, medium: m.medium, unit: m.unit, latest: m.latest?.value ?? null, today: m.today })),
+                health: {
+                    tracker_linked: !!link,
+                    stored_days: stats.days,
+                    first_day: stats.oldestDay,
+                    last_day: stats.newestDay,
+                    heart_rate_days: stats.heartRateDays,
+                },
+            });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_devices',
+        {
+            title: 'Devices',
+            description: 'The cameras and other kibbl. devices: online state, last seen, firmware, motion and camera settings, signal.',
+            annotations: readOnly,
+        },
+        async () => {
+            const docs = await Device.find({ status: 'approved' }).sort({ createdAt: 1 }).lean();
+            return json(docs.map(deviceInfo));
+        },
+    );
+
+    server.registerTool(
+        'kibbl_camera_picture',
+        {
+            title: 'Camera picture',
+            description: 'A picture of what a camera sees right now. The camera must be online. Nothing is stored.',
+            inputSchema: { camera: z.string().describe('the camera, by name or id') },
+            annotations: readOnly,
+        },
+        async ({ camera }) => {
+            const doc = await findDevice(camera);
+            if (!doc || !doc.caps?.includes('camera')) return fail(`No camera "${camera}". kibbl_devices lists them.`);
+            if (!getLive(doc._id)) return fail(`${doc.name} is offline, last seen ${localTime(doc.lastSeen) ?? 'never'}.`);
+            const frame = await freshFrame(doc._id, SNAPSHOT_MAX_AGE_MS, SNAPSHOT_TIMEOUT_MS);
+            if (!frame) return fail(`${doc.name} sent no picture: its camera is not running.`);
+            return {
+                content: [
+                    { type: 'image', data: frame.jpeg.toString('base64'), mimeType: 'image/jpeg' },
+                    { type: 'text', text: `${doc.name}, ${localTime(frame.time)}` },
+                ],
+            };
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_motion_events',
+        {
+            title: 'Motion events',
+            description:
+                'Motion the cameras detected, newest first: start, end, duration, how much of the picture changed (peak_share, 0-1), and whether a picture was kept. ' +
+                'Pictures are kept only on cameras where the user switched that on.',
+            inputSchema: {
+                camera: z.string().optional().describe('only this camera, by name or id; all cameras if left out'),
+                from: day.optional().describe('first day, YYYY-MM-DD; default 7 days ago'),
+                to: day.optional().describe('last day, YYYY-MM-DD; default today'),
+                limit: z.number().int().min(1).max(500).default(100),
+            },
+            annotations: readOnly,
+        },
+        async ({ camera, from, to, limit }) => {
+            const filter: Record<string, unknown> = {};
+            const names = new Map((await Device.find({}, { name: 1 }).lean()).map((d) => [d._id, d.name]));
+            if (camera) {
+                const doc = await findDevice(camera);
+                if (!doc) return fail(`No camera "${camera}". kibbl_devices lists them.`);
+                filter.deviceId = doc._id;
+            }
+            const range = dayRange(from, to, 7);
+            filter.start = { $gte: range.start, $lt: range.end };
+            const [docs, total] = await Promise.all([
+                MotionEventModel.find(filter).sort({ start: -1 }).limit(limit).lean(),
+                MotionEventModel.countDocuments(filter),
+            ]);
+            return json({
+                from: range.from,
+                to: range.to,
+                total,
+                shown: docs.length,
+                events: docs.map((e) => ({
+                    id: e._id,
+                    camera: names.get(e.deviceId) ?? e.deviceId,
+                    start: localTime(e.start),
+                    end: localTime(e.end),
+                    duration_s: e.end ? Math.round((e.end - e.start) / 1000) : null,
+                    peak_share: Math.round(e.peakScore * 1000) / 1000,
+                    has_picture: !!e.snapshot,
+                })),
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_motion_activity',
+        {
+            title: 'Motion activity',
+            description: 'How much motion there was, counted per hour or per day: number of events and seconds of motion. Good for patterns over weeks.',
+            inputSchema: {
+                camera: z.string().optional().describe('only this camera, by name or id; all cameras if left out'),
+                from: day.optional().describe('first day; default 7 days ago'),
+                to: day.optional().describe('last day; default today'),
+                per: z.enum(['hour', 'day']).default('hour'),
+            },
+            annotations: readOnly,
+        },
+        async ({ camera, from, to, per }) => {
+            const filter: Record<string, unknown> = {};
+            if (camera) {
+                const doc = await findDevice(camera);
+                if (!doc) return fail(`No camera "${camera}". kibbl_devices lists them.`);
+                filter.deviceId = doc._id;
+            }
+            const range = dayRange(from, to, 7);
+            filter.start = { $gte: range.start, $lt: range.end };
+            const docs = await MotionEventModel.find(filter, { start: 1, end: 1 }).sort({ start: 1 }).lean();
+            const buckets = new Map<string, { day: string; hour?: number; events: number; seconds: number }>();
+            for (const e of docs) {
+                const d = localDay(e.start);
+                const hour = per === 'hour' ? new Date(e.start).getHours() : undefined;
+                const key = `${d} ${hour ?? ''}`;
+                const b = buckets.get(key) ?? { day: d, ...(hour === undefined ? {} : { hour }), events: 0, seconds: 0 };
+                b.events++;
+                b.seconds += Math.round(((e.end ?? e.start) - e.start) / 1000);
+                buckets.set(key, b);
+            }
+            return json({ from: range.from, to: range.to, per, events: docs.length, buckets: [...buckets.values()] });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_motion_picture',
+        {
+            title: 'Motion picture',
+            description: 'The picture kept for a motion event (has_picture in kibbl_motion_events).',
+            inputSchema: { event_id: z.string().uuid() },
+            annotations: readOnly,
+        },
+        async ({ event_id }) => {
+            const doc = await MotionEventModel.findById(event_id).lean();
+            if (!doc) return fail('No such motion event.');
+            if (!doc.snapshot) return fail('No picture was kept for this event.');
+            try {
+                const jpeg = await readFile(resolveInside(imageRoot(), doc.snapshot));
+                return {
+                    content: [
+                        { type: 'image', data: jpeg.toString('base64'), mimeType: 'image/jpeg' },
+                        { type: 'text', text: `motion at ${localTime(doc.start)}` },
+                    ],
+                };
+            } catch {
+                return fail('The picture of this event is gone.');
+            }
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_meters',
+        {
+            title: 'Meters',
+            description:
+                "The utility meters (electricity, gas, water, heat): latest reading, current power, today's consumption, battery and how long it lasts.",
+            annotations: readOnly,
+        },
+        async () => {
+            const meters = await Meter.find().sort({ addedAt: 1 }).lean();
+            return json((await Promise.all(meters.map(meterState))).map(meterInfo));
+        },
+    );
+
+    server.registerTool(
+        'kibbl_meter_consumption',
+        {
+            title: 'Meter consumption',
+            description: "A meter's consumption per day, month or year, with the meter value at the start (opening) and end (closing) of each.",
+            inputSchema: {
+                meter: z.string().describe('the meter, by name or id'),
+                per: z.enum(['day', 'month', 'year']).default('day'),
+                from: z.string().optional().describe('first day, month or year as YYYY-MM-DD, YYYY-MM or YYYY; all if left out'),
+                to: z.string().optional().describe('last one, in the same form'),
+            },
+            annotations: readOnly,
+        },
+        async ({ meter, per, from, to }) => {
+            const doc = await findMeter(meter);
+            if (!doc) return fail(`No meter "${meter}". kibbl_meters lists them.`);
+            const rows = (await meterPeriods(doc._id, per)).filter((r) => (!from || r.key >= from) && (!to || r.key <= to));
+            const total = rows.reduce((s, r) => s + (r.consumption ?? 0), 0);
+            return json({ meter: doc.name, unit: doc.unit, per, total: Math.round(total * 1000) / 1000, periods: rows });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_meter_readings',
+        {
+            title: 'Meter readings',
+            description: 'Every reading a meter sent (meter value, battery voltage, signal), thinned evenly to max_points for long windows.',
+            inputSchema: {
+                meter: z.string().describe('the meter, by name or id'),
+                from: day.optional().describe('first day; default 2 days ago'),
+                to: day.optional().describe('last day; default today'),
+                max_points: z.number().int().min(10).max(3000).default(500),
+            },
+            annotations: readOnly,
+        },
+        async ({ meter, from, to, max_points }) => {
+            const doc = await findMeter(meter);
+            if (!doc) return fail(`No meter "${meter}". kibbl_meters lists them.`);
+            const range = dayRange(from, to, 2);
+            const rows = await meterReadings(doc._id, new Date(range.start), new Date(range.end), max_points);
+            return json({
+                meter: doc.name,
+                unit: doc.unit,
+                from: range.from,
+                to: range.to,
+                readings: rows.map((r) => ({ at: localTime(r.at), value: r.value, battery_mv: r.batteryMv, signal_dbm: r.rssi })),
+            });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_health_status',
+        {
+            title: 'Health status',
+            description: 'The fitness tracker and the stored health history: which metrics exist, the days covered, the last sync, battery.',
+            annotations: readOnly,
+        },
+        async () => {
+            const [stats, sync, link] = await Promise.all([
+                storageStats(session.userID),
+                syncStatus(session.userID),
+                configured() ? HealthLink.findById(session.userID, { connectedAt: 1, refreshTokenExpiresAt: 1, discoveredTypes: 1 }).lean() : null,
+            ]);
+            return json({
+                linked: !!link,
+                link_expires: localTime(link?.refreshTokenExpiresAt),
+                trackers: trackers(session.userID).map((t) => ({ name: t.name, battery: t.battery, last_sync: t.lastSync })),
+                tracker_last_sync: sync.tracker_last_sync,
+                sync_error: sync.error,
+                stored: stats,
+                daily_metrics: { ...METRIC_NOTES, ...Object.fromEntries((link?.discoveredTypes ?? []).map((t) => [t, 'one value a day'])) },
+                intraday_types: [...INTRADAY_TYPES],
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_health_daily',
+        {
+            title: 'Health per day',
+            description:
+                'Health metrics day by day from the stored history: resting_hr, hrv, spo2, respiratory_rate, skin_temp, sleep, exercise, ' +
+                'active_zone_minutes, sedentary, hr_zones, breathing_stages, and other recorded types such as steps (kibbl_health_status lists them).',
+            inputSchema: {
+                metrics: z.array(z.string()).optional().describe('the metrics wanted; all if left out'),
+                from: day.optional().describe('first day; default 30 days ago'),
+                to: day.optional().describe('last day; default today'),
+                sleep_stages: z.boolean().default(false).describe('include the timeline of sleep stages of each night (long)'),
+            },
+            annotations: readOnly,
+        },
+        async ({ metrics, from, to, sleep_stages }) => {
+            const range = dayRange(from, to, 30);
+            const series = await healthSeries(session.userID, range.from);
+            if (!series) return fail('No health data is stored yet.');
+            const wanted = metrics?.length ? metrics : Object.keys(series);
+            const unknown = wanted.filter((m) => !(m in series));
+            const out: Record<string, unknown[]> = {};
+            for (const m of wanted.filter((m) => m in series)) {
+                const rows = m === 'hr_zones' ? series[m] : series[m].filter((r) => r.date && r.date >= range.from && r.date <= range.to);
+                out[m] = m === 'sleep' && !sleep_stages ? rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'seg'))) : rows;
+            }
+            return json({ from: range.from, to: range.to, metrics: out, ...(unknown.length ? { not_recorded: unknown, recorded: Object.keys(series) } : {}) });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_health_intraday',
+        {
+            title: 'Health during a day',
+            description:
+                'One metric through one day: heart-rate (bpm), oxygen-saturation, steps, distance (mm), active-zone-minutes, ' +
+                'sedentary-period (blocks of sitting) or sedentary-granular (each minute sedentary, active or not worn). Today comes live from the tracker.',
+            inputSchema: {
+                type: z.enum([...INTRADAY_TYPES] as [string, ...string[]]),
+                date: day,
+                max_points: z.number().int().min(24).max(1440).default(288).describe('heart rate is thinned to this many points, each with min and max'),
+            },
+            annotations: readOnly,
+        },
+        async ({ type, date, max_points }) => {
+            try {
+                const data = (await intraday(session.userID, type, date)) as Record<string, unknown>;
+                if (Array.isArray(data.points) && INTRADAY[type]?.kind === 'sample') {
+                    const points = data.points as { t: string; value: number }[];
+                    const thinned = thinSamples(points, max_points);
+                    return json({
+                        ...data,
+                        points: thinned,
+                        resolution: thinned.length < points.length ? `${points.length} samples in ${thinned.length}` : 'full',
+                    });
+                }
+                return json(data);
+            } catch (err) {
+                return fail(`The tracker data of ${date} could not be read: ${(err as Error).message}`);
+            }
+        },
+    );
+
+    return server;
+}
