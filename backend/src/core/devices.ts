@@ -143,6 +143,9 @@ export async function updateDemand(deviceId: string) {
         log.warn('stream rate not updated', { device: deviceId }, err);
         return; // the next change asks again
     }
+    if (!doc?.caps.includes('camera')) {
+        return; // only a camera sends frames
+    }
     let fps = 0;
     if (doc?.status === 'approved' && doc.caps.includes('camera')) {
         if ((viewers.get(deviceId) ?? 0) > 0 || (snapshotWaiters.get(deviceId) ?? 0) > 0) {
