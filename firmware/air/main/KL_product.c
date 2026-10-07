@@ -45,6 +45,7 @@ static void add_state(cJSON *json) {
     cJSON_AddBoolToObject(json, "calibrating", air_calibrating());
     cJSON_AddNumberToObject(json, "puffs", smoke_puffs_now());
     cJSON_AddBoolToObject(json, "fire", fire_alarm());
+    cJSON_AddNumberToObject(json, "settleSeconds", air_settle_seconds());
 }
 
 void product_add_info(cJSON *json, cmd_source_t source) {

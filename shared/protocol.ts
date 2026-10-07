@@ -111,6 +111,7 @@ export interface AirState {
     calibrating: boolean;
     puffs: number; // of a cigarette going on
     fire: boolean; // the fire alarm of the device sounds
+    settleSeconds?: number; // the detectors wait this long after a calibration (at most; steady readings end it sooner)
     sensorError?: string; // the CO2 sensor does not answer
 }
 

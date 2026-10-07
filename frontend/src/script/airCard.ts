@@ -39,7 +39,10 @@ function airWord(co2: number | undefined) {
 
 function windowLine(state: AirState | undefined, lastOpen: AirEvent | undefined) {
     if (state?.window === 'open') return 'A window is open now.';
-    if (state?.window === 'paused') return 'Calibrating: windows are not watched right now.';
+    if (state?.window === 'paused')
+        return state.calibrating
+            ? 'Calibrating: windows are not watched right now.'
+            : `Windows are watched again ${state.settleSeconds ? `in about ${Math.max(1, Math.round(state.settleSeconds / 60))} min` : 'shortly'}.`;
     if (lastOpen && Date.now() - lastOpen.at < 24 * 3600_000) return `Last aired ${timeAgo(lastOpen.at)}.`;
     return 'No open window has been detected in the last 24 hours.';
 }

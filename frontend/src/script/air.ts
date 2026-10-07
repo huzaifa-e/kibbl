@@ -209,7 +209,7 @@ function renderTiles() {
             s?.calibrating
                 ? 'detection paused while calibrating'
                 : windowState === 'paused'
-                  ? 'detection paused while it settles'
+                  ? `detection resumes ${s?.settleSeconds ? `in about ${Math.max(1, Math.round(s.settleSeconds / 60))} min` : 'shortly'} (after calibrating)`
                   : windowState === 'learning'
                     ? 'watching the air for 3 minutes'
                     : s?.night

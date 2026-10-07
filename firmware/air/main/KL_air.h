@@ -14,7 +14,8 @@ extern "C" {
 #define CALIBRATE_PREPARE_MS (5 * 60 * 1000) // in fresh air before the sensor takes the value
 #define CALIBRATE_FOLLOW_MS  (60 * 1000)
 // after it the detectors wait this long: the device is carried back and settles in the room
-#define CALIBRATE_SETTLE_MS  (15 * 60 * 1000)
+#define CALIBRATE_SETTLE_MS  (15 * 60 * 1000) // at most: steady readings end it sooner
+#define SETTLE_STEADY_MS     (3 * 60 * 1000)  // this long within the ranges below: settled
 
 typedef struct {
     bool valid;        // false until the first measurement, and while the sensor is missing
@@ -41,6 +42,9 @@ bool air_calibrate(uint16_t ppm);
 bool air_calibrating(void);
 // false while the detectors pause: during a calibration and CALIBRATE_SETTLE_MS after it
 bool air_detecting(void);
+
+// seconds until the detectors run again after a calibration, 0 when they run
+uint32_t air_settle_seconds(void);
 
 /* Night mode, sent by the server on the schedule of the device: the lamp off, the buzzer
  * muted, the fan at most at nightFan. Not stored: a restart is day until the server

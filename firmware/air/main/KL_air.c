@@ -38,6 +38,37 @@ static volatile bool night = false;
 static volatile uint16_t calibrate_ppm = 0; // > 0: a calibration runs
 static int64_t calibrate_start         = 0;
 static int64_t detectors_from          = 0; // millis() from which smoke, window and fire rates run again
+
+/* After a calibration the device may be carried back from outside: the detectors wait until
+ * its readings are steady (SETTLE_STEADY_MS within these ranges), at most CALIBRATE_SETTLE_MS.
+ * A device that stayed where it calibrated is steady after 3 minutes. */
+#define SETTLE_TEMP_RANGE 0.3f
+#define SETTLE_CO2_RANGE  30.0f
+static int64_t steady_since = 0;
+static float steady_t_lo, steady_t_hi, steady_c_lo, steady_c_hi;
+
+static void settle_step(float co2, float temperature, int64_t now) {
+    if (calibrate_ppm != 0 || now >= detectors_from) {
+        return;
+    }
+    bool restart = steady_since == 0;
+    if (!restart) {
+        float t_lo = temperature < steady_t_lo ? temperature : steady_t_lo;
+        float t_hi = temperature > steady_t_hi ? temperature : steady_t_hi;
+        float c_lo = co2 < steady_c_lo ? co2 : steady_c_lo;
+        float c_hi = co2 > steady_c_hi ? co2 : steady_c_hi;
+        restart    = t_hi - t_lo > SETTLE_TEMP_RANGE || c_hi - c_lo > SETTLE_CO2_RANGE;
+        steady_t_lo = t_lo, steady_t_hi = t_hi, steady_c_lo = c_lo, steady_c_hi = c_hi;
+    }
+    if (restart) {
+        steady_since = now;
+        steady_t_lo = steady_t_hi = temperature;
+        steady_c_lo = steady_c_hi = co2;
+    } else if (now - steady_since >= SETTLE_STEADY_MS) {
+        detectors_from = now;
+        DEBUG_F("air: readings steady for %d min, the detectors run again\n", SETTLE_STEADY_MS / 60000);
+    }
+}
 static bool calibrate_sent             = false;
 
 /* The CO2 at the open window in the last minutes before the calibration step: the home's
@@ -166,6 +197,7 @@ static void calibrate_step(int64_t now) {
         lamp_set_calibrating(false);
         calibrate_ppm  = 0;
         detectors_from = now + CALIBRATE_SETTLE_MS;
+        steady_since   = 0;
         DEBUG_F("air: calibrated; the detectors start again in %d min\n", CALIBRATE_SETTLE_MS / 60000);
     }
 }
@@ -224,6 +256,7 @@ static void air_task(void *pvParams) {
 
         /* the detectors take every reading, the light the mean. While a calibration runs and
          * the device is carried around they pause, and start over after it */
+        settle_step(values.co2, values.temperature, now);
         bool detecting_now = calibrate_ppm == 0 && now >= detectors_from;
         if (detecting_now && !detected_before) {
             smoke_reset();
@@ -332,6 +365,22 @@ bool air_calibrate(uint16_t ppm) {
 
 bool air_calibrating(void) {
     return calibrate_ppm != 0;
+}
+
+uint32_t air_settle_seconds(void) {
+    if (calibrate_ppm != 0) {
+        return (uint32_t)(CALIBRATE_SETTLE_MS / 1000); // after it: at most this
+    }
+    int64_t left = detectors_from - millis();
+    if (left <= 0) {
+        return 0;
+    }
+    // a steady device is done SETTLE_STEADY_MS after it got steady, sooner than the limit
+    if (steady_since != 0) {
+        int64_t steady_left = steady_since + SETTLE_STEADY_MS - millis();
+        left                = steady_left < left ? steady_left : left;
+    }
+    return left > 0 ? (uint32_t)(left / 1000) : 0;
 }
 
 bool air_detecting(void) {
