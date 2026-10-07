@@ -384,7 +384,7 @@ function eventHtml(e: AirEvent) {
     } else if (e.source === 'button') {
         text = '<b>Cigarette logged</b> with the button';
     } else {
-        text = `<b>Cigarette detected</b> · ${e.puffs} puffs${e.durationSeconds ? ` in ${formatDuration(e.durationSeconds)}` : ''}${e.button ? ' · also logged' : ''}`;
+        text = `<b>Cigarette detected</b> · ${e.puffs} puffs${e.durationSeconds ? ` in ${formatDuration(e.durationSeconds)}` : ''}${e.window ? ' · at the open window' : ''}${e.button ? ' · also logged' : ''}`;
     }
     return `<div class="list-group-item"><div class="d-flex gap-3 align-items-center">
         <i class="ti ti-${icon} fs-2" style="color:${color}"></i><div>${text}${when}</div></div></div>`;

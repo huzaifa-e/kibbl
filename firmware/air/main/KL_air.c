@@ -271,7 +271,7 @@ static void air_task(void *pvParams) {
         }
         if (detecting_now) {
             if (settings.smoke) {
-                smoke_feed(values.co2, settings.puff_rise, now);
+                smoke_feed(values.co2, settings.puff_rise, window_open(), now);
             }
             window_feed(values.co2, values.temperature, now);
         }

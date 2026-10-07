@@ -27,8 +27,10 @@ static int64_t last_button_ms = -BUTTON_BEFORE_MS - 1;
 
 /* ----------------------------------------------------------------------- */
 
+static bool session_window = false; // a puff of the cigarette going on came at an open window
+
 static void end_session(int64_t now_ms) {
-    if (puffs >= SMOKE_MIN_PUFFS) {
+    if (puffs >= (session_window ? SMOKE_WINDOW_MIN_PUFFS : SMOKE_MIN_PUFFS)) {
         bool button = last_button_ms >= first_puff_ms - BUTTON_BEFORE_MS && last_button_ms <= now_ms;
         DEBUG_F("smoke: cigarette, %u puffs in %lld s%s\n", puffs, (last_puff_ms - first_puff_ms) / 1000, button ? ", logged with the button" : "");
 
@@ -40,14 +42,18 @@ static void end_session(int64_t now_ms) {
         cJSON_AddNumberToObject(json, "peakPpm", (int)session_peak);
         // the server counts this one only when the button did not log it already
         cJSON_AddBoolToObject(json, "button", button);
+        if (session_window) {
+            cJSON_AddBoolToObject(json, "window", true); // smoked at the open window
+        }
         // the event happened at the last puff, not when the gap ran out
         cJSON_AddNumberToObject(json, "delaySeconds", (double)((now_ms - last_puff_ms) / 1000));
         events_push(json);
     } else {
         DEBUG("smoke: %u puff(s), no cigarette\n", puffs);
     }
-    puffs        = 0;
-    session_peak = 0;
+    puffs          = 0;
+    session_peak   = 0;
+    session_window = false;
 }
 
 static void count_puff(int64_t now_ms) {
@@ -62,7 +68,11 @@ static void count_puff(int64_t now_ms) {
     DEBUG("smoke: puff %u, %.0f ppm above %.0f\n", puffs, puff_peak - baseline, baseline);
 }
 
-void smoke_feed(float co2, uint16_t puff_rise, int64_t now_ms) {
+void smoke_feed(float co2, uint16_t puff_rise, bool window, int64_t now_ms) {
+    if (window) {
+        float lower = puff_rise * SMOKE_WINDOW_RISE_SHARE;
+        puff_rise   = lower > SMOKE_WINDOW_MIN_RISE ? (uint16_t)lower : SMOKE_WINDOW_MIN_RISE;
+    }
     if (!started) {
         baseline   = co2;
         history[0] = history[1] = co2;
@@ -74,6 +84,7 @@ void smoke_feed(float co2, uint16_t puff_rise, int64_t now_ms) {
 
     if (!in_puff) {
         if (excess >= puff_rise && slope >= puff_rise / 2.0f) {
+            session_window = session_window || window;
             in_puff       = true;
             puff_peak     = co2;
             puff_start_ms = now_ms;

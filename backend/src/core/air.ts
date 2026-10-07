@@ -75,7 +75,7 @@ const pick = (msg: Record<string, unknown>, keys: string[]) => {
 };
 
 const eventFields: Record<AirEvent['kind'], string[]> = {
-    smoke: ['source', 'puffs', 'durationSeconds', 'peakPpm', 'button'],
+    smoke: ['source', 'puffs', 'durationSeconds', 'peakPpm', 'button', 'window'],
     window: ['state', 'co2', 'co2Before', 'temperatureChange', 'openSeconds', 'atStart'],
     fire: ['co2', 'co2Rise', 'temperature', 'temperatureRise'],
 };

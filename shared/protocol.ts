@@ -191,6 +191,7 @@ export interface AirEvent {
     durationSeconds?: number;
     peakPpm?: number;
     button?: boolean; // found by the detector, logged with the button already: counts once
+    window?: boolean; // smoked at an open window (smaller puffs count then)
     // window
     state?: 'open' | 'closed';
     co2?: number;

@@ -22,9 +22,15 @@ extern "C" {
 
 #define SMOKE_SESSION_GAP_MS (4 * 60 * 1000)
 #define SMOKE_MIN_PUFFS      3
+/* At an open window the smoke is diluted and carried out: puffs are lower and shorter, but
+ * the air around them is near outside air, so a smaller sharp spike stands out still. */
+#define SMOKE_WINDOW_RISE_SHARE 0.4f // of puff_rise
+#define SMOKE_WINDOW_MIN_RISE   40   // ppm at least
+#define SMOKE_WINDOW_MIN_PUFFS  2
 
-// one CO2 reading (every 2 s); puff_rise in ppm above the baseline. Pushes the events
-void smoke_feed(float co2, uint16_t puff_rise, int64_t now_ms);
+// one CO2 reading (every 2 s); puff_rise in ppm above the baseline; window: a window is open.
+// Pushes the events
+void smoke_feed(float co2, uint16_t puff_rise, bool window, int64_t now_ms);
 
 // the button logged a cigarette: the one the detector finds around it is marked
 void smoke_button(int64_t now_ms);

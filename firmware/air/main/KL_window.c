@@ -32,6 +32,7 @@
 // closed: one of them rises again
 #define CLOSE_TEMP_RISE 0.1f // °C: a window shut lets the room warm up again at once
 #define CLOSE_CO2_RISE  20.0f
+#define CLOSE_CO2_MEANS 3 // the CO2 up in this many 30 s means in a row
 
 typedef struct {
     float co2;
@@ -122,7 +123,13 @@ static void decide(int64_t now_ms) {
         }
     } else if (now_ms - opened_ms >= MIN_OPEN_MS) {
         float temp_change = to->temperature - from->temperature;
-        if (temp_change >= CLOSE_TEMP_RISE || co2_rising >= CLOSE_CO2_RISE || to->co2 > fresh_max + FRESH_CLOSE_ABOVE) {
+        /* the CO2 counts only when it stays up for CLOSE_CO2_MEANS means (1.5 min): a puff of a
+         * cigarette smoked at the open window is gone again within a minute */
+        bool co2_up = means_count >= CLOSE_CO2_MEANS;
+        for (int i = means_count - CLOSE_CO2_MEANS; co2_up && i < means_count; i++) {
+            co2_up = means[i].co2 - from->co2 >= CLOSE_CO2_RISE || means[i].co2 > fresh_max + FRESH_CLOSE_ABOVE;
+        }
+        if (temp_change >= CLOSE_TEMP_RISE || co2_up) {
             open = false;
             DEBUG_F("window: closed after %lld min\n", (now_ms - opened_ms) / 60000);
             push_event("closed", now_ms, from, to);
