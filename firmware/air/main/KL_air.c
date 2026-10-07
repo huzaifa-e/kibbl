@@ -15,6 +15,7 @@
 #include "KL_serial.h"
 #include "KL_smoke.h"
 #include "KL_status_led.h"
+#include "KL_stream.h"
 #include "KL_time.h"
 #include "KL_window.h"
 
@@ -144,6 +145,7 @@ static void remember_fresh_air(void) {
     if (config_set_air_fresh(f)) {
         window_set_fresh(f.min, f.max);
         DEBUG_F("air: fresh air at the window %u-%u ppm, the reference for open windows\n", f.min, f.max);
+        stream_announce(); // the hello again: the server and the app show the new range
     }
 }
 

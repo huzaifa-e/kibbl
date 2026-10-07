@@ -35,6 +35,7 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
+let rawLogged = false;
 // the rooms the server switched off for an open window: back to the schedule when it closes
 const windowOff = new Map<string, number>(); // userID|roomId -> until
 
@@ -143,7 +144,13 @@ async function poll(userID: string) {
     let rooms: HeatingRoom[];
     if (link.generation === 'x') {
         const res = await tadoRequest<unknown[]>(userID, 'GET', `${HOPS_API}/homes/${link.homeId}/rooms`);
-        rooms = (Array.isArray(res.data) ? res.data : []).map(xRoom);
+        const raw = Array.isArray(res.data) ? res.data : [];
+        // what tado X sends for a room, once per start: for when a value is not where it is expected
+        if (!rawLogged) {
+            rawLogged = true;
+            log.info('tado X room as sent', { first: JSON.stringify(raw[0] ?? null).slice(0, 800) });
+        }
+        rooms = raw.map(xRoom);
         // tado X brings its rooms with every read: new ones are placed, the names kept for a failed read
         const known = new Set(link.rooms.map((r) => r.id));
         if (rooms.some((r) => !known.has(r.id)) || rooms.length !== link.rooms.length) {
@@ -380,7 +387,7 @@ export async function command(userID: string, roomId: number, cmd: HeatingComman
 /* After a command the room is read again in a while, so the app shows what tado really does
  * instead of what was asked; only with requests to spare (an account with 100 a day waits
  * for the regular read). */
-const CONFIRM_MS = 20_000;
+const CONFIRM_MS = 60_000; // a radiator thermostat of tado X reports its new setting with a delay
 function confirmSoon(userID: string, remaining: number | undefined) {
     if (remaining === undefined || remaining < 200) return;
     setTimeout(() => {
