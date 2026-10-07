@@ -5,7 +5,19 @@ import { logger } from '../core/logger';
 import { isAdmin } from '../core/owners';
 import { accessInfo } from './healthAccess';
 import { HealthError, SCOPES, configured, exchangeCode, newAuthorization } from '../health/google';
-import { INTRADAY_TYPES, RANGES, dropCached, forget, intraday, latestHeartRate, summary, syncNow, syncStatus, trackers } from '../health/service';
+import {
+    INTRADAY_TYPES,
+    RANGES,
+    dropCached,
+    forget,
+    intraday,
+    latestHeartRate,
+    summary,
+    syncNow,
+    syncStatus,
+    trackers,
+    recentHeartRate,
+} from '../health/service';
 import { deleteStoredHealth, storageStats } from '../health/store';
 import { saveTokens } from '../health/tokens';
 
@@ -104,6 +116,16 @@ export default function initHealthRoutes(app: express.Application) {
         }
         try {
             res.json(await intraday(req.sessionInfo!.userID, type, date));
+        } catch (err) {
+            sendError(res, err);
+        }
+    });
+
+    // the heart rate of the last minutes up to the newest sample (?minutes=30), for the home page
+    app.get('/api/health/hr-recent', auth, async (req: RequestWithSessionInfo, res) => {
+        const minutes = Math.min(Math.max(Number(req.query.minutes) || 30, 5), 180);
+        try {
+            res.json(await recentHeartRate(req.sessionInfo!.userID, minutes));
         } catch (err) {
             sendError(res, err);
         }

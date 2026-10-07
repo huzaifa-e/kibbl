@@ -37,19 +37,40 @@ function airWord(co2: number | undefined) {
     return 'Very stuffy';
 }
 
-function windowLine(state: AirState | undefined, lastOpen: AirEvent | undefined) {
-    if (state?.window === 'open') return 'A window is open now.';
+// the last opening of a window and its closing, as the device reported them
+export interface WindowEvents {
+    open?: AirEvent;
+    closed?: AirEvent;
+}
+
+const hhmm = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/* When a window was open, as times: the device needs a little to be sure a window is shut
+ * again, the times say when it really was open. */
+export function windowText(state: AirState | undefined, w: WindowEvents | undefined) {
+    const open = w?.open && Date.now() - w.open.at < 24 * 3600_000 ? w.open : undefined;
+    if (state?.window === 'open') return open ? `Window open since ${hhmm(open.at)}.` : 'A window is open now.';
+    if (!open) return undefined;
+    const closed = w?.closed && w.closed.at > open.at ? w.closed : undefined;
+    if (closed) {
+        const minutes = Math.max(1, Math.round((closed.at - open.at) / 60_000));
+        return `Last open ${hhmm(open.at)}–${hhmm(closed.at)} (${minutes} min).`;
+    }
+    return `Last open at ${hhmm(open.at)}.`;
+}
+
+function windowLine(state: AirState | undefined, w: WindowEvents | undefined) {
+    if (state?.window === 'open') return windowText(state, w) as string;
     if (state?.window === 'paused')
         return state.calibrating
             ? 'Calibrating: windows are not watched right now.'
             : `Windows are watched again ${state.settleSeconds ? `in about ${Math.max(1, Math.round(state.settleSeconds / 60))} min` : 'shortly'}.`;
-    if (lastOpen && Date.now() - lastOpen.at < 24 * 3600_000) return `Last aired ${timeAgo(lastOpen.at)}.`;
-    return 'No open window has been detected in the last 24 hours.';
+    return windowText(state, w) ?? 'No open window has been detected in the last 24 hours.';
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-function scene(f: Freshness, state: AirState | undefined, lastOpen: AirEvent | undefined) {
+function scene(f: Freshness, state: AirState | undefined, lastOpen: WindowEvents | undefined) {
     return `<svg viewBox="0 0 320 200" class="air-scene" role="img" aria-label="Indoor air ${f.word}">
         <path d="M0 150 Q60 110 120 145 T240 140 T320 135 V200 H0 Z" class="air-hill" />
         <g class="air-tree">
@@ -87,7 +108,7 @@ function dial(t: number | undefined, rh: number | undefined) {
 }
 
 // the first card: how fresh the indoor air is, the weather outside, the last airing
-export function freshnessCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen: AirEvent | undefined) {
+export function freshnessCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen: WindowEvents | undefined) {
     const s = d.online ? d.air?.state : undefined;
     const outside = weather
         ? `<span class="air-outside" title="${escapeHtml(weather.description ?? '')}"><i class="ti ti-${weather.icon ?? 'cloud'}"></i> ${Math.round(weather.temperature)}°</span>`

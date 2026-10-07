@@ -15,6 +15,7 @@ import {
 import { climateHints, type HintLevel, type Weather } from '../../../shared/climate';
 import { baseOptions } from './activityCharts';
 import { loadRooms, roomSelectHtml } from './roomsPanel';
+import { windowText } from './airCard';
 import { levelColors } from './controls';
 import { tone } from './healthCharts';
 import { request, socket } from './socket';
@@ -212,9 +213,10 @@ function renderTiles() {
                   ? `detection resumes ${s?.settleSeconds ? `in about ${Math.max(1, Math.round(s.settleSeconds / 60))} min` : 'shortly'} (after calibrating)`
                   : windowState === 'learning'
                     ? 'watching the air for 3 minutes'
-                    : s?.night
-                      ? '<i class="ti ti-moon"></i> night mode'
-                      : '',
+                    : (windowText(s, {
+                          open: events.find((e) => e.kind === 'window' && e.state === 'open'),
+                          closed: events.find((e) => e.kind === 'window' && e.state === 'closed'),
+                      }) ?? (s?.night ? '<i class="ti ti-moon"></i> night mode' : '')),
         );
 
     const alerts: string[] = [];

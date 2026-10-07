@@ -3,7 +3,7 @@ import type ApexCharts from 'apexcharts';
 import type { Weather } from '../../../shared/climate';
 import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
-import { comfortCardHtml, freshnessCardHtml } from './airCard';
+import { comfortCardHtml, freshnessCardHtml, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
@@ -22,7 +22,7 @@ let rendered = false;
 let othersBound = false;
 // for the cards of a kibbl. air: the weather outside and the last time a window opened
 let weather: Weather | null = null;
-const lastOpen = new Map<string, AirEvent>();
+const lastOpen = new Map<string, WindowEvents>(); // the last opening and closing of a window per kibbl. air
 
 const cameras = () => devices.filter((d) => d.status === 'approved' && d.caps.includes('camera'));
 const others = () => devices.filter((d) => d.status === 'approved' && !d.caps.includes('camera'));
@@ -154,7 +154,8 @@ async function loadAirExtras() {
         air.map(async (d) => {
             const events = ((await get(`/api/air/${d._id}/events?days=1`).catch(() => null)) as AirEvent[] | null) ?? [];
             const open = events.find((e) => e.kind === 'window' && e.state === 'open');
-            if (open) lastOpen.set(d._id, open);
+            const closed = events.find((e) => e.kind === 'window' && e.state === 'closed');
+            if (open || closed) lastOpen.set(d._id, { open, closed });
         }),
     );
     if (rendered) renderOthers();
@@ -251,12 +252,18 @@ socket.on('heatingUpdate', () => {
     void loadHeatingCard().then(() => rendered && renderOthers());
 });
 
-// a window opened: the card of its kibbl. air says so
+// a window opened or closed: the card of its kibbl. air says when
 socket.on('airEvent', (event: AirEvent) => {
-    if (event.kind !== 'window' || event.state !== 'open') return;
-    lastOpen.set(event.deviceId, event);
+    if (event.kind !== 'window') return;
+    const known = lastOpen.get(event.deviceId) ?? {};
+    lastOpen.set(event.deviceId, event.state === 'open' ? { ...known, open: event } : { ...known, closed: event });
     if (rendered) renderOthers();
 });
+
+// the heart rate of the last 30 minutes and the meters move on: the cards every 2 minutes
+window.setInterval(() => {
+    if (!document.hidden && rendered) void renderHomeCards(byId('camera-grid'));
+}, 2 * 60_000);
 
 // the weather outside, every 15 minutes
 window.setInterval(() => {

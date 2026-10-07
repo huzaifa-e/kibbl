@@ -398,6 +398,19 @@ export async function latestHeartRate(userID: string) {
     return data;
 }
 
+/* The heart rate of the last minutes before the newest sample, for the home page: from today's
+ * heart rate as it is read for the day (cached 5 minutes), the newest sample as late as the
+ * tracker synced. Times are the server's (the home's) time zone. */
+export async function recentHeartRate(userID: string, minutes = 30) {
+    const date = day(0);
+    const data = (await intraday(userID, HEART_RATE, date)) as { points?: { t: string; value: number }[] };
+    const points = (data.points ?? []).map((p) => ({ at: new Date(`${date}T${p.t}`).getTime(), bpm: p.value }));
+    if (!points.length) return { points: [], latest: null };
+    const latest = points[points.length - 1];
+    const from = latest.at - minutes * 60_000;
+    return { points: points.filter((p) => p.at >= from), latest };
+}
+
 // the stored history was deleted: nothing may still show it from memory
 export function dropCached(userID: string) {
     const s = states.get(userID);

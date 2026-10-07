@@ -5,7 +5,7 @@ import { hourlyConsumption } from './meterHours';
 import { escapeHtml, timeAgo } from './utils';
 
 /* The cards next to the cameras on the home page: each meter with its consumption per hour of
- * the last 24 hours, and the resting heart rate of the last 30 days. Each one links to its page. */
+ * the last 24 hours, and the heart rate of the last 30 minutes. Each one links to its page. */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -86,33 +86,35 @@ async function meterCards() {
     });
 }
 
+// the heart rate of the last 30 minutes up to the newest sample the tracker synced
 async function healthCard() {
-    const summary = await json('/api/health/summary?range=30');
-    const series: { date: string; value: number }[] = summary?.series?.resting_hr ?? [];
-    if (!series.length) return [];
-    const last = series[series.length - 1];
-    const mean = series.reduce((s, p) => s + p.value, 0) / series.length;
+    const recent: { points: { at: number; bpm: number }[]; latest: { at: number; bpm: number } | null } | undefined =
+        await json('/api/health/hr-recent?minutes=30');
+    if (!recent?.latest || !recent.points.length) return [];
+    const values = recent.points.map((p) => p.bpm);
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const html = card(
         '/health',
         'heart',
         tone('rust'),
-        'Resting heart rate',
-        '30 days',
-        stat(fmt(last.value, 0), 'bpm', 'latest') +
-            stat(fmt(mean, 0), 'bpm', '30-day mean') +
-            (summary.device?.battery != null ? stat(String(summary.device.battery), '%', 'tracker') : ''),
+        'Heart rate',
+        `last 30 min · ${time(recent.latest.at)}`,
+        stat(fmt(recent.latest.bpm, 0), 'bpm', 'latest') +
+            stat(fmt(mean, 0), 'bpm', 'mean') +
+            stat(`${fmt(Math.min(...values), 0)}–${fmt(Math.max(...values), 0)}`, 'bpm', 'range'),
         'home-health',
     );
     const draw = (el: HTMLElement) =>
         new ApexCharts(el, {
             ...sparkOptions(),
             chart: { ...sparkOptions().chart, type: 'area' },
-            series: [{ name: 'Resting heart rate', data: series.map((p) => [Date.parse(`${p.date}T12:00:00`), p.value]) }],
+            series: [{ name: 'Heart rate', data: recent.points.map((p) => [p.at, p.bpm]) }],
             colors: [tone('rust')],
             fill: { type: 'solid', opacity: 0.12 },
             stroke: { curve: 'smooth', width: 2 },
-            xaxis: { type: 'datetime' },
-            tooltip: { ...baseOptions().tooltip, x: { format: 'dd MMM' }, y: { formatter: (v: number) => `${fmt(v, 0)} bpm` } },
+            xaxis: { type: 'datetime', labels: { datetimeUTC: false } },
+            tooltip: { ...baseOptions().tooltip, x: { format: 'HH:mm:ss' }, y: { formatter: (v: number) => `${fmt(v, 0)} bpm` } },
         });
     return [{ html, id: 'home-health', draw, empty: false }];
 }

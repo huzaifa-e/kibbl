@@ -25,12 +25,12 @@
 #define FRESH_MARGIN        20.0f
 #define FRESH_FALL          30.0f
 // closed: clearly above it again
-#define FRESH_CLOSE_ABOVE   80.0f
+#define FRESH_CLOSE_ABOVE   40.0f
 // the lamp and the fan warm the sensor: after a change the temperature alone does not count
 #define HEAT_SETTLE_MS (15 * 60 * 1000)
 // closed: one of them rises again
-#define CLOSE_TEMP_RISE 0.3f
-#define CLOSE_CO2_RISE  40.0f
+#define CLOSE_TEMP_RISE 0.1f // °C: a window shut lets the room warm up again at once
+#define CLOSE_CO2_RISE  20.0f
 
 typedef struct {
     float co2;
