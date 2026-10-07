@@ -473,6 +473,15 @@ function renderSettings() {
                     <input class="form-check-input" type="checkbox" id="asc" ${s?.asc ? 'checked' : ''} ${off} />
                     <span class="form-check-label">Calibrate itself (needs fresh air every day)</span>
                 </label>
+                <hr class="my-3" />
+                <div class="form-label">Temperature like your thermometer</div>
+                <div class="text-secondary small mb-2">The device warms its own sensor; this corrects for it, but every place is a bit different. Enter what a thermometer you trust next to it shows${s?.tempAdjust ? ` (now corrected by ${s.tempAdjust > 0 ? '+' : ''}${s.tempAdjust.toFixed(1)} °C)` : ''}; the humidity follows.</div>
+                <div class="input-group input-group-flat">
+                    <input type="number" class="form-control" id="temp-reference" min="0" max="40" step="0.1" placeholder="${d.air?.state?.temperature?.toFixed(1) ?? '21.0'}" ${off} />
+                    <span class="input-group-text">°C</span>
+                    <button class="btn" id="temp-match" ${off}>Match</button>
+                </div>
+                ${s?.tempAdjust ? `<button class="btn btn-link btn-sm px-0 mt-1" id="temp-reset" ${off}>Back to the plain correction</button>` : ''}
             </div>
         </div>`;
 }
@@ -496,6 +505,22 @@ function bindSettings() {
                 return;
             }
             if ((await airConfig({ yellow, red })).ok) byId('air-result').innerHTML = successAlert('Thresholds saved on the device.');
+        } else if (el.id === 'temp-match') {
+            const reference = Number(byId<HTMLInputElement>('temp-reference').value);
+            const shown = device!.air?.state?.temperature;
+            if (!reference || shown === undefined) return;
+            // what it shows now already holds the old adjustment
+            const adjust = Math.round((reference - (shown - (device!.air?.settings?.tempAdjust ?? 0))) * 10) / 10;
+            if (Math.abs(adjust) > 5) {
+                byId('air-result').innerHTML = errorAlert(`That is ${adjust.toFixed(1)} °C off: more than 5 °C. Is the thermometer next to the device?`);
+                return;
+            }
+            if ((await airConfig({ tempAdjust: adjust })).ok)
+                byId('air-result').innerHTML = successAlert(
+                    `Temperature adjusted by ${adjust > 0 ? '+' : ''}${adjust.toFixed(1)} °C; the next readings show it.`,
+                );
+        } else if (el.id === 'temp-reset') {
+            if ((await airConfig({ tempAdjust: 0 })).ok) byId('air-result').innerHTML = successAlert('Back to the plain correction.');
         } else if (el.id === 'calibrate') {
             if (!confirm('Is the device outside or at a wide open window now? It takes the air of the next 6 minutes as 420 ppm.')) return;
             const resp = await command({ cmd: 'calibrate', ppm: 420 });

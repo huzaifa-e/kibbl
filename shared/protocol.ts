@@ -131,6 +131,7 @@ export interface AirSettings {
     smoke: boolean;
     puffRise: number;
     nightFan: number;
+    tempAdjust?: number; // °C added to the corrected temperature, to match a reference thermometer
 }
 
 export interface FanSettings {

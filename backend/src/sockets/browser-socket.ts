@@ -171,6 +171,12 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
                 if (typeof command[key] !== 'boolean') return undefined;
                 out[key] = command[key];
             }
+            // °C on top of the warmth correction, to match a thermometer the person trusts
+            if (command.tempAdjust !== undefined) {
+                const v = command.tempAdjust;
+                if (typeof v !== 'number' || !Number.isFinite(v) || v < -5 || v > 5) return undefined;
+                out.tempAdjust = Math.round(v * 10) / 10;
+            }
             return out;
         }
         case 'fan': {
