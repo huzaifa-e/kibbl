@@ -343,16 +343,17 @@ export async function command(userID: string, roomId: number, cmd: HeatingComman
         return t;
     };
 
+    let answer: unknown;
     if (cmd.mode === 'schedule') {
-        if (x) await tadoRequest(userID, 'POST', `${HOPS_API}/homes/${link.homeId}/rooms/${roomId}/resumeSchedule`, {});
-        else await tadoRequest(userID, 'DELETE', `${MY_API}/homes/${link.homeId}/zones/${roomId}/overlay`);
+        if (x) answer = (await tadoRequest(userID, 'POST', `${HOPS_API}/homes/${link.homeId}/rooms/${roomId}/resumeSchedule`, {})).data;
+        else answer = (await tadoRequest(userID, 'DELETE', `${MY_API}/homes/${link.homeId}/zones/${roomId}/overlay`)).data;
     } else {
         const on = cmd.mode === 'temperature';
         const setting: Record<string, unknown> = x ? { power: on ? 'ON' : 'OFF' } : { type: 'HEATING', power: on ? 'ON' : 'OFF' };
         if (on) setting.temperature = x ? { value: cmd.celsius, valueRaw: cmd.celsius, precision: 0.1 } : { celsius: cmd.celsius };
         const body = { setting, termination: termination(cmd.until, cmd.minutes) };
-        if (x) await tadoRequest(userID, 'POST', `${HOPS_API}/homes/${link.homeId}/rooms/${roomId}/manualControl`, body);
-        else await tadoRequest(userID, 'PUT', `${MY_API}/homes/${link.homeId}/zones/${roomId}/overlay`, body);
+        if (x) answer = (await tadoRequest(userID, 'POST', `${HOPS_API}/homes/${link.homeId}/rooms/${roomId}/manualControl`, body)).data;
+        else answer = (await tadoRequest(userID, 'PUT', `${MY_API}/homes/${link.homeId}/zones/${roomId}/overlay`, body)).data;
     }
 
     const room = session(userID).rooms.get(roomId);
@@ -369,9 +370,24 @@ export async function command(userID: string, roomId: number, cmd: HeatingComman
         // the schedule's own setting is known only from the next read: soon
         if (cmd.mode === 'schedule') session(userID).nextPoll = Math.min(session(userID).nextPoll, Date.now() + 2 * 60_000);
     }
-    log.info('heating command', { user: userID, room: roomId, ...cmd });
+    // what tado answered: a refusal throws in tadoRequest, an accepted command may still differ
+    log.info('heating command', { user: userID, room: roomId, ...cmd, answer: JSON.stringify(answer ?? null).slice(0, 300) });
     hub.emit('heatingUpdate', userID);
     await publishPaired(userID);
+    confirmSoon(userID, link.rateRemaining);
+}
+
+/* After a command the room is read again in a while, so the app shows what tado really does
+ * instead of what was asked; only with requests to spare (an account with 100 a day waits
+ * for the regular read). */
+const CONFIRM_MS = 20_000;
+function confirmSoon(userID: string, remaining: number | undefined) {
+    if (remaining === undefined || remaining < 200) return;
+    setTimeout(() => {
+        poll(userID)
+            .then(() => publishPaired(userID))
+            .catch((err) => log.warn('room not read after a command', { user: userID }, err));
+    }, CONFIRM_MS);
 }
 
 /* ----------------------------------------------------------------------- */
