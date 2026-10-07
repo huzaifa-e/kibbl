@@ -110,6 +110,7 @@ static void air_task(void *pvParams) {
     int64_t last_reading        = millis();
     int64_t last_try            = millis();
     bool detected_before        = true;
+    int heat_before             = -1; // the lamp and the fan in tens of %, as they warm the board
 
     while (1) {
         delay_ms(AIR_POLL_MS);
@@ -164,6 +165,11 @@ static void air_task(void *pvParams) {
         }
         detected_before = detecting_now;
         detecting       = detecting_now;
+        int heat = (lamp_lit() ? 100 : 0) + fan_level_now() / 10;
+        if (heat != heat_before) {
+            window_heat_changed(now);
+            heat_before = heat;
+        }
         if (detecting_now) {
             if (settings.smoke) {
                 smoke_feed(values.co2, settings.puff_rise, now);

@@ -106,7 +106,7 @@ export interface AirState {
     humidity?: number; // %RH
     level: AirLevel;
     fan: number; // pwm % now
-    window: 'open' | 'closed' | 'paused'; // paused: detection rests during a calibration and 15 min after
+    window: 'open' | 'closed' | 'learning' | 'paused'; // learning: its first 3 min of readings; paused: during a calibration and 15 min after
     night: boolean;
     calibrating: boolean;
     puffs: number; // of a cigarette going on

@@ -186,7 +186,7 @@ function renderTiles() {
         ) +
         tile(
             'window',
-            windowState === 'open' ? 'var(--tblr-orange)' : windowState === 'paused' ? 'var(--tblr-secondary)' : tone('olive'),
+            windowState === 'open' ? 'var(--tblr-orange)' : windowState === 'closed' ? tone('olive') : 'var(--tblr-secondary)',
             'Window',
             windowState ?? '–',
             '',
@@ -194,9 +194,11 @@ function renderTiles() {
                 ? 'detection paused while calibrating'
                 : windowState === 'paused'
                   ? 'detection paused while it settles'
-                  : s?.night
-                    ? '<i class="ti ti-moon"></i> night mode'
-                    : '',
+                  : windowState === 'learning'
+                    ? 'watching the air for 3 minutes'
+                    : s?.night
+                      ? '<i class="ti ti-moon"></i> night mode'
+                      : '',
         );
 
     const alerts: string[] = [];

@@ -15,6 +15,9 @@
 #define OPEN_TEMP_DROP      0.4f // °C, together with the CO2
 #define OPEN_CO2_ONLY_SHARE 0.35f // without the temperature (summer)
 #define OPEN_CO2_ONLY_PPM   200.0f
+#define OPEN_TEMP_ONLY      0.8f // °C within the span, while the CO2 does not rise
+// the lamp and the fan warm the sensor: after a change the temperature alone does not count
+#define HEAT_SETTLE_MS (15 * 60 * 1000)
 // closed: one of them rises again
 #define CLOSE_TEMP_RISE 0.3f
 #define CLOSE_CO2_RISE  40.0f
@@ -34,6 +37,7 @@ static int64_t mean_start = 0;
 
 static bool open         = false;
 static int64_t opened_ms = 0;
+static int64_t heat_from = 0; // millis() from which the temperature alone counts
 
 /* ----------------------------------------------------------------------- */
 
@@ -63,7 +67,9 @@ static void decide(int64_t now_ms) {
     if (!open) {
         float with_temp = above_out * OPEN_CO2_SHARE > OPEN_CO2_MIN_PPM ? above_out * OPEN_CO2_SHARE : OPEN_CO2_MIN_PPM;
         float co2_only  = above_out * OPEN_CO2_ONLY_SHARE > OPEN_CO2_ONLY_PPM ? above_out * OPEN_CO2_ONLY_SHARE : OPEN_CO2_ONLY_PPM;
-        if ((co2_change <= -with_temp && temp_change <= -OPEN_TEMP_DROP) || co2_change <= -co2_only) {
+        bool by_co2     = (co2_change <= -with_temp && temp_change <= -OPEN_TEMP_DROP) || co2_change <= -co2_only;
+        bool by_temp    = now_ms >= heat_from && temp_change <= -OPEN_TEMP_ONLY && co2_change <= 0;
+        if (by_co2 || by_temp) {
             open       = true;
             opened_ms  = now_ms;
             DEBUG_F("window: open (%.0f -> %.0f ppm, %+.1f °C in %d min)\n", from->co2, to->co2, temp_change, WINDOW_SPAN_MS / 60000);
@@ -106,6 +112,20 @@ void window_reset(void) {
     sum_count   = 0;
     sum_co2 = sum_temp = 0;
     open               = false;
+}
+
+void window_heat_changed(int64_t now_ms) {
+    heat_from = now_ms + HEAT_SETTLE_MS;
+}
+
+const char *window_state(bool detecting) {
+    if (!detecting) {
+        return "paused";
+    }
+    if (open) {
+        return "open";
+    }
+    return means_count < MEANS ? "learning" : "closed";
 }
 
 bool window_open(void) {

@@ -62,7 +62,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
 { "type": "telemetry", "uptime": 3600, "rssi": -61, "heap": 150000, "psram": 3300000, "cameraFps": 2, "fps": 2, "frameBytes": 24500 }
 ```
 
-A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mean of 3 readings), `temperature` (°C, corrected for the warmth of the board), `humidity`, `level` (`none`, `green`, `yellow`, `red`), `fan` (pwm % now), `window` (`open`, `closed`, `paused` while the detectors rest during a calibration and 15 min after), `night`, `calibrating`, `puffs` (of a cigarette going on), `fire` (its alarm sounds), `sensorError` (while the CO2 sensor does not answer); its hello also `air`, `fanSettings` and `lamp` (the settings below), `sensor`, `expander`, `powerOn`.
+A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mean of 3 readings), `temperature` (°C, corrected for the warmth of the board), `humidity`, `level` (`none`, `green`, `yellow`, `red`), `fan` (pwm % now), `window` (`open`, `closed`, `learning` during its first 3 min of readings, `paused` while the detectors rest during a calibration and 15 min after), `night`, `calibrating`, `puffs` (of a cigarette going on), `fire` (its alarm sounds), `sensorError` (while the CO2 sensor does not answer); its hello also `air`, `fanSettings` and `lamp` (the settings below), `sensor`, `expander`, `powerOn`.
 
 ### `event` (kibbl. air)
 
