@@ -515,3 +515,27 @@ html[data-bs-theme='dark'] .theme-label-dark {
     font-size: 0.8rem;
     font-weight: 500;
 }
+
+/* landscape from tablet width: freshness and comfort side by side, the same height */
+@media (min-width: 768px) {
+    .air-card-panes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+    .air-freshness {
+        display: flex;
+        flex-direction: column;
+    }
+    .air-freshness .air-scene {
+        margin-top: auto;
+    }
+    .air-comfort {
+        display: flex;
+        flex-direction: column;
+    }
+    .air-comfort .air-dial {
+        width: 72%;
+        max-width: 280px;
+        margin: auto;
+    }
+}

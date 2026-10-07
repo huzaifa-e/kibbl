@@ -162,7 +162,10 @@ async function loadAirExtras() {
 
 function renderOthers() {
     const list = others();
-    byId('other-devices').innerHTML = list.map((d) => `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`).join('');
+    // a kibbl. air is a landscape card over the full width
+    byId('other-devices').innerHTML = list
+        .map((d) => `<div class="${d.caps.includes('air') ? 'col-12' : 'col-md-6 col-xl-4'}">${otherCardHtml(d)}</div>`)
+        .join('');
     // the controls listen on the container: bound once, not on every redraw
     if (!othersBound) {
         bindControls(byId('other-devices'), (id) => devices.find((d) => d._id === id));

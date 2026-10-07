@@ -80,12 +80,14 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
     const rh = s?.humidity;
     const outside = weather ? `<span class="air-outside"><i class="ti ti-cloud"></i> ${Math.round(weather.temperature)}°</span>` : '';
     const offline = d.online ? '' : `<div class="text-secondary small px-3 pb-2">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`;
+    // landscape: freshness and comfort side by side, stacked on a phone
     return `<div class="card air-card" data-air-card="${d._id}">
+        <div class="air-card-panes">
         <a href="/air/${d._id}" class="air-freshness text-reset text-decoration-none">
             <div class="air-freshness-head"><span>Air freshness</span>${outside}</div>
             ${scene(f, s, lastOpen)}
+            ${offline}
         </a>
-        ${offline}
         <div class="air-comfort">
             <div class="air-comfort-head"><a href="/air/${d._id}" class="text-reset">${escapeHtml(d.name)}</a><span>${comfort(t, rh)}</span></div>
             ${dial(t, rh)}
@@ -94,6 +96,7 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
                 <div><div class="air-comfort-caption">Humidity</div><div class="air-comfort-value">${rh === undefined ? '–' : `${Math.round(rh)}%`}</div></div>
                 <div><div class="air-comfort-caption">CO₂</div><div class="air-comfort-value">${s?.co2 ?? '–'}<small> ppm</small></div></div>
             </div>
+        </div>
         </div>
         <div class="card-body border-top">${controls}</div>
     </div>`;
