@@ -8,6 +8,7 @@
 #include "KL_buzzer.h"
 #include "KL_events.h"
 #include "KL_fan.h"
+#include "KL_fire.h"
 #include "KL_scd30.h"
 #include "KL_serial.h"
 #include "KL_smoke.h"
@@ -153,6 +154,7 @@ static void air_task(void *pvParams) {
             smoke_feed(values.co2, settings.puff_rise, now);
         }
         window_feed(values.co2, values.temperature, now);
+        fire_feed(values.co2, values.temperature, now);
 
         samples[sample_count % MEAN_SAMPLES] = values.co2;
         sample_count++;
@@ -245,6 +247,11 @@ bool air_night(void) {
 }
 
 void air_button_pressed(void) {
+    // during a fire alarm the button silences it, nothing else
+    if (fire_alarm()) {
+        fire_silence();
+        return;
+    }
     DEBUG_F("button: cigarette logged\n");
     int64_t now = millis();
     smoke_button(now);

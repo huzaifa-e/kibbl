@@ -12,6 +12,7 @@
 #include "KL_air_config.h"
 #include "KL_events.h"
 #include "KL_fan.h"
+#include "KL_fire.h"
 #include "KL_hw.h"
 #include "KL_ioexp.h"
 #include "KL_lamp.h"
@@ -39,6 +40,7 @@ static void add_state(cJSON *json) {
     cJSON_AddBoolToObject(json, "night", air_night());
     cJSON_AddBoolToObject(json, "calibrating", air_calibrating());
     cJSON_AddNumberToObject(json, "puffs", smoke_puffs_now());
+    cJSON_AddBoolToObject(json, "fire", fire_alarm());
 }
 
 void product_add_info(cJSON *json, cmd_source_t source) {
@@ -62,6 +64,7 @@ void product_add_info(cJSON *json, cmd_source_t source) {
     cJSON_AddItemToArray(caps, cJSON_CreateString("calibrate"));
     cJSON_AddItemToArray(caps, cJSON_CreateString("smoke"));
     cJSON_AddItemToArray(caps, cJSON_CreateString("window"));
+    cJSON_AddItemToArray(caps, cJSON_CreateString("fire"));
     cJSON_AddItemToArray(caps, cJSON_CreateString("ota"));
 
     air_settings_t settings;

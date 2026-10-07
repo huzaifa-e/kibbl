@@ -25,6 +25,10 @@ void buzzer_play(buzzer_tone_t tone);
 // night mode: no tone plays while muted
 void buzzer_set_muted(bool muted);
 
+/* The fire alarm: a loud pattern over and over, also when muted, until it is switched
+ * off. Other tones wait meanwhile. */
+void buzzer_alarm(bool on);
+
 #ifdef __cplusplus
 }
 #endif

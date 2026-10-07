@@ -41,6 +41,9 @@ bool lamp_lit(void);
 // count short flashes of the white light, then back to what it showed
 void lamp_blink(uint8_t count);
 
+// the fire alarm: red flashing, before everything else and also at night
+void lamp_set_alarm(bool alarm);
+
 // slow white blinking while a calibration runs
 void lamp_set_calibrating(bool calibrating);
 

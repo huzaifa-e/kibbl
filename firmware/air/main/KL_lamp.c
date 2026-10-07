@@ -24,6 +24,7 @@ static volatile air_level_t level       = AIR_LEVEL_NONE;
 static volatile status_led_state status = LED_OFF;
 static volatile bool calibrating        = false;
 static volatile bool night              = false;
+static volatile bool alarm              = false;
 
 // flashes still to show, before the lamp goes back to its mode
 static volatile uint8_t blinks      = 0;
@@ -103,7 +104,11 @@ static void flash(volatile uint8_t *count) {
 
 static void lamp_task(void *pvParams) {
     while (1) {
-        if (blinks > 0) {
+        if (alarm) {
+            if (step(LAMP_MASK_RED, 250)) {
+                step(0, 250);
+            }
+        } else if (blinks > 0) {
             flash(&blinks);
         } else if (wifi_blinks > 0) {
             flash(&wifi_blinks);
@@ -157,6 +162,11 @@ void lamp_set_level(air_level_t new_level) {
         level = new_level;
         wake();
     }
+}
+
+void lamp_set_alarm(bool on) {
+    alarm = on;
+    wake();
 }
 
 void lamp_set_night(bool on) {

@@ -24,6 +24,8 @@ static const note_t tone_red[]             = {{850, 110, 100}, {850, 110, 100}, 
 static const note_t tone_calibrate_start[] = {{300, 180, 80}, {500, 280, 100}};
 static const note_t tone_calibrate_end[]   = {{500, 280, 100}, {300, 180, 80}};
 static const note_t tone_logged[]          = {{620, 110, 95}, {735, 180, 100}};
+// the temporal pattern of smoke alarms (ISO 8201): three tones, a pause
+static const note_t tone_alarm[] = {{3100, 500, 500}, {3100, 500, 500}, {3100, 500, 1500}};
 
 static const struct {
     const note_t *notes;
@@ -39,6 +41,7 @@ static const struct {
 
 static bool available       = false;
 static volatile bool muted   = false;
+static volatile bool alarm   = false;
 static esp_timer_handle_t note_timer = NULL;
 
 static const note_t *playing = NULL;
@@ -61,8 +64,14 @@ static void note_cb(void *arg) {
         return;
     }
     if (notes_left == 0) {
-        playing = NULL;
-        return;
+        if (alarm) {
+            // over and over until the alarm ends
+            playing    = tone_alarm;
+            notes_left = sizeof(tone_alarm) / sizeof(note_t);
+        } else {
+            playing = NULL;
+            return;
+        }
     }
     ledc_set_freq(LEDC_LOW_SPEED_MODE, BUZZER_TIMER, playing->freq_hz);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, BUZZER_DUTY);
@@ -103,12 +112,30 @@ bool buzzer_setup(void) {
     return true;
 }
 
+void buzzer_alarm(bool on) {
+    if (!available || on == alarm) {
+        return;
+    }
+    alarm = on;
+    esp_timer_stop(note_timer);
+    silence();
+    sounding = false;
+    if (on) {
+        playing    = tone_alarm;
+        notes_left = sizeof(tone_alarm) / sizeof(note_t);
+        note_cb(NULL);
+    } else {
+        playing    = NULL;
+        notes_left = 0;
+    }
+}
+
 void buzzer_set_muted(bool mute) {
     muted = mute;
 }
 
 void buzzer_play(buzzer_tone_t tone) {
-    if (!available || muted || tone >= sizeof(tones) / sizeof(tones[0])) {
+    if (!available || muted || alarm || tone >= sizeof(tones) / sizeof(tones[0])) {
         return;
     }
     esp_timer_stop(note_timer);
