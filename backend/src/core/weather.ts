@@ -34,14 +34,14 @@ function owmIcon(code: string) {
         case '01':
             return night ? 'moon' : 'sun';
         case '02':
-            return night ? 'cloud-moon' : 'cloud-sun';
+            return night ? 'moon' : 'cloud'; // partly cloudy (the icon font has no cloud-sun)
         case '09':
         case '10':
             return 'cloud-rain';
         case '11':
             return 'cloud-storm';
         case '13':
-            return 'snowflake';
+            return 'cloud-snow';
         case '50':
             return 'mist';
         default:
@@ -51,10 +51,10 @@ function owmIcon(code: string) {
 
 function wmoIcon(code: number, day: boolean) {
     if (code === 0) return day ? 'sun' : 'moon';
-    if (code <= 2) return day ? 'cloud-sun' : 'cloud-moon';
+    if (code <= 2) return day ? 'cloud' : 'moon';
     if (code === 45 || code === 48) return 'mist';
     if (code >= 95) return 'cloud-storm';
-    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snowflake';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'cloud-snow';
     if (code >= 51) return 'cloud-rain';
     return 'cloud';
 }

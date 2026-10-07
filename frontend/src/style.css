@@ -396,8 +396,18 @@ html[data-bs-theme='dark'] .theme-label-dark {
     overflow: hidden;
 }
 .air-freshness {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     background: #e8eef0;
+}
+.air-freshness .air-scene {
+    margin-top: auto;
+}
+.air-offline {
+    font-size: 0.8rem;
+    padding: 0 1rem 0.5rem;
+    opacity: 0.8;
 }
 [data-bs-theme='dark'] .air-freshness {
     background: #43484a;
@@ -457,6 +467,9 @@ html[data-bs-theme='dark'] .theme-label-dark {
     margin-top: 3px;
 }
 .air-comfort {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     background: #2f5c46;
     color: #f3efe6;
     padding: 0.9rem 1rem 1rem;
@@ -476,9 +489,9 @@ html[data-bs-theme='dark'] .theme-label-dark {
 }
 .air-dial {
     display: block;
-    width: 88%;
-    max-width: 320px;
-    margin: 0.4rem auto;
+    width: 66%;
+    max-width: 260px;
+    margin: 0.4rem auto 0.9rem;
 }
 .air-dial-ring {
     fill: none;
@@ -516,30 +529,6 @@ html[data-bs-theme='dark'] .theme-label-dark {
     font-weight: 500;
 }
 
-/* landscape from tablet width: freshness and comfort side by side, the same height */
-@media (min-width: 768px) {
-    .air-card-panes {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-    }
-    .air-freshness {
-        display: flex;
-        flex-direction: column;
-    }
-    .air-freshness .air-scene {
-        margin-top: auto;
-    }
-    .air-comfort {
-        display: flex;
-        flex-direction: column;
-    }
-    .air-comfort .air-dial {
-        width: 72%;
-        max-width: 280px;
-        margin: auto;
-    }
-}
-
 .air-credit {
     font-size: 0.68rem;
     text-align: right;
@@ -548,4 +537,11 @@ html[data-bs-theme='dark'] .theme-label-dark {
 }
 .air-comfort-value {
     white-space: nowrap;
+}
+
+.air-comfort-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 0.5rem;
 }

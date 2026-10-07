@@ -83,36 +83,34 @@ function dial(t: number | undefined, rh: number | undefined) {
     </svg>`;
 }
 
-export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen: AirEvent | undefined, controls: string) {
+// the first card: how fresh the indoor air is, the weather outside, the last airing
+export function freshnessCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen: AirEvent | undefined) {
     const s = d.online ? d.air?.state : undefined;
-    const f = freshness(s?.co2);
-    const t = s?.temperature;
-    const rh = s?.humidity;
     const outside = weather
         ? `<span class="air-outside" title="${escapeHtml(weather.description ?? '')}"><i class="ti ti-${weather.icon ?? 'cloud'}"></i> ${Math.round(weather.temperature)}°</span>`
         : '';
     // OpenWeather asks to be named where its data is shown
     const credit = weather?.source === 'openweather' ? '<div class="air-credit">Weather data © OpenWeather</div>' : '';
-    const offline = d.online ? '' : `<div class="text-secondary small px-3 pb-2">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`;
-    // landscape: freshness and comfort side by side, stacked on a phone
-    return `<div class="card air-card" data-air-card="${d._id}">
-        <div class="air-card-panes">
-        <a href="/air/${d._id}" class="air-freshness text-reset text-decoration-none">
-            <div class="air-freshness-head"><span>Air freshness</span>${outside}</div>
-            ${scene(f, s, lastOpen)}
-            ${credit}
-            ${offline}
-        </a>
-        <div class="air-comfort">
-            <div class="air-comfort-head"><a href="/air/${d._id}" class="text-reset">${escapeHtml(d.name)}</a><span>${comfort(t, rh)}</span></div>
-            ${dial(t, rh)}
-            <div class="air-comfort-values">
-                <div><div class="air-comfort-caption">Temperature</div><div class="air-comfort-value">${t === undefined ? '–' : `${t.toFixed(1)}°`}</div></div>
-                <div><div class="air-comfort-caption">Humidity</div><div class="air-comfort-value">${rh === undefined ? '–' : `${Math.round(rh)}%`}</div></div>
-                <div title="${s?.co2 !== undefined ? `${s.co2} ppm CO₂` : ''}"><div class="air-comfort-caption">Air</div><div class="air-comfort-value">${airWord(s?.co2)}</div></div>
-            </div>
+    const offline = d.online ? '' : `<div class="air-offline">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`;
+    return `<a href="/air/${d._id}" class="card air-card air-freshness text-reset text-decoration-none" data-air-fresh="${d._id}">
+        <div class="air-freshness-head"><span>Air freshness</span>${outside}</div>
+        ${scene(freshness(s?.co2), s, lastOpen)}
+        ${credit}${offline}
+    </a>`;
+}
+
+// the second card: how the room feels, temperature and humidity on a dial, the air in words
+export function comfortCardHtml(d: DeviceSummary) {
+    const s = d.online ? d.air?.state : undefined;
+    const t = s?.temperature;
+    const rh = s?.humidity;
+    return `<a href="/air/${d._id}" class="card air-card air-comfort text-reset text-decoration-none" data-air-comfort="${d._id}">
+        <div class="air-comfort-head"><div class="air-comfort-name">${escapeHtml(d.name)}</div><span>${comfort(t, rh)}</span></div>
+        ${dial(t, rh)}
+        <div class="air-comfort-values">
+            <div><div class="air-comfort-caption">Temperature</div><div class="air-comfort-value">${t === undefined ? '–' : `${t.toFixed(1)}°`}</div></div>
+            <div><div class="air-comfort-caption">Humidity</div><div class="air-comfort-value">${rh === undefined ? '–' : `${Math.round(rh)}%`}</div></div>
+            <div title="${s?.co2 !== undefined ? `${s.co2} ppm CO₂` : ''}"><div class="air-comfort-caption">Air</div><div class="air-comfort-value">${airWord(s?.co2)}</div></div>
         </div>
-        </div>
-        <div class="card-body border-top">${controls}</div>
-    </div>`;
+    </a>`;
 }

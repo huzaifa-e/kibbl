@@ -21,7 +21,7 @@ export interface Weather {
     humidity: number; // %RH
     at: number; // when it was measured
     source?: 'openweather' | 'open-meteo'; // OpenWeather asks to be named where its data is shown
-    icon?: string; // tabler icon of the sky: sun, moon, cloud, cloud-rain, ...
+    icon?: string; // tabler icon of the sky: sun, moon, cloud, cloud-rain, cloud-snow, cloud-storm, mist
     description?: string; // "overcast clouds"
 }
 

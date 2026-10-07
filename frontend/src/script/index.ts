@@ -3,7 +3,7 @@ import type ApexCharts from 'apexcharts';
 import type { Weather } from '../../../shared/climate';
 import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
-import { airCardHtml } from './airCard';
+import { comfortCardHtml, freshnessCardHtml } from './airCard';
 import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
@@ -135,7 +135,6 @@ function renderCameras() {
 }
 
 function otherCardHtml(d: DeviceSummary) {
-    if (d.caps.includes('air')) return airCardHtml(d, weather, lastOpen.get(d._id), controlsHtml(d, false));
     return `<div class="card">
                 <div class="card-header"><h3 class="card-title">${escapeHtml(d.name)}</h3>
                     <div class="card-actions"><span class="badge ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}">${d.online ? 'online' : 'offline'}</span></div></div>
@@ -162,9 +161,13 @@ async function loadAirExtras() {
 
 function renderOthers() {
     const list = others();
-    // a kibbl. air is a landscape card over the full width
     byId('other-devices').innerHTML = list
-        .map((d) => `<div class="${d.caps.includes('air') ? 'col-12' : 'col-md-6 col-xl-4'}">${otherCardHtml(d)}</div>`)
+        .map((d) =>
+            // a kibbl. air: two cards of the usual size, its controls are on its own page
+            d.caps.includes('air')
+                ? `<div class="col-md-6 col-xl-4">${freshnessCardHtml(d, weather, lastOpen.get(d._id))}</div><div class="col-md-6 col-xl-4">${comfortCardHtml(d)}</div>`
+                : `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`,
+        )
         .join('');
     // the controls listen on the container: bound once, not on every redraw
     if (!othersBound) {
@@ -287,8 +290,10 @@ socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     if (!d?.air || !telemetry.air) return;
     d.air.state = telemetry.air;
     d.air.sensorError = airSensorError(telemetry.air, d.air.sensorError);
-    const card = document.querySelector<HTMLElement>(`[data-air-card="${deviceId}"]`);
-    if (card) card.outerHTML = airCardHtml(d, weather, lastOpen.get(deviceId), controlsHtml(d, false));
+    const fresh = document.querySelector<HTMLElement>(`[data-air-fresh="${deviceId}"]`);
+    if (fresh) fresh.outerHTML = freshnessCardHtml(d, weather, lastOpen.get(deviceId));
+    const feel = document.querySelector<HTMLElement>(`[data-air-comfort="${deviceId}"]`);
+    if (feel) feel.outerHTML = comfortCardHtml(d);
 });
 
 socket.on('deviceRemoved', (deviceId: string) => {
