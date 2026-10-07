@@ -1,4 +1,5 @@
 import './main';
+import { adminGuide, connectGuide, loadSetup, type HealthSetup } from './healthGuide';
 import type ApexCharts from 'apexcharts';
 import {
     STAGE_LABELS,
@@ -95,6 +96,9 @@ function connectNotice() {
     return messages[result] ?? '';
 }
 
+// what the guides need, read once per page
+let setup: HealthSetup | undefined;
+
 function connectCard(title: string, text: string, again = false) {
     return `<div class="card"><div class="card-body text-center py-5">
         <span class="hud-icon hud-plum mb-3" style="width:56px;height:56px;font-size:28px"><i class="ti ti-heartbeat"></i></span>
@@ -102,6 +106,8 @@ function connectCard(title: string, text: string, again = false) {
         <p class="text-secondary mx-auto" style="max-width:520px">${text}</p>
         <a class="btn btn-primary" href="/api/health/google/connect"><i class="ti ti-brand-google me-1"></i> ${again ? 'Connect again' : 'Connect Google Health'}</a>
         <p class="text-secondary small mt-3 mb-0">Read only: heart rate, sleep, blood oxygen, breathing, temperature and workouts. Disconnect any time below or in your Google account.</p>
+        ${again ? '' : connectGuide(setup)}
+        ${setup?.admin ? adminGuide(setup) : ''}
     </div></div>`;
 }
 
@@ -266,7 +272,7 @@ function connectionCard() {
         ? `<div>Data from <b>Google Health</b>, connected ${link.connectedAt ? timeAgo(link.connectedAt) : ''}${link.scopes && link.scopesAsked && link.scopes < link.scopesAsked ? ` · ${link.scopes} of ${link.scopesAsked} permissions` : ''}; new data is fetched after each sync of the tracker.</div>`
         : `<div class="text-warning">Not connected to Google Health: no new data comes in. The history stored here stays.</div>`;
     const expiry = expires
-        ? `<div class="${soon ? 'text-warning' : 'text-secondary'}">The access ends ${new Date(expires).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: the Google app is in testing mode. Publish it to production in the Google Cloud console, or connect again then.</div>`
+        ? `<div class="${soon ? 'text-warning' : 'text-secondary'}">The access ends ${new Date(expires).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: the Google app of this server is in testing mode, which ends every access after 7 days. Select Connect again then: one click, the history stays.</div>`
         : '';
     return `<div class="card"><div class="card-body d-flex flex-wrap align-items-center gap-3">
         <i class="ti ti-brand-google text-secondary" style="font-size:1.4rem"></i>
@@ -276,6 +282,7 @@ function connectionCard() {
             ${link ? '<button class="btn btn-sm" id="health-disconnect"><i class="ti ti-plug-connected-x me-1"></i> Disconnect</button>' : ''}
             <button class="btn btn-sm btn-outline-danger" id="health-delete"><i class="ti ti-trash me-1"></i> Delete stored history</button>
         </div>
+        ${setup?.admin ? `<div class="w-100">${adminGuide({ ...setup, configured: true })}</div>` : ''}
     </div></div>`;
 }
 
@@ -440,15 +447,22 @@ let waitingHtml = '';
 
 async function load() {
     const notice = connectNotice();
-    const { status, body } = await getJson(summaryUrl());
+    const [{ status, body }, guide] = await Promise.all([getJson(summaryUrl()), setup ? Promise.resolve(setup) : loadSetup()]);
+    setup = guide;
     if (body.configured === false && !body.series) {
         byId('container').innerHTML =
             notice +
-            emptyState(
-                'heartbeat',
-                'Health is not set up on this server',
-                'The server needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET of a Google Cloud OAuth client with the Google Health API.',
-            );
+            (setup?.admin
+                ? `<div class="card"><div class="card-body py-5">${emptyState(
+                      'heartbeat',
+                      'Health is not set up on this server yet',
+                      'Set up a Google app for this server once, as below; then everybody can connect their tracker here.',
+                  )}${adminGuide(setup)}</div></div>`
+                : emptyState(
+                      'heartbeat',
+                      'Health is not set up on this server yet',
+                      'The person who runs this kibbl. server has to set up its Google app first. Ask them; then you connect your tracker here with one button.',
+                  ));
         return;
     }
     if (!body.linked && body.series) {

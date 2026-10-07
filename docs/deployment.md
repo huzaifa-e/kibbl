@@ -51,6 +51,17 @@ From a Mac with MongoDB Compass, through an SSH tunnel:
 
 On the server itself: `docker exec -it kibbl-mongo mongosh -u admin --authenticationDatabase admin kibbl` (asks for the password).
 
+## Accounts
+
+Anybody who reaches the app can create an account on the login page (`SIGNUP=closed` stops that). Every account has its own devices, meters and health: nobody sees another account's cameras, events, pictures or readings, in the app, the streams or the MCP tools.
+
+- A device set up over USB in the app belongs to whoever set it up. One that belongs to an account already can be set up again only by that account; anybody else gets told to have its owner remove it first.
+- A device that connects without a USB setup waits without an owner; only the admin (`ADMIN_EMAIL`) sees it, and owns it after approving it.
+- A meter belongs to the account that added it; another account cannot add the same one.
+- Devices and meters from before accounts had owners were given to the admin on the first start.
+
+Forgotten passwords are reset by e-mail: *Forgot password?* on the login page sends a link valid for an hour to `APP_URL/reset`. It needs an SMTP account (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) and `APP_URL`, the address people open the app at; without them the page says it is not available. A Gmail account works with an app password (`smtp.gmail.com`, 587). Setting a new password ends every session and every connected assistant of that account.
+
 ## Health
 
 The health page reads a fitness tracker through the Google Health API v4 (the successor of the Fitbit Web API). It needs an OAuth client of a Google Cloud project, in `.env`:
@@ -59,6 +70,8 @@ The health page reads a fitness tracker through the Google Health API v4 (the su
 2. Create an **OAuth client ID** of type *Web application*. Its authorized redirect URI is the server as the browser reaches it plus `/api/health/google/callback`, e.g. `https://<tunnel or domain>/api/health/google/callback` (`GOOGLE_REDIRECT_URI` fixes it when the server cannot tell).
 3. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then `docker compose up -d --force-recreate app`.
 4. In the app: Health, **Connect Google Health**.
+
+Everybody else connects with the same button, no console of their own: in Testing mode their Google e-mail has to be on the app's **Test users** list first (Google Auth Platform, Audience; up to 100). The health page shows each person the steps through Google's screens, and the admin the console setup with this server's redirect URI and scopes. `GOOGLE_APP_PUBLISHED=true` tells the guides the app is published.
 
 While the OAuth app is in **Testing** mode, Google ends the access after 7 days (the page says when). Publishing it to **Production** makes it last, but Google then asks for a home page and privacy policy on an authorised domain. Without a domain, renew the access before it ends (the stored history is not affected by a lapse, only new data pauses):
 

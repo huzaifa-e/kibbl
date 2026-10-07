@@ -2,6 +2,7 @@ import express from 'express';
 import { checkAuthMiddleware } from '../core/auth';
 import { HealthLink } from '../core/db';
 import { logger } from '../core/logger';
+import { isAdmin } from '../core/owners';
 import { HealthError, SCOPES, configured, exchangeCode, newAuthorization } from '../health/google';
 import { INTRADAY_TYPES, RANGES, dropCached, forget, intraday, latestHeartRate, summary, syncNow, syncStatus, trackers } from '../health/service';
 import { deleteStoredHealth, storageStats } from '../health/store';
@@ -65,6 +66,20 @@ export default function initHealthRoutes(app: express.Application) {
             return;
         }
         res.json({ configured: configured(), linked: !!link, link: linkInfo, ...data });
+    });
+
+    /* What the setup guides on the health page need: the person connecting is told the
+     * steps through Google's screens; the admin also how to set the Google app up. The
+     * Google app counts as in testing mode (testers only, 7-day access) unless
+     * GOOGLE_APP_PUBLISHED=true. */
+    app.get('/api/health/setup', auth, async (req: RequestWithSessionInfo, res) => {
+        const admin = await isAdmin(req.sessionInfo!.userID);
+        res.json({
+            configured: configured(),
+            testing: process.env.GOOGLE_APP_PUBLISHED !== 'true',
+            admin,
+            ...(admin ? { redirectUri: redirectUri(req), scopes: SCOPES } : {}),
+        });
     });
 
     app.get('/api/health/status', auth, async (req: RequestWithSessionInfo, res) => {
