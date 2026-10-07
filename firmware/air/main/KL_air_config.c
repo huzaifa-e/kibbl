@@ -13,6 +13,7 @@
 #define NVS_TEMP_ADJUST "TEMP_ADJ" // tenths of °C + 1000
 #define NVS_HUM_FACTOR  "HUM_FACT" // thousandths
 #define NVS_REMIND      "REMIND"   // minutes | level << 8
+#define NVS_FRESH       "FRESH"    // min | max << 16, ppm
 #define REMIND_YELLOW   2          // AIR_LEVEL_YELLOW
 #define REMIND_RED      3          // AIR_LEVEL_RED
 
@@ -23,6 +24,8 @@ static int16_t temp_adjust      = 0;
 static uint16_t humidity_factor = 1000;
 // every 5 minutes from red ("air now"), after a request of the user
 static air_remind_t remind = {.minutes = 5, .level = REMIND_RED};
+// outside air before a calibration recorded the home's own: about 420 ppm
+static air_fresh_t fresh = {.min = 400, .max = 460};
 
 /* The thresholds of ESW0002 (the original Conny firmware): 1000 and 2000 ppm after the
  * guidance of the German Environment Agency. The fan draws room air past the sensor and
@@ -75,6 +78,14 @@ void config_air_load(void) {
         }
     }
 
+    uint32_t stored_fresh = 0;
+    if (nvs_queue_job(NVS_FRESH, &stored_fresh, 0, UINT32_T, READ)) {
+        air_fresh_t f = {.min = stored_fresh & 0xffff, .max = stored_fresh >> 16};
+        if (f.min >= 300 && f.max <= 800 && f.min <= f.max) {
+            fresh = f;
+        }
+    }
+
     if (!nvs_queue_job(NVS_AIR, &air_settings, sizeof(air_settings), BLOB, READ)) {
         air_settings = air_defaults;
     }
@@ -85,6 +96,7 @@ void config_air_reset(void) {
     nvs_remove_key(NVS_TEMP_ADJUST);
     nvs_remove_key(NVS_HUM_FACTOR);
     nvs_remove_key(NVS_REMIND);
+    nvs_remove_key(NVS_FRESH);
 }
 
 int16_t config_temp_adjust(void) {
@@ -136,6 +148,19 @@ bool config_humidity_factor_from_json(const cJSON *json, uint16_t *permille) {
     }
     *permille = (uint16_t)(item->valuedouble * 1000.0 + 0.5);
     return true;
+}
+
+air_fresh_t config_air_fresh(void) {
+    return fresh;
+}
+
+bool config_set_air_fresh(air_fresh_t value) {
+    if (value.min < 300 || value.max > 800 || value.min > value.max) {
+        return false;
+    }
+    fresh           = value;
+    uint32_t stored = value.min | ((uint32_t)value.max << 16);
+    return nvs_queue_job(NVS_FRESH, &stored, 0, UINT32_T, WRITE);
 }
 
 air_remind_t config_air_remind(void) {
@@ -301,6 +326,8 @@ void config_air_to_json(const air_settings_t *settings, cJSON *json) {
     cJSON_AddNumberToObject(json, "nightFan", settings->night_fan);
     cJSON_AddNumberToObject(json, "tempAdjust", temp_adjust / 10.0);
     cJSON_AddNumberToObject(json, "humidityFactor", humidity_factor / 1000.0);
+    cJSON_AddNumberToObject(json, "freshMin", fresh.min);
+    cJSON_AddNumberToObject(json, "freshMax", fresh.max);
     cJSON_AddNumberToObject(json, "remindMinutes", remind.minutes);
     cJSON_AddStringToObject(json, "remindFrom", remind.level == REMIND_YELLOW ? "yellow" : "red");
 }

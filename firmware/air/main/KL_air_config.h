@@ -78,6 +78,15 @@ bool config_set_air_remind(air_remind_t remind);
 // "remindMinutes" 0..60, "remindFrom" "yellow" or "red"; true and *remind kept for keys left out
 bool config_air_remind_from_json(const cJSON *json, air_remind_t *remind);
 
+/* Fresh air as the device saw it at the open window while it calibrated: the lowest and
+ * highest CO2 (calibrated ppm). The window detection takes it as "open". Its own key. */
+typedef struct {
+    uint16_t min;
+    uint16_t max;
+} air_fresh_t;
+air_fresh_t config_air_fresh(void);
+bool config_set_air_fresh(air_fresh_t fresh);
+
 void config_air_settings(air_settings_t *settings);
 bool config_set_air_settings(const air_settings_t *settings);
 

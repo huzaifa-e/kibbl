@@ -76,7 +76,7 @@ const pick = (msg: Record<string, unknown>, keys: string[]) => {
 
 const eventFields: Record<AirEvent['kind'], string[]> = {
     smoke: ['source', 'puffs', 'durationSeconds', 'peakPpm', 'button'],
-    window: ['state', 'co2', 'co2Before', 'temperatureChange', 'openSeconds'],
+    window: ['state', 'co2', 'co2Before', 'temperatureChange', 'openSeconds', 'atStart'],
     fire: ['co2', 'co2Rise', 'temperature', 'temperatureRise'],
 };
 
@@ -96,7 +96,7 @@ async function alertFor(deviceId: string, event: AirEvent) {
             urgent: true,
             path,
         });
-    } else if (event.kind === 'window' && event.state === 'open') {
+    } else if (event.kind === 'window' && event.state === 'open' && !event.atStart) {
         const temp = event.temperatureChange ? `, ${event.temperatureChange > 0 ? '+' : ''}${event.temperatureChange} °C` : '';
         await notifyOwner(deviceId, {
             title: `Window open: ${name}`,

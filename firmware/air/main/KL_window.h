@@ -28,6 +28,9 @@ void window_feed(float co2, float temperature, int64_t now_ms);
 
 bool window_open(void);
 
+// the CO2 of fresh air in this home (calibrated, from the calibration at the open window)
+void window_set_fresh(uint16_t min_ppm, uint16_t max_ppm);
+
 // "open", "closed", "learning" (the first 1.5 min of readings) or "paused"
 const char *window_state(bool detecting);
 

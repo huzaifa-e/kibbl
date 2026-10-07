@@ -135,6 +135,8 @@ export interface AirSettings {
     humidityFactor?: number; // 0.7-1.3 on the humidity, to match a reference hygrometer
     remindMinutes?: number; // a beep every so many minutes while the air is bad, 0: off
     remindFrom?: 'yellow' | 'red';
+    freshMin?: number; // the CO2 of fresh air at the open window, recorded while calibrating: the reference for open windows
+    freshMax?: number;
 }
 
 export interface FanSettings {
@@ -194,6 +196,7 @@ export interface AirEvent {
     co2Before?: number;
     temperatureChange?: number;
     openSeconds?: number;
+    atStart?: boolean; // found open right after a restart, not seen opening: no alert
     // fire: what the device saw rise
     co2Rise?: number;
     temperature?: number;

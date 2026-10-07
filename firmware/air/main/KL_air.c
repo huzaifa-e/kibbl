@@ -38,6 +38,13 @@ static volatile uint16_t calibrate_ppm = 0; // > 0: a calibration runs
 static int64_t calibrate_start         = 0;
 static int64_t detectors_from          = 0; // millis() from which smoke, window and fire rates run again
 static bool calibrate_sent             = false;
+
+/* The CO2 at the open window in the last minutes before the calibration step: the home's
+ * fresh air, kept as the reference for open windows (KL_window) */
+#define FRESH_SAMPLES 60 // 2 minutes of readings
+#define FRESH_MEAN_N  15 // the last 30 s: what the sensor is set to
+static float fresh_samples[FRESH_SAMPLES];
+static int fresh_count = 0;
 static volatile bool detecting         = true; // false while smoke, window and fire rates pause
 
 /* ----------------------------------------------------------------------- */
@@ -117,6 +124,29 @@ static void show_level(air_level_t level, air_level_t before, uint16_t co2) {
     }
 }
 
+// the readings before the step, shifted by what the calibration changes: calibrated ppm
+static void remember_fresh_air(void) {
+    int n = fresh_count < FRESH_SAMPLES ? fresh_count : FRESH_SAMPLES;
+    if (n < FRESH_MEAN_N) {
+        return;
+    }
+    float sum = 0, lo = 1e9f, hi = 0;
+    for (int i = 0; i < n; i++) {
+        float v = fresh_samples[i];
+        lo      = v < lo ? v : lo;
+        hi      = v > hi ? v : hi;
+    }
+    for (int i = 0; i < FRESH_MEAN_N; i++) {
+        sum += fresh_samples[(fresh_count - 1 - i) % FRESH_SAMPLES];
+    }
+    float shift   = calibrate_ppm - sum / FRESH_MEAN_N;
+    air_fresh_t f = {.min = (uint16_t)(lo + shift + 0.5f), .max = (uint16_t)(hi + shift + 0.5f)};
+    if (config_set_air_fresh(f)) {
+        window_set_fresh(f.min, f.max);
+        DEBUG_F("air: fresh air at the window %u-%u ppm, the reference for open windows\n", f.min, f.max);
+    }
+}
+
 static void calibrate_step(int64_t now) {
     if (calibrate_ppm == 0) {
         return;
@@ -125,6 +155,8 @@ static void calibrate_step(int64_t now) {
         buzzer_play(TONE_CALIBRATE_START);
         if (!scd30_force_calibration(calibrate_ppm)) {
             DEBUG_F_ERROR("air: calibration not taken by the sensor\n");
+        } else {
+            remember_fresh_air();
         }
         calibrate_sent = true;
     } else if (calibrate_sent && now - calibrate_start >= CALIBRATE_PREPARE_MS + CALIBRATE_FOLLOW_MS) {
@@ -208,6 +240,11 @@ static void air_task(void *pvParams) {
             }
             window_feed(values.co2, values.temperature, now);
         }
+        // the last 2 minutes before the calibration step: the fresh air at the window
+        if (calibrate_ppm != 0 && !calibrate_sent && now - calibrate_start >= CALIBRATE_PREPARE_MS - 2 * 60 * 1000) {
+            fresh_samples[fresh_count % FRESH_SAMPLES] = values.co2;
+            fresh_count++;
+        }
         fire_feed(values.co2, values.temperature, now, detecting_now); // 60 °C at the sensor counts always
 
         samples[sample_count % MEAN_SAMPLES] = values.co2;
@@ -249,6 +286,8 @@ void air_start(void) {
 
     lamp_set_mode((lamp_mode_t)settings.lamp_mode, settings.lamp_colors, settings.lamp_fade);
     fan_configure(&settings);
+    air_fresh_t fresh = config_air_fresh();
+    window_set_fresh(fresh.min, fresh.max);
 
     sensor_ok = scd30_setup(settings.altitude, settings.asc);
     if (!sensor_ok) {
@@ -281,6 +320,7 @@ bool air_calibrate(uint16_t ppm) {
     }
     calibrate_start = millis();
     calibrate_sent  = false;
+    fresh_count     = 0;
     calibrate_ppm   = ppm;
     lamp_set_calibrating(true);
     buzzer_play(TONE_CALIBRATE_START);

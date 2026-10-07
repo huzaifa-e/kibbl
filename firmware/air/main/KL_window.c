@@ -21,6 +21,11 @@
 #define OPEN_FRESH_DROP     60.0f // ppm fallen within the span
 #define OPEN_FRESH_MARGIN   50.0f // to at most this above outside air (calibrated: 420 ppm)
 #define MIN_MEANS           3     // a minute and a half before the fast rules decide
+// open: in the fresh air range of the calibration (+ margin), reached by a fall
+#define FRESH_MARGIN        20.0f
+#define FRESH_FALL          30.0f
+// closed: clearly above it again
+#define FRESH_CLOSE_ABOVE   80.0f
 // the lamp and the fan warm the sensor: after a change the temperature alone does not count
 #define HEAT_SETTLE_MS (15 * 60 * 1000)
 // closed: one of them rises again
@@ -41,6 +46,11 @@ static int sum_count      = 0;
 static int64_t mean_start = 0;
 
 static bool open         = false;
+static float fresh_min   = 400; // until a calibration records the home's own
+static float fresh_max   = 460;
+// right after a restart, fresh air counts without a fall seen; not after a calibration
+static bool start_guess  = true;
+static bool opened_at_start = false;
 static int64_t opened_ms = 0;
 static int64_t heat_from = 0; // millis() from which the temperature alone counts
 
@@ -55,6 +65,9 @@ static void push_event(const char *state, int64_t now_ms, const mean_t *from, co
     cJSON_AddNumberToObject(json, "temperatureChange", (int)((to->temperature - from->temperature) * 10) / 10.0);
     if (!open) {
         cJSON_AddNumberToObject(json, "openSeconds", (double)((now_ms - opened_ms) / 1000));
+    } else if (opened_at_start) {
+        // found open after a restart, not seen opening: shown, no alert (an update while the air is fresh)
+        cJSON_AddBoolToObject(json, "atStart", true);
     }
     events_push(json);
 }
@@ -62,6 +75,9 @@ static void push_event(const char *state, int64_t now_ms, const mean_t *from, co
 static void decide(int64_t now_ms) {
     if (means_count < MIN_MEANS) {
         return;
+    }
+    if (means_count >= MEANS) {
+        start_guess = false; // a full span seen: only what it sees counts now
     }
     const mean_t *from = &means[0];
     const mean_t *to   = &means[means_count - 1];
@@ -83,13 +99,18 @@ static void decide(int64_t now_ms) {
         float with_temp = above_out * OPEN_CO2_SHARE > OPEN_CO2_MIN_PPM ? above_out * OPEN_CO2_SHARE : OPEN_CO2_MIN_PPM;
         float co2_only  = above_out * OPEN_CO2_ONLY_SHARE > OPEN_CO2_ONLY_PPM ? above_out * OPEN_CO2_ONLY_SHARE : OPEN_CO2_ONLY_PPM;
         bool by_co2     = (co2_drop >= with_temp && temp_drop >= OPEN_TEMP_DROP) || co2_drop >= co2_only;
-        // calibrated, outside air reads about 420 ppm: falling fast to it is fresh air coming in
-        bool to_outdoor = co2_drop >= OPEN_FRESH_DROP && to->co2 <= OUTDOOR_CO2_PPM + OPEN_FRESH_MARGIN;
+        /* The CO2 is where it was at the open window while calibrating, and it fell there (an
+         * empty room airing out slowly does not), or the device just started and finds it
+         * there: fresh air coming in */
+        bool fell       = co2_drop >= FRESH_FALL;
+        bool in_fresh   = to->co2 <= fresh_max + FRESH_MARGIN && (fell || (start_guess && means_count < MEANS));
+        bool to_outdoor = in_fresh || (co2_drop >= OPEN_FRESH_DROP && to->co2 <= OUTDOOR_CO2_PPM + OPEN_FRESH_MARGIN);
         // the lamp or the fan changed lately: the board, not a window, cools the sensor
         bool by_temp    = now_ms >= heat_from && (temp_drop >= OPEN_TEMP_ONLY || temp_drop_1min >= OPEN_TEMP_FAST) && co2_rising <= OPEN_CO2_FLAT;
         if (means_count >= MEANS ? (by_co2 || to_outdoor || by_temp) : (to_outdoor || by_temp)) {
-            open      = true;
-            opened_ms = now_ms;
+            open            = true;
+            opened_ms       = now_ms;
+            opened_at_start = in_fresh && !fell && !by_co2 && !by_temp;
             mean_t before = {.co2 = co2_peak, .temperature = temp_peak};
             DEBUG_F("window: open (%.0f -> %.0f ppm, %.1f -> %.1f °C)%s%s%s\n", co2_peak, to->co2, temp_peak, to->temperature, by_co2 ? " co2" : "",
                     to_outdoor ? " to outdoor" : "", by_temp ? " temperature" : "");
@@ -97,7 +118,7 @@ static void decide(int64_t now_ms) {
         }
     } else if (now_ms - opened_ms >= MIN_OPEN_MS) {
         float temp_change = to->temperature - from->temperature;
-        if (temp_change >= CLOSE_TEMP_RISE || co2_rising >= CLOSE_CO2_RISE) {
+        if (temp_change >= CLOSE_TEMP_RISE || co2_rising >= CLOSE_CO2_RISE || to->co2 > fresh_max + FRESH_CLOSE_ABOVE) {
             open = false;
             DEBUG_F("window: closed after %lld min\n", (now_ms - opened_ms) / 60000);
             push_event("closed", now_ms, from, to);
@@ -131,6 +152,7 @@ void window_feed(float co2, float temperature, int64_t now_ms) {
 }
 
 void window_reset(void) {
+    start_guess = false;
     means_count = 0;
     sum_count   = 0;
     sum_co2 = sum_temp = 0;
@@ -149,6 +171,12 @@ const char *window_state(bool detecting) {
         return "open";
     }
     return means_count < MIN_MEANS ? "learning" : "closed";
+}
+
+void window_set_fresh(uint16_t min_ppm, uint16_t max_ppm) {
+    fresh_min = min_ppm;
+    fresh_max = max_ppm;
+    DEBUG("window: fresh air %u-%u ppm\n", min_ppm, max_ppm);
 }
 
 bool window_open(void) {
