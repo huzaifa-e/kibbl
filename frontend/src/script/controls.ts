@@ -40,11 +40,12 @@ export function airNowHtml(d: DeviceSummary) {
         ${worst ? `<div class="small mt-1 ${worst.level === 'alert' ? 'text-danger' : 'text-orange'}"><i class="ti ti-${worst.icon}"></i> ${escapeHtml(worst.title)}</div>` : ''}`;
 }
 
-export function controlsHtml(d: DeviceSummary) {
+// airNow: the air values on top; the home card of a kibbl. air shows them itself
+export function controlsHtml(d: DeviceSummary, airNow = true) {
     const disabled = d.online ? '' : 'disabled';
     const blocks: string[] = [];
 
-    if (d.caps.includes('air')) {
+    if (d.caps.includes('air') && airNow) {
         blocks.push(`<div class="mb-3" data-air-now="${d._id}">${airNowHtml(d)}</div>`);
     }
     if (d.caps.includes('lamp')) {

@@ -390,3 +390,128 @@ html[data-bs-theme='dark'] .theme-label-dark {
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+/* kibbl. air on the home page: the freshness of the air as a house, the comfort as a dial */
+.air-card {
+    overflow: hidden;
+}
+.air-freshness {
+    display: block;
+    background: #e8eef0;
+}
+[data-bs-theme='dark'] .air-freshness {
+    background: #43484a;
+}
+.air-freshness-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.9rem 1rem 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+.air-outside {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+.air-scene {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+.air-hill {
+    fill: #9fb8b0;
+}
+.air-tree {
+    fill: #3f7a63;
+}
+.air-trunk {
+    fill: #7a5c45;
+}
+[data-bs-theme='dark'] .air-hill {
+    fill: #3f5a58;
+}
+[data-bs-theme='dark'] .air-tree {
+    fill: #3b7a65;
+}
+.air-house-text {
+    text-align: center;
+    line-height: 1.15;
+    padding-top: 2px;
+}
+.air-house-text .ti {
+    font-size: 20px;
+}
+.air-house-label {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.air-house-word {
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.air-house-note {
+    font-size: 9.5px;
+    margin-top: 3px;
+}
+.air-comfort {
+    background: #2f5c46;
+    color: #f3efe6;
+    padding: 0.9rem 1rem 1rem;
+}
+[data-bs-theme='dark'] .air-comfort {
+    background: #213e30;
+}
+.air-comfort-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-transform: none;
+}
+.air-comfort-head span {
+    text-transform: uppercase;
+}
+.air-dial {
+    display: block;
+    width: 88%;
+    max-width: 320px;
+    margin: 0.4rem auto;
+}
+.air-dial-ring {
+    fill: none;
+    stroke: #f3efe6;
+    stroke-width: 2.5;
+}
+.air-dial-zone {
+    fill: rgba(243, 239, 230, 0.55);
+}
+.air-dial-dot {
+    fill: #fff;
+}
+.air-dial-label {
+    fill: #f3efe6;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+}
+.air-comfort-values {
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+}
+.air-comfort-caption {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+.air-comfort-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+.air-comfort-value small {
+    font-size: 0.8rem;
+    font-weight: 500;
+}

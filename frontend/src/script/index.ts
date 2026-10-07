@@ -1,8 +1,10 @@
 import './main';
 import type ApexCharts from 'apexcharts';
-import { airSensorError, type ActivityBucket, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
+import type { Weather } from '../../../shared/climate';
+import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
-import { airNowHtml, bindControls, controlsHtml } from './controls';
+import { airCardHtml } from './airCard';
+import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
 import { bindEventViewer, eventCardHtml } from './events';
@@ -16,6 +18,10 @@ let events: MotionEvent[] = [];
 let activity: ActivityBucket[] = [];
 let chart: ApexCharts | undefined;
 let rendered = false;
+let othersBound = false;
+// for the cards of a kibbl. air: the weather outside and the last time a window opened
+let weather: Weather | null = null;
+const lastOpen = new Map<string, AirEvent>();
 
 const cameras = () => devices.filter((d) => d.status === 'approved' && d.caps.includes('camera'));
 const others = () => devices.filter((d) => d.status === 'approved' && !d.caps.includes('camera'));
@@ -128,17 +134,40 @@ function renderCameras() {
     refreshTiles();
 }
 
+function otherCardHtml(d: DeviceSummary) {
+    if (d.caps.includes('air')) return airCardHtml(d, weather, lastOpen.get(d._id), controlsHtml(d, false));
+    return `<div class="card">
+                <div class="card-header"><h3 class="card-title">${escapeHtml(d.name)}</h3>
+                    <div class="card-actions"><span class="badge ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}">${d.online ? 'online' : 'offline'}</span></div></div>
+                <div class="card-body">${controlsHtml(d)}</div></div>`;
+}
+
+async function loadAirExtras() {
+    const air = others().filter((d) => d.caps.includes('air'));
+    if (!air.length) return;
+    const get = async (url: string) => {
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        return res.ok ? res.json() : null;
+    };
+    weather = (await get('/api/weather').catch(() => null)) as Weather | null;
+    await Promise.all(
+        air.map(async (d) => {
+            const events = ((await get(`/api/air/${d._id}/events?days=1`).catch(() => null)) as AirEvent[] | null) ?? [];
+            const open = events.find((e) => e.kind === 'window' && e.state === 'open');
+            if (open) lastOpen.set(d._id, open);
+        }),
+    );
+    if (rendered) renderOthers();
+}
+
 function renderOthers() {
     const list = others();
-    byId('other-devices').innerHTML = list
-        .map(
-            (d) => `<div class="col-md-6 col-xl-4"><div class="card">
-                <div class="card-header"><h3 class="card-title">${d.caps.includes('air') ? `<a href="/air/${d._id}" class="text-reset">${escapeHtml(d.name)}</a>` : escapeHtml(d.name)}</h3>
-                    <div class="card-actions"><span class="badge ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}">${d.online ? 'online' : 'offline'}</span></div></div>
-                <div class="card-body">${controlsHtml(d)}</div></div></div>`,
-        )
-        .join('');
-    bindControls(byId('other-devices'), (id) => devices.find((d) => d._id === id));
+    byId('other-devices').innerHTML = list.map((d) => `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`).join('');
+    // the controls listen on the container: bound once, not on every redraw
+    if (!othersBound) {
+        bindControls(byId('other-devices'), (id) => devices.find((d) => d._id === id));
+        othersBound = true;
+    }
 }
 
 function renderEvents() {
@@ -204,7 +233,20 @@ async function load() {
     renderAll();
     renderChart();
     void renderHomeCards(byId('camera-grid'));
+    void loadAirExtras();
 }
+
+// a window opened: the card of its kibbl. air says so
+socket.on('airEvent', (event: AirEvent) => {
+    if (event.kind !== 'window' || event.state !== 'open') return;
+    lastOpen.set(event.deviceId, event);
+    if (rendered) renderOthers();
+});
+
+// the weather outside, every 15 minutes
+window.setInterval(() => {
+    if (!document.hidden && rendered) void loadAirExtras();
+}, 15 * 60_000);
 
 document.addEventListener('DOMContentLoaded', () => {
     byId('container').addEventListener('click', (e) => {
@@ -242,8 +284,8 @@ socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     if (!d?.air || !telemetry.air) return;
     d.air.state = telemetry.air;
     d.air.sensorError = airSensorError(telemetry.air, d.air.sensorError);
-    const el = document.querySelector<HTMLElement>(`[data-air-now="${deviceId}"]`);
-    if (el) el.innerHTML = airNowHtml(d);
+    const card = document.querySelector<HTMLElement>(`[data-air-card="${deviceId}"]`);
+    if (card) card.outerHTML = airCardHtml(d, weather, lastOpen.get(deviceId), controlsHtml(d, false));
 });
 
 socket.on('deviceRemoved', (deviceId: string) => {
