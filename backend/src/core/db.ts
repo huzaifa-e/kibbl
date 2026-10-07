@@ -13,6 +13,8 @@ export let Meter: Model<MeterDoc>;
 export let MeterReading: Model<MeterReadingDoc>;
 export let MeterPeriod: Model<MeterPeriodDoc>;
 export let AccessToken: Model<AccessTokenDoc>;
+export let OAuthClient: Model<OAuthClientDoc>;
+export let OAuthGrant: Model<OAuthGrantDoc>;
 
 let isConnected = false;
 
@@ -183,6 +185,37 @@ async function init() {
         { versionKey: false },
     );
     AccessToken = model<AccessTokenDoc>('AccessToken', accessTokenSchema);
+
+    /* OAuth for the MCP endpoint (mcp/oauth.ts): the clients that registered themselves,
+     * and one grant per sign-in with its current access and refresh token, as hashes. */
+    const oauthClientSchema = new Schema<OAuthClientDoc>(
+        {
+            _id: { type: String, required: true }, // client_id
+            info: { type: Schema.Types.Mixed, required: true },
+            createdAt: { type: Number, required: true },
+        },
+        { versionKey: false },
+    );
+    OAuthClient = model<OAuthClientDoc>('OAuthClient', oauthClientSchema);
+
+    const oauthGrantSchema = new Schema<OAuthGrantDoc>(
+        {
+            _id: { type: String, required: true },
+            userID: { type: String, required: true },
+            clientId: { type: String, required: true },
+            clientName: { type: String, required: true },
+            tokenVersion: { type: Number, required: true },
+            resource: String,
+            accessHash: { type: String, required: true, index: true },
+            accessExpiresAt: { type: Number, required: true },
+            refreshHash: { type: String, required: true, index: true },
+            refreshExpiresAt: { type: Number, required: true },
+            createdAt: { type: Number, required: true },
+            lastUsedAt: Number,
+        },
+        { versionKey: false },
+    );
+    OAuthGrant = model<OAuthGrantDoc>('OAuthGrant', oauthGrantSchema);
 
     connection.on('connected', () => {
         isConnected = true;

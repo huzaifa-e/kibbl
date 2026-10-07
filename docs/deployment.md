@@ -102,7 +102,27 @@ docker exec kibbl-app node mcp-token.js revoke "laptop"
 
 A client is given the url (`http://<server>:8790/mcp`, on the home network or over Tailscale) and the header `Authorization: Bearer <token>`.
 
-Whatever a tool returns goes to the model provider with the conversation, health data and camera pictures included. A connector in a hosted assistant (web, phone) needs the endpoint on a fixed public https address and OAuth, which `/mcp` does not have yet.
+Whatever a tool returns goes to the model provider with the conversation, health data and camera pictures included.
+
+### Connector for a hosted assistant (web, phone)
+
+A hosted assistant connects from the internet and signs in with OAuth: it registers itself, sends you to a kibbl. sign-in page, and gets an access token (1 hour) and a refresh token (60 days, renewed with every use). A password change ends every connector. In the server's `.env`:
+
+```bash
+MCP_PUBLIC_URL=https://jh-ms-7b86.tail529b44.ts.net:8443   # where it is reached from the internet
+MCP_REDIRECT_URIS=https://assistant.example/callback        # the assistant's OAuth callback(s), comma separated
+```
+
+Only the callbacks listed (and loopback ones, for desktop clients) can register. The public address is Tailscale Funnel on port 8443 of jhubuntu, with only the MCP and OAuth paths published; port 443 of that name belongs to emoni-lorawan and stays as it is:
+
+```bash
+for p in /mcp /.well-known/oauth-protected-resource /.well-known/oauth-authorization-server /authorize /token /register /revoke; do
+    sudo tailscale funnel --bg --https=8443 --set-path $p http://127.0.0.1:8790$p
+done
+tailscale funnel status
+```
+
+The connector is added in the assistant's settings with the url `https://jh-ms-7b86.tail529b44.ts.net:8443/mcp`. `mcp-token.js list` shows signed-in connectors next to the tokens, `mcp-token.js revoke <name>` ends one.
 
 ## Meters
 

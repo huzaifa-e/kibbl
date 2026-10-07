@@ -5,13 +5,15 @@
  *   docker exec kibbl-app node mcp-token.js create user@example.com "laptop"
  *   docker exec kibbl-app node mcp-token.js list
  *   docker exec kibbl-app node mcp-token.js revoke "laptop"
+ *
+ * list shows the connectors signed in through OAuth too; revoke with their name ends them.
  */
 import * as dotenv from 'dotenv';
 dotenv.config({ path: __dirname + '/.env' });
 dotenv.config();
 
 import { disconnect } from 'mongoose';
-import db, { AccessToken, User } from './core/db';
+import db, { AccessToken, OAuthGrant, User } from './core/db';
 import { createToken } from './mcp/tokens';
 
 const usage = 'usage: node mcp-token.js create <user e-mail> <name> | list | revoke <name>';
@@ -33,13 +35,18 @@ async function main() {
     } else if (command === 'list') {
         const users = new Map((await User.find({}, { email: 1 }).lean()).map((u) => [u._id, u.email]));
         const tokens = await AccessToken.find().sort({ createdAt: 1 }).lean();
-        if (!tokens.length) console.log('no tokens');
-        for (const t of tokens) console.log(`${t.name}\t${users.get(t.userID) ?? '?'}\tcreated ${when(t.createdAt)}\tlast used ${when(t.lastUsedAt)}`);
+        const grants = await OAuthGrant.find().sort({ createdAt: 1 }).lean();
+        if (!tokens.length && !grants.length) console.log('no tokens');
+        for (const t of tokens) console.log(`${t.name}\t${users.get(t.userID) ?? '?'}\ttoken\tcreated ${when(t.createdAt)}\tlast used ${when(t.lastUsedAt)}`);
+        for (const g of grants)
+            console.log(`${g.clientName}\t${users.get(g.userID) ?? '?'}\tconnector\tsigned in ${when(g.createdAt)}\tlast used ${when(g.lastUsedAt)}`);
     } else if (command === 'revoke') {
         const name = args[0]?.trim();
         if (!name) throw new Error(usage);
-        const { deletedCount } = await AccessToken.deleteMany({ name });
-        if (!deletedCount) throw new Error(`no token named "${name}"`);
+        const tokens = await AccessToken.deleteMany({ name });
+        const grants = await OAuthGrant.deleteMany({ clientName: name });
+        const deletedCount = tokens.deletedCount + grants.deletedCount;
+        if (!deletedCount) throw new Error(`no token or connector named "${name}"`);
         console.log(`revoked ${deletedCount} token${deletedCount > 1 ? 's' : ''} named "${name}"`);
     } else {
         throw new Error(usage);

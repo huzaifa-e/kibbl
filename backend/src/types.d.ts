@@ -130,6 +130,27 @@ declare global {
         lastUsedAt?: number;
     }
 
+    interface OAuthClientDoc {
+        _id: string;
+        info: Record<string, unknown>; // the client information as registered (RFC 7591)
+        createdAt: number;
+    }
+
+    interface OAuthGrantDoc {
+        _id: string;
+        userID: string;
+        clientId: string;
+        clientName: string;
+        tokenVersion: number; // the user's at sign-in: a password change ends the grant
+        resource?: string;
+        accessHash: string;
+        accessExpiresAt: number;
+        refreshHash: string;
+        refreshExpiresAt: number;
+        createdAt: number;
+        lastUsedAt?: number;
+    }
+
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };
 }
 

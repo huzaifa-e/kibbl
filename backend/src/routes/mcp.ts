@@ -1,8 +1,10 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+import { getOAuthProtectedResourceMetadataUrl, mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { logger } from '../core/logger';
-import { checkToken } from '../mcp/tokens';
+import { oauthProvider } from '../mcp/oauth';
 import { createMcpServer } from '../mcp/tools';
 
 const log = logger('mcp');
@@ -16,28 +18,43 @@ const tokenLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-/* The MCP endpoint (Streamable HTTP), for AI assistants and other MCP clients: a token from
- * mcp-token.js in the Authorization header. Stateless: every request gets a server and
- * transport of its own, nothing is kept between them. */
-export default function initMcpRoutes(app: express.Application) {
-    app.post('/mcp', tokenLimiter, async (req: RequestWithSessionInfo, res) => {
-        const header = req.header('authorization') ?? '';
-        const session = await checkToken(header.startsWith('Bearer ') ? header.slice(7).trim() : undefined);
-        if (!session) {
-            log.warn('token refused', { ip: req.ip });
-            res.setHeader('WWW-Authenticate', 'Bearer realm="kibbl"');
-            res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
-            return;
-        }
+// ten wrong passwords on the connector's sign-in page per address in 15 minutes
+const signInLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    skipSuccessfulRequests: true,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: 'Too many failed sign-ins. Try again in 15 minutes.',
+});
 
+/* The MCP endpoint (Streamable HTTP), for AI assistants and other MCP clients. A token
+ * from mcp-token.js opens it; with MCP_PUBLIC_URL (the https address it is reached at
+ * from the internet) OAuth is offered too, for assistants that connect themselves.
+ * Stateless: every request gets a server and transport of its own. */
+export default function initMcpRoutes(app: express.Application) {
+    const publicUrl = process.env.MCP_PUBLIC_URL?.replace(/\/+$/, '');
+    let resourceMetadataUrl: string | undefined;
+    if (publicUrl) {
+        const resource = new URL(`${publicUrl}/mcp`);
+        resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resource);
+        app.post('/authorize', signInLimiter);
+        app.use(mcpAuthRouter({ provider: oauthProvider, issuerUrl: new URL(`${publicUrl}/`), resourceServerUrl: resource, resourceName: 'kibbl.' }));
+        log.info('OAuth for connectors on', { url: publicUrl });
+    }
+
+    const bearer = requireBearerAuth({ verifier: oauthProvider, resourceMetadataUrl });
+
+    app.post('/mcp', tokenLimiter, bearer, async (req, res) => {
+        const session = req.auth?.extra?.session as SessionInfo;
         const server = createMcpServer(session);
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
         res.on('close', () => {
             transport.close();
             server.close();
         });
-        const method = typeof req.body?.method === 'string' ? req.body.method : 'batch';
-        if (method === 'tools/call') log.info('tool called', { tool: String(req.body.params?.name ?? ''), user: session.email });
+        if (req.body?.method === 'tools/call')
+            log.info('tool called', { tool: String(req.body.params?.name ?? ''), user: session.email, client: req.auth?.clientId });
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
     });
