@@ -92,7 +92,9 @@ export default function initMcpRoutes(app: express.Application) {
         const userID = req.sessionInfo!.userID;
         const [tokens, grants] = await Promise.all([
             AccessToken.find({ userID }).sort({ createdAt: 1 }).lean(),
-            OAuthGrant.find({ userID, refreshExpiresAt: { $gt: Date.now() } }).sort({ createdAt: 1 }).lean(),
+            OAuthGrant.find({ userID, refreshExpiresAt: { $gt: Date.now() } })
+                .sort({ createdAt: 1 })
+                .lean(),
         ]);
         res.json({
             connectorUrl: publicUrl ? `${publicUrl}/mcp` : null,
@@ -123,13 +125,17 @@ export default function initMcpRoutes(app: express.Application) {
     });
 
     app.delete('/api/mcp/tokens/:id', auth, async (req: RequestWithSessionInfo, res) => {
-        const { deletedCount } = isHash(req.params.id) ? await AccessToken.deleteOne({ _id: req.params.id, userID: req.sessionInfo!.userID }) : { deletedCount: 0 };
+        const { deletedCount } = isHash(req.params.id)
+            ? await AccessToken.deleteOne({ _id: req.params.id, userID: req.sessionInfo!.userID })
+            : { deletedCount: 0 };
         if (deletedCount) log.info('token revoked in the app', { user: req.sessionInfo!.email });
         res.sendStatus(deletedCount ? 200 : 404);
     });
 
     app.delete('/api/mcp/connectors/:id', auth, async (req: RequestWithSessionInfo, res) => {
-        const { deletedCount } = isUUID(req.params.id) ? await OAuthGrant.deleteOne({ _id: req.params.id, userID: req.sessionInfo!.userID }) : { deletedCount: 0 };
+        const { deletedCount } = isUUID(req.params.id)
+            ? await OAuthGrant.deleteOne({ _id: req.params.id, userID: req.sessionInfo!.userID })
+            : { deletedCount: 0 };
         if (deletedCount) log.info('connector disconnected in the app', { user: req.sessionInfo!.email });
         res.sendStatus(deletedCount ? 200 : 404);
     });
