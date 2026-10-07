@@ -12,12 +12,17 @@
 #define NVS_AIR        "AIR"
 #define NVS_TEMP_ADJUST "TEMP_ADJ" // tenths of °C + 1000
 #define NVS_HUM_FACTOR  "HUM_FACT" // thousandths
+#define NVS_REMIND      "REMIND"   // minutes | level << 8
+#define REMIND_YELLOW   2          // AIR_LEVEL_YELLOW
+#define REMIND_RED      3          // AIR_LEVEL_RED
 
 static SemaphoreHandle_t air_config_mutex;
 
 static air_settings_t air_settings;
 static int16_t temp_adjust      = 0;
 static uint16_t humidity_factor = 1000;
+// every 5 minutes from red ("air now"), after a request of the user
+static air_remind_t remind = {.minutes = 5, .level = REMIND_RED};
 
 /* The thresholds of ESW0002 (the original Conny firmware): 1000 and 2000 ppm after the
  * guidance of the German Environment Agency. The fan draws room air past the sensor and
@@ -61,6 +66,15 @@ void config_air_load(void) {
         humidity_factor = (uint16_t)stored_factor;
     }
 
+    uint32_t stored_remind = 0;
+    if (nvs_queue_job(NVS_REMIND, &stored_remind, 0, UINT32_T, READ)) {
+        uint8_t minutes = stored_remind & 0xff;
+        uint8_t level   = (stored_remind >> 8) & 0xff;
+        if (minutes <= 60 && (level == REMIND_YELLOW || level == REMIND_RED)) {
+            remind = (air_remind_t){.minutes = minutes, .level = level};
+        }
+    }
+
     if (!nvs_queue_job(NVS_AIR, &air_settings, sizeof(air_settings), BLOB, READ)) {
         air_settings = air_defaults;
     }
@@ -70,6 +84,7 @@ void config_air_reset(void) {
     nvs_remove_key(NVS_AIR);
     nvs_remove_key(NVS_TEMP_ADJUST);
     nvs_remove_key(NVS_HUM_FACTOR);
+    nvs_remove_key(NVS_REMIND);
 }
 
 int16_t config_temp_adjust(void) {
@@ -120,6 +135,41 @@ bool config_humidity_factor_from_json(const cJSON *json, uint16_t *permille) {
         return false;
     }
     *permille = (uint16_t)(item->valuedouble * 1000.0 + 0.5);
+    return true;
+}
+
+air_remind_t config_air_remind(void) {
+    return remind;
+}
+
+bool config_set_air_remind(air_remind_t value) {
+    if (value.minutes > 60 || (value.level != REMIND_YELLOW && value.level != REMIND_RED)) {
+        return false;
+    }
+    remind          = value;
+    uint32_t stored = value.minutes | ((uint32_t)value.level << 8);
+    return nvs_queue_job(NVS_REMIND, &stored, 0, UINT32_T, WRITE);
+}
+
+bool config_air_remind_from_json(const cJSON *json, air_remind_t *value) {
+    int minutes = value->minutes;
+    if (!json_int_in_range(json, "remindMinutes", 0, 60, &minutes)) {
+        return false;
+    }
+    const cJSON *from = cJSON_GetObjectItemCaseSensitive(json, "remindFrom");
+    if (from != NULL) {
+        if (!cJSON_IsString(from)) {
+            return false;
+        }
+        if (strcmp(from->valuestring, "yellow") == 0) {
+            value->level = REMIND_YELLOW;
+        } else if (strcmp(from->valuestring, "red") == 0) {
+            value->level = REMIND_RED;
+        } else {
+            return false;
+        }
+    }
+    value->minutes = minutes;
     return true;
 }
 
@@ -251,6 +301,8 @@ void config_air_to_json(const air_settings_t *settings, cJSON *json) {
     cJSON_AddNumberToObject(json, "nightFan", settings->night_fan);
     cJSON_AddNumberToObject(json, "tempAdjust", temp_adjust / 10.0);
     cJSON_AddNumberToObject(json, "humidityFactor", humidity_factor / 1000.0);
+    cJSON_AddNumberToObject(json, "remindMinutes", remind.minutes);
+    cJSON_AddStringToObject(json, "remindFrom", remind.level == REMIND_YELLOW ? "yellow" : "red");
 }
 
 void config_fan_to_json(const air_settings_t *settings, cJSON *json) {

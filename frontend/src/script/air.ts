@@ -471,6 +471,17 @@ function renderSettings() {
                     <input class="form-check-input" type="checkbox" id="buzzer" ${s?.buzzer ? 'checked' : ''} ${off} />
                     <span class="form-check-label">Beep when it turns yellow or red</span>
                 </label>
+                <div class="row g-2 mt-2 align-items-center">
+                    <div class="col-12 form-label mb-0">Remind to air with a beep</div>
+                    <div class="col-7"><select class="form-select form-select-sm" id="remind-minutes" ${off}>
+                        ${[0, 5, 10, 15, 30].map((m) => `<option value="${m}" ${(s?.remindMinutes ?? 5) === m ? 'selected' : ''}>${m ? `every ${m} minutes` : 'never'}</option>`).join('')}
+                    </select></div>
+                    <div class="col-5"><select class="form-select form-select-sm" id="remind-from" ${off}>
+                        <option value="red" ${(s?.remindFrom ?? 'red') === 'red' ? 'selected' : ''}>from red</option>
+                        <option value="yellow" ${s?.remindFrom === 'yellow' ? 'selected' : ''}>from yellow</option>
+                    </select></div>
+                    <div class="col-12 text-secondary small">Until a window is open or the air is better; quiet in night mode.</div>
+                </div>
             </div>
         </div>
         <div class="card mb-3">
@@ -648,6 +659,11 @@ function bindSettings() {
             byId('air-result').innerHTML = resp.ok ? '' : errorAlert(resp.error ?? 'Not saved.');
         } else if (el.id === 'night-fan') {
             await airConfig({ nightFan: Number(el.value) });
+        } else if (el.id === 'remind-minutes' || el.id === 'remind-from') {
+            await airConfig({
+                remindMinutes: Number(byId<HTMLSelectElement>('remind-minutes').value),
+                remindFrom: byId<HTMLSelectElement>('remind-from').value,
+            });
         } else if (el.id === 'buzzer' || el.id === 'smoke' || el.id === 'asc') {
             await airConfig({ [el.id]: el.checked });
         } else if (el.id === 'fan-mode') {

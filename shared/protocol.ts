@@ -133,6 +133,8 @@ export interface AirSettings {
     nightFan: number;
     tempAdjust?: number; // °C added to the corrected temperature, to match a reference thermometer
     humidityFactor?: number; // 0.7-1.3 on the humidity, to match a reference hygrometer
+    remindMinutes?: number; // a beep every so many minutes while the air is bad, 0: off
+    remindFrom?: 'yellow' | 'red';
 }
 
 export interface FanSettings {

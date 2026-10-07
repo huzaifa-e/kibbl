@@ -93,6 +93,13 @@ static const char *cmd_settings(const cJSON *req, cJSON *resp, settings_from_jso
     if (humidity_factor != config_humidity_factor() && !config_set_humidity_factor(humidity_factor)) {
         return "humidity adjustment not stored";
     }
+    air_remind_t remind = config_air_remind();
+    if (!config_air_remind_from_json(req, &remind)) {
+        return "invalid setting";
+    }
+    if ((remind.minutes != config_air_remind().minutes || remind.level != config_air_remind().level) && !config_set_air_remind(remind)) {
+        return "reminder not stored";
+    }
     if (temp_adjust != config_temp_adjust() && !config_set_temp_adjust(temp_adjust)) {
         return "temperature adjustment not stored";
     }

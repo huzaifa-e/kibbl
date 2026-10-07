@@ -178,6 +178,15 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
                 if (typeof v !== 'number' || !Number.isFinite(v) || v < -5 || v > 5) return undefined;
                 out.tempAdjust = Math.round(v * 10) / 10;
             }
+            // the reminder to air: a beep every so many minutes from yellow or red
+            if (command.remindMinutes !== undefined) {
+                if (!int(command.remindMinutes, 0, 60)) return undefined;
+                out.remindMinutes = command.remindMinutes;
+            }
+            if (command.remindFrom !== undefined) {
+                if (command.remindFrom !== 'yellow' && command.remindFrom !== 'red') return undefined;
+                out.remindFrom = command.remindFrom;
+            }
             // a factor on the humidity, to match a hygrometer the person trusts
             if (command.humidityFactor !== undefined) {
                 const v = command.humidityFactor;

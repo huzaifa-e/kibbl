@@ -67,6 +67,17 @@ bool config_set_humidity_factor(uint16_t permille);
 // "humidityFactor" 0.7..1.3; true and *permille kept when left out
 bool config_humidity_factor_from_json(const cJSON *json, uint16_t *permille);
 
+/* The reminder to air: a beep every remind_minutes (0: off) while the air is at remind_level
+ * or worse (AIR_LEVEL_YELLOW 2, AIR_LEVEL_RED 3 of KL_lamp.h). Its own key as well. */
+typedef struct {
+    uint8_t minutes;
+    uint8_t level;
+} air_remind_t;
+air_remind_t config_air_remind(void);
+bool config_set_air_remind(air_remind_t remind);
+// "remindMinutes" 0..60, "remindFrom" "yellow" or "red"; true and *remind kept for keys left out
+bool config_air_remind_from_json(const cJSON *json, air_remind_t *remind);
+
 void config_air_settings(air_settings_t *settings);
 bool config_set_air_settings(const air_settings_t *settings);
 

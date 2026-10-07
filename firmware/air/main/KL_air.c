@@ -88,12 +88,30 @@ static air_level_t level_of(uint16_t co2, air_level_t now) {
     return AIR_LEVEL_GREEN;
 }
 
+/* While the air stays bad, a beep every few minutes until a window is open: the room needs
+ * air. The buzzer is muted at night (KL_buzzer), so the reminder is too. */
+static int64_t remind_last = 0;
+
+static void remind_to_air(air_level_t level, int64_t now) {
+    air_remind_t remind = config_air_remind();
+    if (remind.minutes == 0 || level < remind.level || window_open() || calibrate_ppm != 0) {
+        remind_last = now; // the first reminder comes a full interval after the air got bad
+        return;
+    }
+    if (now - remind_last >= (int64_t)remind.minutes * 60 * 1000) {
+        remind_last = now;
+        buzzer_play(level == AIR_LEVEL_RED ? TONE_RED : TONE_YELLOW);
+        DEBUG("air: reminder to air (%s)\n", air_level_name(level));
+    }
+}
+
 static void show_level(air_level_t level, air_level_t before, uint16_t co2) {
     lamp_set_level(level);
     fan_set_air(level, co2);
     if (settings.buzzer && level > before && before != AIR_LEVEL_NONE) {
         buzzer_play(level == AIR_LEVEL_RED ? TONE_RED : TONE_YELLOW);
     }
+    remind_to_air(level, millis());
     if (level != before) {
         DEBUG("air: %s\n", air_level_name(level));
     }
