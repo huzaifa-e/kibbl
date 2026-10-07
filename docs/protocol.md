@@ -111,7 +111,7 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `fan`         | fan        | any of `mode` (`off`, `on`, `pulse`, `auto`), `level` 1–100, `onSeconds`/`offSeconds` 1–3600 | as `air_config` |
 | `lamp`        | lamp       | any of `mode` (`traffic`, `off`, `white`, `warm`, `candle`, `custom`), `colors` (of `red`, `green`, `yellow`, `white`, for custom), `fade` | as `air_config` |
 | `night`       | night      | `on` (bool): lamp off, buzzer muted, fan at most `nightFan`; not stored, the server sends it on its schedule | `night` |
-| `calibrate`   | calibrate  | `ppm` 400–2000 (420): 5 min in fresh air, then the sensor takes the value     | `pending`, `seconds` |
+| `calibrate`   | calibrate  | `ppm` 400–2000 (420): 5 min in fresh air, then the sensor takes the value; smoke, window and the fire rates pause until 15 min after | `pending`, `seconds` |
 
 The server asks a camera for frames only when needed: the live rate (`STREAM_FPS`, 30) while someone watches or a snapshot is due, the motion rate (`MOTION_FPS`, 2) while motion detection is on, otherwise 0.
 

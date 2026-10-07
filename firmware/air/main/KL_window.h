@@ -23,6 +23,9 @@ void window_feed(float co2, float temperature, int64_t now_ms);
 
 bool window_open(void);
 
+// forgets the means: the device was moved (calibration), they compare other air
+void window_reset(void);
+
 #ifdef __cplusplus
 }
 #endif

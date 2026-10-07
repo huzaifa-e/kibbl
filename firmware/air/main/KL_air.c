@@ -34,6 +34,7 @@ static volatile bool night = false;
 
 static volatile uint16_t calibrate_ppm = 0; // > 0: a calibration runs
 static int64_t calibrate_start         = 0;
+static int64_t detectors_from          = 0; // millis() from which smoke, window and fire rates run again
 static bool calibrate_sent             = false;
 
 /* ----------------------------------------------------------------------- */
@@ -96,7 +97,9 @@ static void calibrate_step(int64_t now) {
     } else if (calibrate_sent && now - calibrate_start >= CALIBRATE_PREPARE_MS + CALIBRATE_FOLLOW_MS) {
         buzzer_play(TONE_CALIBRATE_END);
         lamp_set_calibrating(false);
-        calibrate_ppm = 0;
+        calibrate_ppm  = 0;
+        detectors_from = now + CALIBRATE_SETTLE_MS;
+        DEBUG_F("air: calibrated; the detectors start again in %d min\n", CALIBRATE_SETTLE_MS / 60000);
     }
 }
 
@@ -105,6 +108,7 @@ static void air_task(void *pvParams) {
     int sample_count            = 0;
     int64_t last_reading        = millis();
     int64_t last_try            = millis();
+    bool detected_before        = true;
 
     while (1) {
         delay_ms(AIR_POLL_MS);
@@ -149,12 +153,21 @@ static void air_task(void *pvParams) {
         }
         last_reading = now;
 
-        // the detectors take every reading, the light the mean
-        if (settings.smoke) {
-            smoke_feed(values.co2, settings.puff_rise, now);
+        /* the detectors take every reading, the light the mean. While a calibration runs and
+         * the device is carried around they pause, and start over after it */
+        bool detecting = calibrate_ppm == 0 && now >= detectors_from;
+        if (detecting && !detected_before) {
+            smoke_reset();
+            window_reset();
         }
-        window_feed(values.co2, values.temperature, now);
-        fire_feed(values.co2, values.temperature, now);
+        detected_before = detecting;
+        if (detecting) {
+            if (settings.smoke) {
+                smoke_feed(values.co2, settings.puff_rise, now);
+            }
+            window_feed(values.co2, values.temperature, now);
+        }
+        fire_feed(values.co2, values.temperature, now, detecting); // 60 °C at the sensor counts always
 
         samples[sample_count % MEAN_SAMPLES] = values.co2;
         sample_count++;

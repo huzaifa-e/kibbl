@@ -43,7 +43,7 @@ ISIS IC EHW0001-0013 with a new firmware (the original ESW0002 is backed up in `
 | --------------- | ---- |
 | `main.c`        | boot order: the watchdog feed first, then the measurement, then the network |
 | `KL_product`    | the core's hooks: state, commands (`air_config`, `fan`, `lamp`, `blink`, `night`, `calibrate`), telemetry, events |
-| `KL_air`        | the measurement task: SCD30 every 2 s, the mean of 3 for the traffic light with 50 ppm hysteresis, buzzer, fan auto, the detectors, forced recalibration, night mode; temperature corrected for the warmth of the board (ESW0002's measurements: 4-12 °C by leds and fan) |
+| `KL_air`        | the measurement task: SCD30 every 2 s, the mean of 3 for the traffic light with 50 ppm hysteresis, buzzer, fan auto, the detectors, forced recalibration (the detectors pause during it and 15 min after, only the fixed fire temperature stays), night mode; temperature corrected for the warmth of the board (ESW0002's measurements: 4-12 °C by leds and fan) |
 | `KL_smoke`      | cigarettes from CO2 puffs of exhaled smoke (a short spike above a slow baseline, back within 90 s; 3 puffs within 4 min); the button logs one by hand, the event says whether a press belongs to it |
 | `KL_fire`       | a possible fire (CO2 and heat rising together, heat rising fast, or 60 °C at the sensor): red flashing and the alarm pattern of smoke alarms, also at night; the button silences it, 5 calm minutes end it |
 | `KL_window`     | an open window: 30 s means over 3 min, the CO2 falling towards 420 ppm with the temperature, or steeply alone; closed when either rises |

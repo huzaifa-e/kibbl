@@ -108,6 +108,12 @@ void smoke_button(int64_t now_ms) {
     last_button_ms = now_ms;
 }
 
+void smoke_reset(void) {
+    started = false;
+    in_puff = false;
+    puffs   = 0;
+}
+
 uint8_t smoke_puffs_now(void) {
     return puffs;
 }

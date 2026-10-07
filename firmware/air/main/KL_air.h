@@ -13,6 +13,8 @@ extern "C" {
 
 #define CALIBRATE_PREPARE_MS (5 * 60 * 1000) // in fresh air before the sensor takes the value
 #define CALIBRATE_FOLLOW_MS  (60 * 1000)
+// after it the detectors wait this long: the device is carried back and settles in the room
+#define CALIBRATE_SETTLE_MS  (15 * 60 * 1000)
 
 typedef struct {
     bool valid;        // false until the first measurement, and while the sensor is missing

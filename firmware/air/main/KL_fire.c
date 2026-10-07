@@ -38,7 +38,7 @@ static void start_alarm(const char *why, float co2_rise, float temperature, floa
     events_push(json);
 }
 
-void fire_feed(float co2, float temperature, int64_t now_ms) {
+void fire_feed(float co2, float temperature, int64_t now_ms, bool rates) {
     co2s[head]  = co2;
     temps[head] = temperature;
     head        = (head + 1) % HISTORY;
@@ -56,8 +56,8 @@ void fire_feed(float co2, float temperature, int64_t now_ms) {
         temp_rate_before = temps[at(SAMPLES_PER_MIN)] - temps[at(2 * SAMPLES_PER_MIN)];
     }
 
-    bool burning = co2_rise >= FIRE_CO2_RISE && temp_rise >= FIRE_TEMP_RISE;
-    bool rising  = temp_rise >= FIRE_TEMP_RATE && temp_rate_before >= FIRE_TEMP_RATE;
+    bool burning = rates && co2_rise >= FIRE_CO2_RISE && temp_rise >= FIRE_TEMP_RISE;
+    bool rising  = rates && temp_rise >= FIRE_TEMP_RATE && temp_rate_before >= FIRE_TEMP_RATE;
 
     if (hot || burning || rising) {
         calm_since = now_ms;

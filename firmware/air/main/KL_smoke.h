@@ -29,6 +29,9 @@ void smoke_feed(float co2, uint16_t puff_rise, int64_t now_ms);
 // the button logged a cigarette: the one the detector finds around it is marked
 void smoke_button(int64_t now_ms);
 
+// forgets the baseline and a cigarette going on: the device was moved (calibration)
+void smoke_reset(void);
+
 // puffs of the cigarette going on now, 0 when none
 uint8_t smoke_puffs_now(void);
 

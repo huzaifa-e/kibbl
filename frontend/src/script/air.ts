@@ -456,7 +456,7 @@ function renderSettings() {
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title"><i class="ti ti-target me-1"></i> Calibration</h3></div>
             <div class="card-body">
-                <div class="text-secondary small mb-2">Put the device outside or at a wide open window, start, and leave it there for 6 minutes while the light blinks white: it then takes the fresh air as 420 ppm.</div>
+                <div class="text-secondary small mb-2">Put the device outside or at a wide open window, start, and leave it there for 6 minutes while the light blinks white: it then takes the fresh air as 420 ppm. Cigarette, window and fire-rise detection pause meanwhile and for 15 minutes after, while it is carried back.</div>
                 <button class="btn w-100" id="calibrate" ${off || (d.air?.state?.calibrating ? 'disabled' : '')}>${d.air?.state?.calibrating ? 'Calibrating…' : 'Calibrate in fresh air'}</button>
                 <label class="form-check form-switch mt-3 mb-0">
                     <input class="form-check-input" type="checkbox" id="asc" ${s?.asc ? 'checked' : ''} ${off} />

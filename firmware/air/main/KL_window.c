@@ -101,6 +101,13 @@ void window_feed(float co2, float temperature, int64_t now_ms) {
     decide(now_ms);
 }
 
+void window_reset(void) {
+    means_count = 0;
+    sum_count   = 0;
+    sum_co2 = sum_temp = 0;
+    open               = false;
+}
+
 bool window_open(void) {
     return open;
 }

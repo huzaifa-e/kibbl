@@ -27,8 +27,10 @@ extern "C" {
 #define FIRE_TEMP_MAX  60.0f  // °C at the sensor
 #define FIRE_CLEAR_MS  (5 * 60 * 1000)
 
-// one reading (every 2 s), the temperature as the sensor measures it. Pushes the event
-void fire_feed(float co2, float temperature, int64_t now_ms);
+/* one reading (every 2 s), the temperature as the sensor measures it. Pushes the event.
+ * rates false: only the fixed temperature counts, the device was just moved (calibration:
+ * carried in from the cold it warms fast) */
+void fire_feed(float co2, float temperature, int64_t now_ms, bool rates);
 
 bool fire_alarm(void);
 
