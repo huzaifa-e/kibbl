@@ -13,6 +13,7 @@ import {
     type DeviceTelemetry,
     type MotionSettings,
 } from '../../../shared/protocol';
+import { pairedRoom } from '../tado/service';
 import { nightSchedule, parseAirState } from './airState';
 import db, { Device } from './db';
 import { hub } from './hub';
@@ -77,6 +78,7 @@ function airSummary(doc: DeviceDoc, dev: LiveDevice | undefined): AirDevice | un
         lamp: doc.lamp,
         sensorError: airSensorError(state, typeof info.sensorError === 'string' ? info.sensorError : undefined),
         schedule: nightSchedule(doc),
+        room: pairedRoom(doc.ownerID, doc.roomId),
     };
 }
 
@@ -103,6 +105,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         light: typeof info.light === 'number' ? info.light : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         air: airSummary(doc, dev),
+        roomId: doc.roomId,
         telemetry: dev?.telemetry,
         viewers: viewers.get(doc._id) ?? 0,
         lastSeen: dev ? Date.now() : doc.lastSeen,

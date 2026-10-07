@@ -41,8 +41,41 @@ declare global {
         night?: NightSchedule;
         // sha256 of the pairing code the device shows on its setup page (KL_portal)
         claimHash?: string;
+        // the room of the home it stands in (rooms); with a tado room in the same room a kibbl. air shows tado's temperature and humidity
+        roomId?: string;
         lastSeen?: number;
         createdAt: number;
+    }
+
+    interface TadoLinkDoc {
+        _id: string; // the user's id
+        tokens: string; // encrypted (tado/client.ts)
+        homeId?: number;
+        homeName?: string;
+        generation?: 'classic' | 'x';
+        rooms: { id: number; name: string; roomId?: string }[]; // tado's rooms, each in a room of the home
+        connectedAt: number;
+        lastPoll?: number;
+        lastError?: string;
+        rateRemaining?: number;
+        rateResetAt?: number;
+    }
+
+    interface RoomDoc {
+        _id: string;
+        ownerID: string;
+        name: string;
+        createdAt: number;
+    }
+
+    interface TadoReadingDoc {
+        userID: string;
+        roomId: number;
+        at: Date;
+        temperature?: number;
+        humidity?: number;
+        target?: number | null;
+        heating?: number;
     }
 
     interface AirReadingDoc {

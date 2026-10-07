@@ -33,6 +33,7 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
 * **Server**: Node/TypeScript as in the enny-cloud-app-service. Pairs devices (trust on first use, approved in the app), relays the stream as mjpeg, detects motion and logs it as activity; a picture of each movement is kept only where the camera's settings allow it, and deleted with its event after `RETENTION_DAYS`.
 * **App**: live view with snapshot and full screen, camera and light controls, motion sensitivity, quiet hours and whether pictures are kept, activity heatmap with the usual range per hour, timeline, device management with firmware upload.
 * **Air**: a kibbl. air (the Conny CO2 traffic light with a new firmware) shows the CO₂ of a room on its light and in the app, gives health hints on temperature and humidity (cold, heat, dry air, mould on outer walls), counts cigarettes, notices open windows and warns of a possible fire (next to a smoke alarm, not instead of one); a lamp with fading looks and a night mode on schedule.
+* **Heating**: tado connected with its own sign-in: the rooms' temperature, humidity and heating, changed from the app; rooms of the home in which devices and tado share their readings, a kibbl. air's open window switching the heating off.
 * **Health**: a fitness tracker's heart rate, HRV, sleep stages, blood oxygen, breathing, temperature and workouts through the Google Health API (formerly whoofit), next to the home.
 
 ## Repository Structure

@@ -10,6 +10,8 @@ interface HubEvents {
     motionEvent: [MotionEvent];
     meterUpdate: [string]; // a meter's id, after new readings were stored
     airEvent: [AirEvent]; // a kibbl. air detected something
+    heatingUpdate: [string]; // an account's tado rooms were read or changed
+    devicePublish: [string]; // a device's summary changed outside its own messages (the tado room of its room)
 }
 
 class Hub extends EventEmitter<HubEvents> {}

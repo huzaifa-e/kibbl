@@ -155,6 +155,8 @@ export interface NightSchedule {
     to: number; // 0-23
 }
 
+import type { PairedRoom } from './heating';
+
 export interface AirDevice {
     state?: AirState; // while online
     settings?: AirSettings;
@@ -162,6 +164,7 @@ export interface AirDevice {
     lamp?: LampSettings;
     sensorError?: string;
     schedule: NightSchedule;
+    room?: PairedRoom; // a tado room in the same room: its temperature and humidity count, the CO2 is the device's
 }
 
 // a minute of measurements
@@ -222,6 +225,7 @@ export interface DeviceSummary {
     light?: number;
     motion: MotionSettings;
     air?: AirDevice; // a kibbl. air
+    roomId?: string; // the room of the home it stands in
     telemetry?: DeviceTelemetry;
     viewers: number;
     lastSeen?: number;
@@ -253,4 +257,20 @@ export interface ActivityBucket {
     hour: number;
     count: number;
     seconds: number;
+}
+
+/* The temperature and humidity of a kibbl. air's room: tado's when one of tado's rooms is in
+ * the same room (its radiator thermostat measures without the warmth of the device), else
+ * the device's own. The CO2 is always the device's. */
+export function roomClimate(air: AirDevice | undefined) {
+    const s = air?.state;
+    const r = air?.room;
+    const fromTado = !!r && (r.temperature !== undefined || r.humidity !== undefined);
+    return {
+        temperature: fromTado ? (r?.temperature ?? s?.temperature) : s?.temperature,
+        humidity: fromTado ? (r?.humidity ?? s?.humidity) : s?.humidity,
+        co2: s?.co2,
+        fromTado,
+        roomName: r?.name,
+    };
 }

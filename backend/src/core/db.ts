@@ -19,6 +19,9 @@ export let PasswordReset: Model<PasswordResetDoc>;
 export let HealthAccessRequest: Model<HealthAccessRequestDoc>;
 export let AirReading: Model<AirReadingDoc>;
 export let AirEventModel: Model<AirEventDoc>;
+export let TadoLink: Model<TadoLinkDoc>;
+export let Room: Model<RoomDoc>;
+export let TadoReading: Model<TadoReadingDoc>;
 
 let isConnected = false;
 
@@ -67,6 +70,7 @@ async function init() {
         fanSettings: { type: Schema.Types.Mixed },
         lamp: { type: Schema.Types.Mixed },
         claimHash: String,
+        roomId: { type: String, index: true },
         night: {
             enabled: { type: Boolean, default: nightDefaults.enabled },
             from: { type: Number, default: nightDefaults.from },
@@ -289,6 +293,53 @@ async function init() {
     );
     airEventSchema.index({ deviceId: 1, at: -1 });
     AirEventModel = model<AirEventDoc>('AirEvent', airEventSchema);
+
+    /* tado: an account's link (the tokens encrypted, its home and rooms) and every reading of
+     * its rooms, one per poll (every 20 minutes). */
+    const tadoLinkSchema = new Schema<TadoLinkDoc>(
+        {
+            _id: { type: String, required: true },
+            tokens: { type: String, required: true },
+            homeId: Number,
+            homeName: String,
+            generation: { type: String, enum: ['classic', 'x'] },
+            rooms: { type: [{ id: Number, name: String, roomId: String, _id: false }], default: [] },
+            connectedAt: { type: Number, required: true },
+            lastPoll: Number,
+            lastError: String,
+            rateRemaining: Number,
+            rateResetAt: Number,
+        },
+        { versionKey: false },
+    );
+    TadoLink = model<TadoLinkDoc>('TadoLink', tadoLinkSchema);
+
+    // the rooms of an account's home: devices and tado's rooms in the same one share their readings
+    const roomSchema = new Schema<RoomDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true, index: true },
+            name: { type: String, required: true },
+            createdAt: { type: Number, required: true },
+        },
+        { versionKey: false },
+    );
+    Room = model<RoomDoc>('Room', roomSchema);
+
+    const tadoReadingSchema = new Schema<TadoReadingDoc>(
+        {
+            userID: { type: String, required: true },
+            roomId: { type: Number, required: true },
+            at: { type: Date, required: true },
+            temperature: Number,
+            humidity: Number,
+            target: { type: Number, default: null },
+            heating: Number,
+        },
+        { versionKey: false },
+    );
+    tadoReadingSchema.index({ userID: 1, roomId: 1, at: 1 }, { unique: true });
+    TadoReading = model<TadoReadingDoc>('TadoReading', tadoReadingSchema);
 
     connection.on('connected', () => {
         isConnected = true;

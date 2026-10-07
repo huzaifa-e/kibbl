@@ -17,6 +17,8 @@ import { meterPeriods, meterReadings, meterState } from '../meters/service';
 import { climateHints } from '../../../shared/climate';
 import { airEvents, airReadings, smokeDays } from '../core/air';
 import { weatherForUser } from '../core/weather';
+import { listRooms } from '../core/rooms';
+import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
 
 /*
  * What the MCP endpoint offers: every kind of data the app has (cameras, motion,
@@ -179,7 +181,7 @@ export function createMcpServer(session: SessionInfo) {
         { name: 'kibbl', title: 'kibbl.', version },
         {
             instructions:
-                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), " +
+                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), " +
                 'utility meters and health data from a fitness tracker. ' +
                 "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends.",
         },
@@ -529,6 +531,59 @@ export function createMcpServer(session: SessionInfo) {
                     ...Object.fromEntries(Object.entries(e).filter(([k]) => !['_id', 'deviceId', 'at', 'kind'].includes(k))),
                 })),
             });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_heating',
+        {
+            title: 'Heating',
+            description:
+                'The heating through tado: each tado room with its temperature and humidity (measured by tado), what it heats to (null: off), heating power in %, manual or schedule, ' +
+                "tado's open window detection, and the room of the home it is in (a kibbl. air in the same room shares its temperature and humidity). With hours, the readings of a room (every 20 min).",
+            inputSchema: {
+                room: z.string().optional().describe('a tado room by name, for its readings'),
+                hours: z
+                    .number()
+                    .int()
+                    .min(1)
+                    .max(24 * 31)
+                    .default(24),
+            },
+            annotations: readOnly,
+        },
+        async ({ room, hours }) => {
+            const [h, homeRooms] = await Promise.all([heatingStatus(session.userID), listRooms(session.userID)]);
+            if (!h.connected) return fail('tado is not connected (Devices, Heating · tado).');
+            const roomName = (id?: string) => homeRooms.find((r) => r._id === id)?.name ?? null;
+            const out: Record<string, unknown> = {
+                home: h.home?.name,
+                last_read: localTime(h.lastPoll),
+                requests_left_today: h.budget?.remaining ?? null,
+                rooms: h.rooms.map((r) => ({
+                    name: r.name,
+                    in_room: roomName(r.roomId),
+                    temperature: r.temperature ?? null,
+                    humidity: r.humidity ?? null,
+                    heats_to: r.target ?? null,
+                    heating_percent: r.heating,
+                    manual: r.manual,
+                    window_open: r.openWindow,
+                })),
+            };
+            if (room) {
+                const r = h.rooms.find((x) => x.name.toLowerCase() === room.trim().toLowerCase());
+                if (!r) return fail(`No tado room "${room}".`);
+                const rows = await heatingReadings(session.userID, r.id, new Date(Date.now() - hours * 3600_000), new Date());
+                out.readings = rows.map((x) => ({
+                    at: localTime(x.at),
+                    temperature: x.temperature ?? null,
+                    humidity: x.humidity ?? null,
+                    heats_to: x.target,
+                    heating_percent: x.heating,
+                }));
+            }
+            return json(out);
         },
     );
 

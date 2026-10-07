@@ -48,6 +48,7 @@ interface ServerToClientEvents {
     motionEvent: (event: MotionEvent) => void;
     meterUpdate: (meterId: string) => void;
     airEvent: (event: AirEvent) => void;
+    heatingUpdate: () => void;
 }
 
 interface EventQuery {
@@ -553,6 +554,7 @@ export function initBrowserSocket(http: HttpServer) {
     hub.on('telemetry', (deviceId, telemetry) => toOwner(deviceId, (room) => io.to(room).emit('telemetry', deviceId, telemetry)));
     hub.on('motionEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('motionEvent', event)));
     hub.on('airEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('airEvent', event)));
+    hub.on('heatingUpdate', (userID) => io.to(`user:${userID}`).emit('heatingUpdate'));
     hub.on('meterUpdate', (meterId) => {
         Meter.findById(meterId, { ownerID: 1 })
             .lean()

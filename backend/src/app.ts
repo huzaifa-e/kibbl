@@ -14,6 +14,9 @@ import { assignUnowned } from './core/owners';
 
 const log = logger('server');
 import { initAir } from './core/air';
+import { publishDevice } from './core/devices';
+import { hub } from './core/hub';
+import { initTado } from './tado/service';
 import { initWeather } from './core/weather';
 import { closeStaleEvents, initMotionWatchdog } from './core/motion';
 import { initStorageCleanup } from './core/storage';
@@ -51,6 +54,8 @@ async function main() {
     initHealthSync();
     initMeterSync();
     initAir();
+    initTado();
+    hub.on('devicePublish', (deviceId) => void publishDevice(deviceId));
     initWeather();
 
     const app: express.Application = express();

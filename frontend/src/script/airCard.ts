@@ -1,5 +1,5 @@
 import type { Weather } from '../../../shared/climate';
-import type { AirEvent, AirState, DeviceSummary } from '../../../shared/protocol';
+import { roomClimate, type AirEvent, type AirState, type DeviceSummary } from '../../../shared/protocol';
 import { escapeHtml, timeAgo } from './utils';
 
 /* The home card of a kibbl. air: the freshness of the indoor air as a house in its colour,
@@ -102,8 +102,11 @@ export function freshnessCardHtml(d: DeviceSummary, weather: Weather | null, las
 // the second card: how the room feels, temperature and humidity on a dial, the air in words
 export function comfortCardHtml(d: DeviceSummary) {
     const s = d.online ? d.air?.state : undefined;
-    const t = s?.temperature;
-    const rh = s?.humidity;
+    // tado's temperature and humidity when it is in the same room
+    const climate = d.online ? roomClimate(d.air) : undefined;
+    const t = climate?.temperature;
+    const rh = climate?.humidity;
+    const source = climate?.fromTado ? '<div class="air-source">temperature and humidity from tado</div>' : '';
     return `<a href="/air/${d._id}" class="card air-card air-comfort text-reset text-decoration-none" data-air-comfort="${d._id}">
         <div class="air-comfort-head"><div class="air-comfort-name">${escapeHtml(d.name)}</div><span>${comfort(t, rh)}</span></div>
         ${dial(t, rh)}
@@ -112,5 +115,6 @@ export function comfortCardHtml(d: DeviceSummary) {
             <div><div class="air-comfort-caption">Humidity</div><div class="air-comfort-value">${rh === undefined ? '–' : `${Math.round(rh)}%`}</div></div>
             <div title="${s?.co2 !== undefined ? `${s.co2} ppm CO₂` : ''}"><div class="air-comfort-caption">Air</div><div class="air-comfort-value">${airWord(s?.co2)}</div></div>
         </div>
+        ${source}
     </a>`;
 }

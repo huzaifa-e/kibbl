@@ -10,9 +10,11 @@ import {
     type DeviceTelemetry,
     type LampColor,
     type SmokeDay,
+    roomClimate,
 } from '../../../shared/protocol';
 import { climateHints, type HintLevel, type Weather } from '../../../shared/climate';
 import { baseOptions } from './activityCharts';
+import { loadRooms, roomSelectHtml } from './roomsPanel';
 import { levelColors } from './controls';
 import { tone } from './healthCharts';
 import { request, socket } from './socket';
@@ -86,7 +88,9 @@ function layout() {
                   .map((x) => `<option value="${x._id}" ${x._id === d._id ? 'selected' : ''}>${escapeHtml(x.name)}</option>`)
                   .join('')}</select>`
             : '';
-    byId('page-actions').innerHTML = `${switcher}<button class="btn btn-sm" id="air-blink"><i class="ti ti-bulb me-1"></i> Find it</button>`;
+    // the room it stands in: a room of tado there gives the temperature and humidity
+    byId('page-actions').innerHTML =
+        `${switcher}<div style="min-width:150px">${roomSelectHtml(d.roomId, 'id="air-room" aria-label="Room"')}</div><button class="btn btn-sm" id="air-blink"><i class="ti ti-bulb me-1"></i> Find it</button>`;
 
     const rangeButtons = (Object.keys(RANGES) as Range[]).map((r) => `<button class="btn btn-sm" data-range="${r}">${RANGES[r]}</button>`).join('');
     byId('container').innerHTML = `
@@ -128,6 +132,16 @@ function layout() {
             window.location.href = `/air/${(e.target as HTMLSelectElement).value}`;
         });
     byId('air-blink').addEventListener('click', () => void command({ cmd: 'blink', count: 5 }));
+    byId('air-room').addEventListener('change', async (e) => {
+        const roomId = (e.target as HTMLSelectElement).value || null;
+        const res = await fetch(`/api/devices/${device!._id}/room`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId }),
+        });
+        byId('air-result').innerHTML = res.ok ? '' : errorAlert('Not moved.');
+        // the device comes back with the readings of its new room (deviceUpdate)
+    });
     document.querySelectorAll<HTMLButtonElement>('[data-range]').forEach((b) => b.addEventListener('click', () => loadReadings(b.dataset.range as Range)));
     bindSettings();
 }
@@ -150,6 +164,8 @@ function renderTiles() {
     const settings = d.air?.settings;
     // while a calibration runs the device does not watch the window, whatever an older firmware reports
     const windowState = s ? (s.calibrating ? 'paused' : s.window) : undefined;
+    // tado's temperature and humidity when it is in the same room
+    const climate = s ? roomClimate(d.air) : { temperature: undefined, humidity: undefined, fromTado: false };
     const levelText: Record<string, string> = { green: 'fresh', yellow: 'time to air', red: 'air now', none: 'measuring' };
     byId('air-tiles').innerHTML =
         tile(
@@ -164,17 +180,17 @@ function renderTiles() {
             'temperature',
             tone('pumpkin'),
             'Temperature',
-            s?.temperature !== undefined ? s.temperature.toFixed(1) : '–',
+            climate.temperature !== undefined ? climate.temperature.toFixed(1) : '–',
             '°C',
-            weather ? `outside ${weather.temperature.toFixed(1)} °C` : 'inside',
+            `${climate.fromTado ? 'tado · ' : ''}${weather ? `outside ${weather.temperature.toFixed(1)} °C` : 'inside'}`,
         ) +
         tile(
             'droplet',
             tone('pine'),
             'Humidity',
-            s?.humidity !== undefined ? String(Math.round(s.humidity)) : '–',
+            climate.humidity !== undefined ? String(Math.round(climate.humidity)) : '–',
             '%',
-            weather ? `outside ${Math.round(weather.humidity)} %` : 'relative',
+            `${climate.fromTado ? 'tado · ' : ''}${weather ? `outside ${Math.round(weather.humidity)} %` : 'relative'}`,
         ) +
         tile(
             'smoking',
@@ -230,7 +246,7 @@ function renderClimate() {
     byId('climate-outdoor').innerHTML = weather
         ? `<i class="ti ti-${weather.icon ?? 'cloud'}"></i> outside ${weather.temperature.toFixed(1)} °C · ${Math.round(weather.humidity)} %${weather.description ? ` · ${escapeHtml(weather.description)}` : ''}${weather.source === 'openweather' ? ' · <span title="Weather data © OpenWeather">© OpenWeather</span>' : ''}`
         : '<a href="/settings">set the home location</a> for the weather outside';
-    const hints = s ? climateHints(s, weather) : [];
+    const hints = s ? climateHints({ ...s, ...roomClimate(device!.air) }, weather) : [];
     byId('climate-hints').innerHTML = hints.length
         ? hints
               .map(
@@ -283,19 +299,37 @@ async function loadReadings(r: Range) {
         yaxis: { min: 400, labels: { formatter: (v: number) => String(Math.round(v)) }, tickAmount: 4 },
         tooltip: { ...baseOptions().tooltip, x: { format: 'dd MMM HH:mm' }, y: { formatter: (v: number) => `${v} ppm` } },
     });
+    // with a room of tado in its room: tado's temperature, humidity and what it heats to
+    const room = device!.air?.room;
+    const tado = room
+        ? ((await getJson(`/api/heating/rooms/${room.id}/readings?hours=${r}`).catch(() => [])) as {
+              at: number;
+              temperature?: number;
+              humidity?: number;
+              target: number | null;
+          }[])
+        : [];
+    const climateSeries = tado.length
+        ? [
+              { name: 'Temperature (tado)', data: tado.map((x) => [x.at, x.temperature ?? null]) },
+              { name: 'Humidity (tado)', data: tado.map((x) => [x.at, x.humidity ?? null]) },
+              { name: 'Heats to', data: tado.map((x) => [x.at, x.target]) },
+          ]
+        : [
+              { name: 'Temperature', data: readings.map((x) => [x.at, x.temperature]) },
+              { name: 'Humidity', data: readings.map((x) => [x.at, x.humidity]) },
+          ];
     draw('climate', climateEl, {
         ...baseOptions(),
         chart: { ...baseOptions().chart, type: 'line', height: 220 },
-        series: [
-            { name: 'Temperature', data: readings.map((x) => [x.at, x.temperature]) },
-            { name: 'Humidity', data: readings.map((x) => [x.at, x.humidity]) },
-        ],
-        colors: [tone('rust'), tone('pine')],
+        series: climateSeries,
+        colors: [tone('rust'), tone('pine'), tone('mustard')],
         stroke: { curve: 'smooth', width: 2 },
         xaxis: { type: 'datetime', labels: { datetimeUTC: false }, tooltip: { enabled: false } },
         yaxis: [
-            { seriesName: 'Temperature', labels: { formatter: (v: number) => `${v.toFixed(1)} °C` }, tickAmount: 4 },
-            { seriesName: 'Humidity', opposite: true, labels: { formatter: (v: number) => `${Math.round(v)} %` }, tickAmount: 4 },
+            { seriesName: climateSeries[0].name, labels: { formatter: (v: number) => `${v.toFixed(1)} °C` }, tickAmount: 4 },
+            { seriesName: climateSeries[1].name, opposite: true, labels: { formatter: (v: number) => `${Math.round(v)} %` }, tickAmount: 4 },
+            ...(tado.length ? [{ seriesName: climateSeries[0].name, show: false }] : []),
         ],
         legend: { position: 'top', horizontalAlign: 'left' },
         tooltip: { ...baseOptions().tooltip, x: { format: 'dd MMM HH:mm' } },
@@ -390,7 +424,7 @@ function renderSettings() {
         )
         .join('');
 
-    byId('air-settings').innerHTML = `
+    byId('air-settings').innerHTML = `${heatingCardHtml()}
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title"><i class="ti ti-bulb me-1"></i> Light</h3></div>
             <div class="card-body">
@@ -497,6 +531,39 @@ function renderSettings() {
         </div>`;
 }
 
+/* The heating of the room: shown when one of tado's rooms is in the same room. Each change
+ * is one of tado's 100 requests a day. */
+function heatingCardHtml() {
+    const r = device!.air?.room;
+    if (!r) return '';
+    const target = r.target ?? 20;
+    return `<div class="card mb-3">
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-flame me-1"></i> Heating · ${escapeHtml(r.name)}</h3></div>
+        <div class="card-body">
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+                <span class="stat-value">${r.power === 'ON' ? `${r.target}°` : 'Off'}</span>
+                <span class="text-secondary">${r.power === 'ON' ? `heats to · ${r.heating} % now` : 'not heating'}</span>
+            </div>
+            <div class="text-secondary small mb-3">${r.manual ? `set by hand${r.manualUntil ? ` until ${new Date(r.manualUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}` : 'on its schedule'}${r.openWindow ? ' · tado sees a window open' : ''} · read ${timeAgo(r.at)}</div>
+            <label class="form-label d-flex"><span class="flex-fill">Temperature</span><span class="text-secondary" id="heat-value">${target.toFixed(1)} °C</span></label>
+            <input type="range" class="form-range" min="5" max="25" step="0.5" value="${target}" id="heat-target" />
+            <div class="btn-list mt-2">
+                <button class="btn btn-sm btn-primary" data-heat="temperature">Set until the next change</button>
+                <button class="btn btn-sm" data-heat="off">Off</button>
+                ${r.manual ? '<button class="btn btn-sm" data-heat="schedule">Back to schedule</button>' : ''}
+            </div>
+            <div class="text-secondary small mt-2">While this device sees a window open the heating is off, back to its schedule when it closes.</div>
+        </div>
+    </div>`;
+}
+
+async function heatingCommand(body: Record<string, unknown>) {
+    const room = device!.air?.room;
+    if (!room) return;
+    const res = await fetch(`/api/heating/rooms/${room.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    byId('air-result').innerHTML = res.ok ? '' : errorAlert(escapeHtml(await res.text()));
+}
+
 function bindSettings() {
     const root = byId('air-settings');
     const airConfig = (fields: Record<string, unknown>) => command({ cmd: 'air_config', ...fields });
@@ -504,7 +571,13 @@ function bindSettings() {
     root.addEventListener('click', async (e) => {
         const el = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
         if (!el || el.disabled) return;
-        if (el.dataset.lamp) {
+        if (el.dataset.heat === 'temperature') {
+            await heatingCommand({ mode: 'temperature', celsius: Number(byId<HTMLInputElement>('heat-target').value), until: 'next' });
+        } else if (el.dataset.heat === 'off') {
+            await heatingCommand({ mode: 'off', until: 'next' });
+        } else if (el.dataset.heat === 'schedule') {
+            await heatingCommand({ mode: 'schedule' });
+        } else if (el.dataset.lamp) {
             await command({ cmd: 'lamp', mode: el.dataset.lamp });
         } else if (el.dataset.rise) {
             await airConfig({ puffRise: Number(el.dataset.rise) });
@@ -553,6 +626,7 @@ function bindSettings() {
     root.addEventListener('input', (e) => {
         const el = e.target as HTMLInputElement;
         if (el.id === 'night-fan') byId('night-fan-value').textContent = `${el.value} %`;
+        if (el.id === 'heat-target') byId('heat-value').textContent = `${Number(el.value).toFixed(1)} °C`;
         if (el.id === 'fan-level') byId('fan-level-value').textContent = `${el.value} %`;
     });
 
@@ -609,6 +683,7 @@ async function load() {
         return;
     }
     if (!pathId) window.history.replaceState(null, '', `/air/${device._id}`);
+    await loadRooms();
     layout();
     renderSettings();
     await Promise.all([loadReadings(range), loadSmoke(), loadEvents(), loadWeather()]);
@@ -624,7 +699,10 @@ socket.on('connect', () => void load());
 socket.on('deviceUpdate', (d: DeviceSummary) => {
     if (d._id !== device?._id) return;
     const wasOnline = device.online;
+    const roomChanged = device.roomId !== d.roomId || device.air?.room?.id !== d.air?.room?.id;
     device = d;
+    // moved, or tado came or went in its room: the chart shows the other source
+    if (roomChanged) void loadReadings(range);
     renderTiles();
     // the settings are redrawn only when they can have changed elsewhere, not under the cursor
     if (!root().contains(document.activeElement) || wasOnline !== d.online) renderSettings();

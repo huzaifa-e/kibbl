@@ -3,6 +3,7 @@ import { productName, type DeviceSummary } from '../../../shared/protocol';
 import { request, socket } from './socket';
 import { knownPorts, onUsbPlugged, usbSupported, usbUnsupportedReason } from './usbSerial';
 import { byId, emptyState, errorAlert, escapeHtml, successAlert, timeAgo } from './utils';
+import { bindRoomsPanel, heatingCardHtml, loadHeating, loadRooms, roomSelectHtml, roomsCardHtml } from './roomsPanel';
 import { changeWifiRemotely, setupOverUsb } from './wifiSetup';
 
 let devices: DeviceSummary[] = [];
@@ -65,6 +66,7 @@ function deviceRow(d: DeviceSummary) {
         <td>${d.online ? `<span class="status status-green"><span class="status-dot status-dot-animated"></span> online</span><div class="text-secondary small"><i class="ti ti-wifi"></i> ${escapeHtml(d.ssid ?? '')}</div>` : `<span class="status status-secondary">offline</span><div class="text-secondary small">${d.lastSeen ? timeAgo(d.lastSeen) : ''}</div>`}
             ${d.wifiChangeFailed ? `<div class="text-orange small"><i class="ti ti-alert-triangle"></i> could not join ${escapeHtml(d.wifiChangeFailed)}, went back</div>` : ''}</td>
         <td class="d-none d-md-table-cell">${caps}</td>
+        <td style="min-width:140px">${roomSelectHtml(d.roomId, `data-device-room="${d._id}" aria-label="Room of ${escapeHtml(d.name)}"`)}</td>
         <td class="d-none d-lg-table-cell text-mono small">${escapeHtml(d.fw ?? '–')}</td>
         <td class="text-end">
             <div class="dropdown">
@@ -127,11 +129,13 @@ function render() {
             ${
                 approved.length
                     ? `<div class="table-responsive"><table class="table table-vcenter card-table">
-                        <thead><tr><th>Device</th><th>State</th><th class="d-none d-md-table-cell">Can</th><th class="d-none d-lg-table-cell">Firmware</th><th></th></tr></thead>
+                        <thead><tr><th>Device</th><th>State</th><th class="d-none d-md-table-cell">Can</th><th>Room</th><th class="d-none d-lg-table-cell">Firmware</th><th></th></tr></thead>
                         <tbody>${approved.map(deviceRow).join('')}</tbody></table></div>`
                     : `<div class="card-body">${emptyState('cpu', 'No devices yet', 'A new device appears above once it reaches the server.')}</div>`
             }
         </div>
+        <div id="heating"></div>
+        <div id="rooms"></div>
         <div id="meters"></div>
         <div id="trackers"></div>
         <div class="row row-cards">
@@ -162,6 +166,7 @@ function render() {
         <input type="file" id="firmware-file" accept=".bin" class="d-none" />`;
     renderMeters();
     renderTrackers();
+    renderRoomsPanel();
 }
 
 /* ----------------------------------------------------------------------- */
@@ -369,8 +374,21 @@ async function onAction(action: string, deviceId: string) {
     }
 }
 
+// the rooms of the home and the heating of tado: their cards below the devices
+function renderRoomsPanel() {
+    const heatingSlot = document.getElementById('heating');
+    const roomsSlot = document.getElementById('rooms');
+    if (heatingSlot) heatingSlot.innerHTML = heatingCardHtml();
+    if (roomsSlot) roomsSlot.innerHTML = roomsCardHtml();
+}
+
+async function loadRoomsPanel() {
+    await Promise.all([loadRooms(), loadHeating()]);
+}
+
 async function load() {
     devices = await request<DeviceSummary[]>('getDevices');
+    await loadRoomsPanel();
     render();
     if (!trackers) loadTrackers();
     if (!meters) loadMeters();
@@ -393,6 +411,13 @@ async function offerPluggedDevice() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // rooms and tado: after a change the devices and both cards are read again
+    bindRoomsPanel(byId('container'), async () => {
+        devices = await request<DeviceSummary[]>('getDevices');
+        await loadRoomsPanel();
+        render();
+    });
+
     // a device set up over its own Wi-Fi: the code its setup page showed
     byId('container').addEventListener('submit', async (e) => {
         if ((e.target as HTMLElement).id !== 'claim-form') return;
@@ -454,6 +479,10 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
     renderUnlessMenuOpen(); // keeps a message the user is reading
 });
 socket.on('meterUpdate', () => loadMeters());
+// tado read its rooms, or the sign-in finished: the heating card shows it
+socket.on('heatingUpdate', () => {
+    void loadRoomsPanel().then(renderRoomsPanel);
+});
 socket.on('deviceRemoved', (deviceId: string) => {
     devices = devices.filter((d) => d._id !== deviceId);
     renderUnlessMenuOpen();

@@ -7,6 +7,7 @@ import { logger } from './logger';
 import { notifyOwner } from './notify';
 import { deviceOwner } from './owners';
 import { weatherForUser } from './weather';
+import { pairedRoom } from '../tado/service';
 import { climateHints } from '../../../shared/climate';
 
 /*
@@ -267,7 +268,11 @@ const climateSent = new Map<string, number>();
 async function checkClimate(deviceId: string, state: AirState) {
     const owner = await deviceOwner(deviceId);
     const weather = owner ? await weatherForUser(owner) : null;
-    const hints = climateHints(state, weather).filter((h) => h.notify && h.level !== 'good' && h.level !== 'info');
+    // a tado room in the same room: its temperature and humidity are the room's
+    const doc = owner ? await Device.findById(deviceId, { roomId: 1 }).lean() : null;
+    const room = pairedRoom(owner ?? undefined, doc?.roomId);
+    const air = room ? { ...state, temperature: room.temperature ?? state.temperature, humidity: room.humidity ?? state.humidity } : state;
+    const hints = climateHints(air, weather).filter((h) => h.notify && h.level !== 'good' && h.level !== 'info');
     const now = Date.now();
     const shown = new Set(hints.map((h) => `${deviceId}|${h.id}`));
     for (const key of climateSince.keys()) {

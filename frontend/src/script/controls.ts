@@ -1,5 +1,5 @@
 import { climateHints } from '../../../shared/climate';
-import type { AirLevel, DeviceSummary } from '../../../shared/protocol';
+import { roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
 import { request } from './socket';
 import { escapeHtml } from './utils';
 
@@ -27,13 +27,14 @@ export function airNowHtml(d: DeviceSummary) {
     if (d.air?.sensorError) return `<div class="text-danger"><i class="ti ti-alert-triangle"></i> ${escapeHtml(d.air.sensorError)}</div>`;
     const co2 = s.co2 === undefined ? '–' : String(s.co2);
     // the most pressing health hint of the climate, without the weather outside (the device page has it)
-    const worst = climateHints(s).find((h) => h.level === 'alert' || h.level === 'warn');
+    const climate = roomClimate(d.air);
+    const worst = climateHints({ ...s, ...climate }).find((h) => h.level === 'alert' || h.level === 'warn');
     return `<div class="d-flex align-items-baseline gap-2 mb-1">
             <i class="ti ti-circle-filled" style="color:${levelColors[s.level]}"></i>
             <span class="stat-value">${co2}</span><span class="text-secondary">ppm CO₂</span>
         </div>
         <div class="text-secondary small">
-            ${s.temperature !== undefined ? `<i class="ti ti-temperature"></i> ${s.temperature.toFixed(1)} °C · ` : ''}${s.humidity !== undefined ? `<i class="ti ti-droplet"></i> ${Math.round(s.humidity)} %` : ''}
+            ${climate.temperature !== undefined ? `<i class="ti ti-temperature"></i> ${climate.temperature.toFixed(1)} °C · ` : ''}${climate.humidity !== undefined ? `<i class="ti ti-droplet"></i> ${Math.round(climate.humidity)} %` : ''}
             ${s.window === 'open' ? ` · <span class="text-orange"><i class="ti ti-window"></i> window open</span>` : ''}
             ${s.night ? ` · <i class="ti ti-moon"></i> night` : ''}
         </div>
