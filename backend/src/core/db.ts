@@ -15,6 +15,7 @@ export let MeterPeriod: Model<MeterPeriodDoc>;
 export let AccessToken: Model<AccessTokenDoc>;
 export let OAuthClient: Model<OAuthClientDoc>;
 export let OAuthGrant: Model<OAuthGrantDoc>;
+export let PasswordReset: Model<PasswordResetDoc>;
 
 let isConnected = false;
 
@@ -39,6 +40,8 @@ async function init() {
         name: { type: String, required: true },
         secretHash: { type: String, required: true },
         status: { type: String, required: true, enum: ['pending', 'approved'] },
+        // the account it belongs to; a pending device that was not set up over USB has none yet
+        ownerID: { type: String, index: true },
         model: String,
         board: String,
         sensor: String,
@@ -131,6 +134,7 @@ async function init() {
         {
             _id: { type: String, required: true }, // the configured device's uuid on the source
             devEui: { type: String, required: true },
+            ownerID: { type: String, index: true }, // the account that added it
             name: { type: String, required: true },
             deviceType: String,
             medium: { type: String, required: true },
@@ -216,6 +220,17 @@ async function init() {
         { versionKey: false },
     );
     OAuthGrant = model<OAuthGrantDoc>('OAuthGrant', oauthGrantSchema);
+
+    // a password reset link sent by e-mail: the hash of its token, gone an hour later
+    const passwordResetSchema = new Schema<PasswordResetDoc>(
+        {
+            _id: { type: String, required: true },
+            userID: { type: String, required: true, index: true },
+            expiresAt: { type: Date, required: true, expires: 0 },
+        },
+        { versionKey: false },
+    );
+    PasswordReset = model<PasswordResetDoc>('PasswordReset', passwordResetSchema);
 
     connection.on('connected', () => {
         isConnected = true;

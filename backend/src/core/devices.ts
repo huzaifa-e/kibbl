@@ -88,8 +88,8 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
     };
 }
 
-export async function getSummaries() {
-    const docs = await Device.find().sort({ createdAt: 1 }).lean();
+export async function getSummaries(filter: Record<string, unknown> = {}) {
+    const docs = await Device.find(filter).sort({ createdAt: 1 }).lean();
     return docs.map(summarize);
 }
 

@@ -7,6 +7,7 @@ import { version } from '../../../shared/version';
 import { Device, HealthLink, Meter, MotionEventModel } from '../core/db';
 import { getLive, summarize } from '../core/devices';
 import { freshFrame } from '../core/frames';
+import { ownedDeviceIds } from '../core/owners';
 import { imageRoot, resolveInside } from '../core/storage';
 import { INTRADAY } from '../health/extract';
 import { configured } from '../health/google';
@@ -77,15 +78,15 @@ const readOnly = { readOnlyHint: true, destructiveHint: false, openWorldHint: fa
 
 /* ----------------------------------------------------------------------- */
 
-// a camera or other device by its id or its name, any case
-async function findDevice(ref: string) {
-    const docs = await Device.find({ status: 'approved' }).lean();
+// one of the user's cameras or other devices by its id or its name, any case
+async function findDevice(userID: string, ref: string) {
+    const docs = await Device.find({ status: 'approved', ownerID: userID }).lean();
     const lower = ref.trim().toLowerCase();
     return docs.find((d) => d._id === ref.trim().toUpperCase()) ?? docs.find((d) => d.name.toLowerCase() === lower);
 }
 
-async function findMeter(ref: string) {
-    const meters = await Meter.find().lean();
+async function findMeter(userID: string, ref: string) {
+    const meters = await Meter.find({ ownerID: userID }).lean();
     const lower = ref.trim().toLowerCase();
     return meters.find((m) => m._id === lower) ?? meters.find((m) => m.name.toLowerCase() === lower);
 }
@@ -183,8 +184,8 @@ export function createMcpServer(session: SessionInfo) {
         },
         async () => {
             const [devices, meters, link, stats] = await Promise.all([
-                Device.find({ status: 'approved' }).sort({ createdAt: 1 }).lean(),
-                Meter.find().sort({ addedAt: 1 }).lean(),
+                Device.find({ status: 'approved', ownerID: session.userID }).sort({ createdAt: 1 }).lean(),
+                Meter.find({ ownerID: session.userID }).sort({ addedAt: 1 }).lean(),
                 configured() ? HealthLink.findById(session.userID, { connectedAt: 1 }).lean() : null,
                 storageStats(session.userID),
             ]);
@@ -219,7 +220,7 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async () => {
-            const docs = await Device.find({ status: 'approved' }).sort({ createdAt: 1 }).lean();
+            const docs = await Device.find({ status: 'approved', ownerID: session.userID }).sort({ createdAt: 1 }).lean();
             return json(docs.map(deviceInfo));
         },
     );
@@ -233,7 +234,7 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async ({ camera }) => {
-            const doc = await findDevice(camera);
+            const doc = await findDevice(session.userID, camera);
             if (!doc || !doc.caps?.includes('camera')) return fail(`No camera "${camera}". kibbl_devices lists them.`);
             if (!getLive(doc._id)) return fail(`${doc.name} is offline, last seen ${localTime(doc.lastSeen) ?? 'never'}.`);
             const frame = await freshFrame(doc._id, SNAPSHOT_MAX_AGE_MS, SNAPSHOT_TIMEOUT_MS);
@@ -265,10 +266,11 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async ({ camera, from, to, limit }) => {
-            const filter: Record<string, unknown> = {};
-            const names = new Map((await Device.find({}, { name: 1 }).lean()).map((d) => [d._id, d.name]));
+            const own = await Device.find({ ownerID: session.userID }, { name: 1 }).lean();
+            const names = new Map(own.map((d) => [d._id, d.name]));
+            const filter: Record<string, unknown> = { deviceId: { $in: [...names.keys()] } };
             if (camera) {
-                const doc = await findDevice(camera);
+                const doc = await findDevice(session.userID, camera);
                 if (!doc) return fail(`No camera "${camera}". kibbl_devices lists them.`);
                 filter.deviceId = doc._id;
             }
@@ -310,9 +312,9 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async ({ camera, from, to, per }) => {
-            const filter: Record<string, unknown> = {};
+            const filter: Record<string, unknown> = { deviceId: { $in: await ownedDeviceIds(session.userID) } };
             if (camera) {
-                const doc = await findDevice(camera);
+                const doc = await findDevice(session.userID, camera);
                 if (!doc) return fail(`No camera "${camera}". kibbl_devices lists them.`);
                 filter.deviceId = doc._id;
             }
@@ -342,7 +344,7 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async ({ event_id }) => {
-            const doc = await MotionEventModel.findById(event_id).lean();
+            const doc = await MotionEventModel.findOne({ _id: event_id, deviceId: { $in: await ownedDeviceIds(session.userID) } }).lean();
             if (!doc) return fail('No such motion event.');
             if (!doc.snapshot) return fail('No picture was kept for this event.');
             try {
@@ -370,7 +372,7 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async () => {
-            const meters = await Meter.find().sort({ addedAt: 1 }).lean();
+            const meters = await Meter.find({ ownerID: session.userID }).sort({ addedAt: 1 }).lean();
             return json((await Promise.all(meters.map(meterState))).map(meterInfo));
         },
     );
@@ -389,7 +391,7 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async ({ meter, per, from, to }) => {
-            const doc = await findMeter(meter);
+            const doc = await findMeter(session.userID, meter);
             if (!doc) return fail(`No meter "${meter}". kibbl_meters lists them.`);
             const rows = (await meterPeriods(doc._id, per)).filter((r) => (!from || r.key >= from) && (!to || r.key <= to));
             const total = rows.reduce((s, r) => s + (r.consumption ?? 0), 0);
@@ -411,7 +413,7 @@ export function createMcpServer(session: SessionInfo) {
             annotations: readOnly,
         },
         async ({ meter, from, to, max_points }) => {
-            const doc = await findMeter(meter);
+            const doc = await findMeter(session.userID, meter);
             if (!doc) return fail(`No meter "${meter}". kibbl_meters lists them.`);
             const range = dayRange(from, to, 2);
             const rows = await meterReadings(doc._id, new Date(range.start), new Date(range.end), max_points);

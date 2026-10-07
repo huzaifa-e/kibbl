@@ -9,6 +9,7 @@ import sirv from 'sirv';
 import db from './core/db';
 import { ensureAdminUser } from './core/auth';
 import { logger } from './core/logger';
+import { assignUnowned } from './core/owners';
 
 const log = logger('server');
 import { closeStaleEvents, initMotionWatchdog } from './core/motion';
@@ -40,6 +41,7 @@ if (process.env.NODE_ENV !== 'production') {
 async function main() {
     await db.init();
     await ensureAdminUser();
+    await assignUnowned();
     initStorageCleanup();
     await closeStaleEvents();
     initMotionWatchdog();

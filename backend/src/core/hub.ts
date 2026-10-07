@@ -5,7 +5,7 @@ import type { DeviceSummary, DeviceTelemetry, MotionEvent } from '../../../share
  * each other. */
 interface HubEvents {
     deviceUpdate: [DeviceSummary];
-    deviceRemoved: [string];
+    deviceRemoved: [string, string | null]; // the device and who owned it
     telemetry: [string, DeviceTelemetry];
     motionEvent: [MotionEvent];
     meterUpdate: [string]; // a meter's id, after new readings were stored

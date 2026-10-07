@@ -3,9 +3,19 @@ import { IncomingMessage, Server } from 'node:http';
 import { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Device } from '../core/db';
-import { MAX_PENDING_DEVICES, dropConnection, handleHello, handleResponse, handleTelemetry, hashSecret, publishDevice, registerConnection } from '../core/devices';
+import {
+    MAX_PENDING_DEVICES,
+    dropConnection,
+    handleHello,
+    handleResponse,
+    handleTelemetry,
+    hashSecret,
+    publishDevice,
+    registerConnection,
+} from '../core/devices';
 import { onFrame } from '../core/frames';
 import { logger } from '../core/logger';
+import { forgetOwner } from '../core/owners';
 
 const log = logger('device');
 import { endMotion } from '../core/motion';
@@ -19,13 +29,14 @@ type DeviceSocket = WebSocket & { deviceId: string; lastSeen: number; approved: 
 let wss: WebSocketServer;
 
 /* Devices being set up over USB in the app right now. The person doing it holds the
- * device and is logged in: its first connection is approved without a second step,
- * and a device that was reset (new secret) is paired again instead of refused. */
+ * device and is logged in: its first connection is approved without a second step and
+ * belongs to them, and a device that was reset (new secret) is paired again instead of
+ * refused. */
 const EXPECT_MS = 15 * 60 * 1000;
-const expected = new Map<string, { name: string; until: number }>();
+const expected = new Map<string, { name: string; ownerID: string; until: number }>();
 
-export function expectDevice(deviceId: string, name: string) {
-    expected.set(deviceId, { name, until: Date.now() + EXPECT_MS });
+export function expectDevice(deviceId: string, name: string, ownerID: string) {
+    expected.set(deviceId, { name, ownerID, until: Date.now() + EXPECT_MS });
 }
 
 function takeExpected(deviceId: string) {
@@ -60,14 +71,20 @@ async function authenticate(req: IncomingMessage): Promise<{ deviceId: string; a
     const hash = hashSecret(secret);
     const doc = await Device.findById(deviceId).lean();
     // set up over USB: new, reset or already known, it is approved with the name given there
-    const setUp = takeExpected(deviceId);
+    let setUp = takeExpected(deviceId);
+    // the expectation of another account than the owner's changes nothing: owned stays owned
+    if (setUp && doc?.ownerID && doc.ownerID !== setUp.ownerID) {
+        log.warn('setup by another account than the owner ignored', { device: deviceId });
+        setUp = undefined;
+    }
     if (setUp) {
+        forgetOwner(deviceId);
         await Device.updateOne(
             { _id: deviceId },
-            { $set: { secretHash: hash, status: 'approved', name: setUp.name }, $setOnInsert: { caps: [], createdAt: Date.now() } },
+            { $set: { secretHash: hash, status: 'approved', name: setUp.name, ownerID: setUp.ownerID }, $setOnInsert: { caps: [], createdAt: Date.now() } },
             { upsert: true },
         );
-        log.info('set up over USB, approved', { device: deviceId, name: setUp.name });
+        log.info('set up over USB, approved', { device: deviceId, name: setUp.name, owner: setUp.ownerID });
         return { deviceId, approved: true };
     }
     if (doc) {

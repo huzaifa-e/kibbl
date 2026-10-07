@@ -10,7 +10,7 @@ import {
     type SetupInfo,
 } from '../../../shared/protocol';
 import { AUTH_COOKIE, checkAuthToken, readCookie } from '../core/auth';
-import { Device, MotionEventModel } from '../core/db';
+import { Device, Meter, MotionEventModel } from '../core/db';
 import {
     applyCommandResult,
     closeConnection,
@@ -24,6 +24,7 @@ import {
 import { forgetFrames } from '../core/frames';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
+import { canUse, deviceOwner, forgetOwner, isAdmin, maySetUp, ownedDeviceIds, visibleDeviceFilter } from '../core/owners';
 
 const log = logger('app');
 import { dropCurrentPicture, endMotion, invalidateMotionSettings, toMotionEvent } from '../core/motion';
@@ -70,6 +71,12 @@ const isString = (v: unknown, max = 64): v is string => typeof v === 'string' &&
 const isDeviceID = (v: unknown): v is string => typeof v === 'string' && /^[0-9A-F]{12}$/.test(v);
 const isUUID = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v);
 const isCallback = (cb: unknown): cb is Callback<never> => typeof cb === 'function';
+
+// the device, when this user may use it (their own, or for the admin a pending one nobody owns)
+async function usableDevice(socket: BrowserSocket, deviceId: unknown) {
+    const doc = isDeviceID(deviceId) ? await Device.findById(deviceId).lean() : null;
+    return (await canUse(socket.data.session.userID, doc)) ? doc : null;
+}
 
 /* What the app may send per command: the device range-checks the values again,
  * this keeps anything else from reaching it. */
@@ -142,12 +149,12 @@ function localDay(time: number) {
 function registerEvents(socket: BrowserSocket) {
     socket.on('getDevices', async (cb) => {
         if (!isCallback(cb)) return;
-        cb(await getSummaries());
+        cb(await getSummaries(await visibleDeviceFilter(socket.data.session.userID)));
     });
 
     socket.on('deviceCommand', async (deviceId, command, cb) => {
         if (!isCallback(cb)) return;
-        const doc = isDeviceID(deviceId) ? await Device.findById(deviceId).lean() : null;
+        const doc = await usableDevice(socket, deviceId);
         const clean = cleanCommand(command);
         if (!doc || doc.status !== 'approved' || !clean || !commandAllowed(doc, clean.cmd as string)) {
             cb({ ok: false, error: 'command not allowed for this device' });
@@ -162,7 +169,16 @@ function registerEvents(socket: BrowserSocket) {
 
     socket.on('approveDevice', async (deviceId, cb) => {
         if (!isCallback(cb) || !isDeviceID(deviceId)) return;
-        const res = await Device.updateOne({ _id: deviceId, status: 'pending' }, { status: 'approved' });
+        // a pending device nobody owns: only the admin approves it, and owns it then
+        if (!(await isAdmin(socket.data.session.userID))) {
+            cb({ ok: false, error: 'only the admin approves devices that were not set up over USB' });
+            return;
+        }
+        const res = await Device.updateOne(
+            { _id: deviceId, status: 'pending', ownerID: { $exists: false } },
+            { status: 'approved', ownerID: socket.data.session.userID },
+        );
+        forgetOwner(deviceId);
         if (res.modifiedCount === 0) {
             cb({ ok: false, error: 'no pending device with this id' });
             return;
@@ -176,8 +192,12 @@ function registerEvents(socket: BrowserSocket) {
 
     socket.on('renameDevice', async (deviceId, name, cb) => {
         if (!isCallback(cb)) return;
-        if (!isDeviceID(deviceId) || !isString(name?.trim?.(), 40)) {
+        if (!isString(name?.trim?.(), 40)) {
             cb({ ok: false, error: 'the name needs 1 to 40 characters' });
+            return;
+        }
+        if (!(await usableDevice(socket, deviceId))) {
+            cb({ ok: false, error: 'device not found' });
             return;
         }
         await Device.updateOne({ _id: deviceId }, { name: name.trim() });
@@ -186,7 +206,12 @@ function registerEvents(socket: BrowserSocket) {
     });
 
     socket.on('removeDevice', async (deviceId, cb) => {
-        if (!isCallback(cb) || !isDeviceID(deviceId)) return;
+        if (!isCallback(cb)) return;
+        const doc = await usableDevice(socket, deviceId);
+        if (!doc) {
+            cb({ ok: false, error: 'device not found' });
+            return;
+        }
         await endMotion(deviceId);
         closeConnection(deviceId);
         forgetFrames(deviceId);
@@ -194,13 +219,14 @@ function registerEvents(socket: BrowserSocket) {
         await MotionEventModel.deleteMany({ deviceId });
         await deleteDeviceImages(deviceId);
         log.info('device removed with its events', { device: deviceId, user: socket.data.session.email });
-        hub.emit('deviceRemoved', deviceId);
+        forgetOwner(deviceId);
+        hub.emit('deviceRemoved', deviceId, doc.ownerID ?? null);
         cb({ ok: true });
     });
 
     socket.on('setMotionSettings', async (deviceId, settings, cb) => {
         if (!isCallback(cb)) return;
-        const doc = isDeviceID(deviceId) ? await Device.findById(deviceId).lean() : null;
+        const doc = await usableDevice(socket, deviceId);
         if (!doc) {
             cb({ ok: false, error: 'device not found' });
             return;
@@ -230,8 +256,9 @@ function registerEvents(socket: BrowserSocket) {
 
     socket.on('getEvents', async (query, cb) => {
         if (!isCallback(cb)) return;
-        const filter: Record<string, unknown> = {};
-        if (isDeviceID(query?.deviceId)) filter.deviceId = query.deviceId;
+        const own = await ownedDeviceIds(socket.data.session.userID);
+        const filter: Record<string, unknown> = { deviceId: { $in: own } };
+        if (isDeviceID(query?.deviceId)) filter.deviceId = own.includes(query.deviceId) ? query.deviceId : '';
         const start: Record<string, number> = {};
         if (typeof query?.from === 'number') start.$gte = query.from;
         if (typeof query?.to === 'number') start.$lt = query.to;
@@ -243,14 +270,14 @@ function registerEvents(socket: BrowserSocket) {
 
     socket.on('deleteEvent', async (eventId, cb) => {
         if (!isCallback(cb) || !isUUID(eventId)) return;
-        const doc = await MotionEventModel.findByIdAndDelete(eventId).lean();
+        const doc = await MotionEventModel.findOneAndDelete({ _id: eventId, deviceId: { $in: await ownedDeviceIds(socket.data.session.userID) } }).lean();
         await deleteSnapshot(doc?.snapshot);
         cb({ ok: !!doc });
     });
 
     socket.on('countEventPictures', async (deviceId, cb) => {
         if (!isCallback(cb)) return;
-        if (!isDeviceID(deviceId)) {
+        if (!(await usableDevice(socket, deviceId))) {
             cb({ ok: false, error: 'device not found' });
             return;
         }
@@ -261,7 +288,7 @@ function registerEvents(socket: BrowserSocket) {
      * was, only what the camera saw is gone. */
     socket.on('deleteEventPictures', async (deviceId, cb) => {
         if (!isCallback(cb)) return;
-        if (!isDeviceID(deviceId)) {
+        if (!(await usableDevice(socket, deviceId))) {
             cb({ ok: false, error: 'device not found' });
             return;
         }
@@ -281,8 +308,9 @@ function registerEvents(socket: BrowserSocket) {
         const from = new Date();
         from.setHours(0, 0, 0, 0);
         from.setDate(from.getDate() - (days - 1));
-        const filter: Record<string, unknown> = { start: { $gte: from.getTime() } };
-        if (isDeviceID(query?.deviceId)) filter.deviceId = query.deviceId;
+        const own = await ownedDeviceIds(socket.data.session.userID);
+        const filter: Record<string, unknown> = { start: { $gte: from.getTime() }, deviceId: { $in: own } };
+        if (isDeviceID(query?.deviceId)) filter.deviceId = own.includes(query.deviceId) ? query.deviceId : '';
 
         // grouped here, in the server's time zone, which is the home's
         const docs = await MotionEventModel.find(filter, { start: 1, end: 1 }).lean();
@@ -317,13 +345,18 @@ function registerSetupEvents(socket: BrowserSocket) {
         cb({ deviceSocketUrl: deviceSocketUrl() });
     });
 
-    socket.on('expectDevice', (deviceId, name, cb) => {
+    socket.on('expectDevice', async (deviceId, name, cb) => {
         if (!isCallback(cb)) return;
         if (!isDeviceID(deviceId) || !isString(name?.trim?.(), 40)) {
             cb({ ok: false, error: 'device id or name invalid' });
             return;
         }
-        expectDevice(deviceId, name.trim());
+        if (!(await maySetUp(socket.data.session.userID, deviceId))) {
+            log.warn('setup refused, the device belongs to another account', { device: deviceId, user: socket.data.session.email });
+            cb({ ok: false, error: 'This device belongs to another kibbl. account. Its owner has to remove it in their app before it can be set up again.' });
+            return;
+        }
+        expectDevice(deviceId, name.trim(), socket.data.session.userID);
         log.info('setting up over USB', { device: deviceId, user: socket.data.session.email });
         cb({ ok: true });
     });
@@ -354,15 +387,30 @@ export function initBrowserSocket(http: HttpServer) {
         next();
     });
 
-    io.on('connection', (socket) => {
-        socket.join('users');
+    /* Every browser is in its user's room, the admin's also in 'admins': what a device
+     * reports reaches its owner only, a pending device nobody owns the admin. */
+    io.on('connection', async (socket) => {
         registerEvents(socket);
         registerSetupEvents(socket);
+        socket.join(`user:${socket.data.session.userID}`);
+        if (await isAdmin(socket.data.session.userID).catch(() => false)) socket.join('admins');
     });
 
-    hub.on('deviceUpdate', (device) => io.to('users').emit('deviceUpdate', device));
-    hub.on('deviceRemoved', (deviceId) => io.to('users').emit('deviceRemoved', deviceId));
-    hub.on('telemetry', (deviceId, telemetry) => io.to('users').emit('telemetry', deviceId, telemetry));
-    hub.on('motionEvent', (event) => io.to('users').emit('motionEvent', event));
-    hub.on('meterUpdate', (meterId) => io.to('users').emit('meterUpdate', meterId));
+    const roomOf = (owner: string | null) => (owner ? `user:${owner}` : 'admins');
+    const toOwner = (deviceId: string, send: (room: string) => void) => {
+        deviceOwner(deviceId)
+            .then((owner) => send(roomOf(owner)))
+            .catch((err) => log.warn('update not sent, owner unknown', { device: deviceId }, err));
+    };
+
+    hub.on('deviceUpdate', (device) => toOwner(device._id, (room) => io.to(room).emit('deviceUpdate', device)));
+    hub.on('deviceRemoved', (deviceId, owner) => io.to(roomOf(owner)).emit('deviceRemoved', deviceId));
+    hub.on('telemetry', (deviceId, telemetry) => toOwner(deviceId, (room) => io.to(room).emit('telemetry', deviceId, telemetry)));
+    hub.on('motionEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('motionEvent', event)));
+    hub.on('meterUpdate', (meterId) => {
+        Meter.findById(meterId, { ownerID: 1 })
+            .lean()
+            .then((meter) => meter?.ownerID && io.to(roomOf(meter.ownerID)).emit('meterUpdate', meterId))
+            .catch((err) => log.warn('meter update not sent', { meter: meterId }, err));
+    });
 }

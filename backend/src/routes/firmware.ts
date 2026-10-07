@@ -59,7 +59,7 @@ export default function initFirmwareRoutes(app: express.Application) {
     app.post('/api/devices/:deviceID/firmware', checkAuthMiddleware, upload.single('firmware'), async (req: RequestWithSessionInfo, res) => {
         const deviceId = req.params.deviceID;
         const doc = /^[0-9A-F]{12}$/.test(deviceId) ? await Device.findById(deviceId).lean() : null;
-        if (!doc || doc.status !== 'approved' || !doc.caps.includes('ota')) {
+        if (!doc || doc.status !== 'approved' || doc.ownerID !== req.sessionInfo!.userID || !doc.caps.includes('ota')) {
             return res.status(404).send('No device that takes updates.');
         }
         if (!deviceBaseUrl()) {

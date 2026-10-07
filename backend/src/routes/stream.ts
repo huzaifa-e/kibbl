@@ -2,6 +2,7 @@ import express from 'express';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device, MotionEventModel } from '../core/db';
 import { freshFrame, latestFrame, subscribeStream } from '../core/frames';
+import { ownedDeviceIds } from '../core/owners';
 import { imageRoot, resolveInside } from '../core/storage';
 
 const SNAPSHOT_MAX_AGE_MS = 5000;
@@ -10,10 +11,11 @@ const SNAPSHOT_TIMEOUT_MS = 6000;
 const isDeviceID = (v: string) => /^[0-9A-F]{12}$/.test(v);
 const isUUID = (v: string) => /^[0-9a-f-]{36}$/.test(v);
 
-async function approvedDevice(req: express.Request, res: express.Response) {
+// an approved device of the logged-in user; anyone else's does not exist for them
+async function approvedDevice(req: RequestWithSessionInfo, res: express.Response) {
     const deviceId = req.params.deviceID;
     const doc = isDeviceID(deviceId) ? await Device.findById(deviceId).lean() : null;
-    if (!doc || doc.status !== 'approved') {
+    if (!doc || doc.status !== 'approved' || doc.ownerID !== req.sessionInfo!.userID) {
         res.sendStatus(404);
         return undefined;
     }
@@ -52,7 +54,7 @@ export default function initStreamRoutes(app: express.Application) {
     app.get('/api/events/:eventID/image', checkAuthMiddleware, async (req, res) => {
         const eventId = req.params.eventID;
         const doc = isUUID(eventId) ? await MotionEventModel.findById(eventId).lean() : null;
-        if (!doc?.snapshot) {
+        if (!doc?.snapshot || !(await ownedDeviceIds((req as RequestWithSessionInfo).sessionInfo!.userID)).includes(doc.deviceId)) {
             res.sendStatus(404);
             return;
         }

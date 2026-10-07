@@ -1,6 +1,7 @@
 import { Meter, MeterPeriod, MeterReading } from '../core/db';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
+import { adminID } from '../core/owners';
 import * as source from './source';
 
 /*
@@ -146,16 +147,18 @@ function syncDevice(devEui: string) {
 }
 
 /* Meters named in METERS (uuids of configured devices on the source, comma separated)
- * are added on start; more can be added in the app. */
+ * are added on start, for the admin; more can be added in the app. */
 async function seedFromEnv() {
     const uuids = (process.env.METERS ?? '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+    const admin = await adminID();
+    if (!admin) return;
     for (const uuid of uuids) {
         if (await Meter.exists({ _id: uuid })) continue;
         try {
-            await addMeter(uuid);
+            await addMeter(uuid, admin);
         } catch (err) {
             log.warn('meter from METERS not added', { uuid }, err);
         }
@@ -187,12 +190,20 @@ export function initMeterSync() {
 
 /* ----------------------------------------------------------------------- */
 
-export async function addMeter(uuid: string) {
+export class MeterTakenError extends Error {}
+
+// a meter has one owner: one another account added already is refused
+export async function addMeter(uuid: string, ownerID: string) {
+    const existing = await Meter.findById(uuid, { ownerID: 1 }).lean();
+    if (existing?.ownerID && existing.ownerID !== ownerID) throw new MeterTakenError('another account has added this meter');
     const device = await source.configuredDevice(uuid);
     const { medium, unit } = mediumOf(device.device_type);
     await Meter.updateOne(
         { _id: uuid },
-        { $setOnInsert: { devEui: device.dev_eui, name: device.name, deviceType: device.device_type, medium, unit, addedAt: Date.now() } },
+        {
+            $set: { ownerID },
+            $setOnInsert: { devEui: device.dev_eui, name: device.name, deviceType: device.device_type, medium, unit, addedAt: Date.now() },
+        },
         { upsert: true },
     );
     log.info('meter added', { meter: device.name, devEui: device.dev_eui });

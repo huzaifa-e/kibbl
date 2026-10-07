@@ -24,6 +24,7 @@ declare global {
         name: string;
         secretHash: string;
         status: 'pending' | 'approved';
+        ownerID?: string;
         model?: string;
         board?: string;
         sensor?: string;
@@ -93,6 +94,7 @@ declare global {
     interface MeterDoc {
         _id: string;
         devEui: string;
+        ownerID?: string;
         name: string;
         deviceType?: string;
         medium: string;
@@ -149,6 +151,12 @@ declare global {
         refreshExpiresAt: number;
         createdAt: number;
         lastUsedAt?: number;
+    }
+
+    interface PasswordResetDoc {
+        _id: string; // sha256 of the token in the link
+        userID: string;
+        expiresAt: Date;
     }
 
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };
