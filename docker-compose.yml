@@ -44,10 +44,10 @@ services:
         logging: *logging
         depends_on:
             - app
-    # the public https address of the MCP endpoint for connectors (OAuth): its own device on the
-    # tailnet, https://kibbl.<tailnet>.ts.net, with Tailscale Funnel on 443 and only the MCP and
-    # OAuth paths published (deploy/tailscale/serve.json). Not started by deploy.sh; the first start
-    # needs an auth key, after that the login is kept in data/tailscale:
+    # the fixed public https address of kibbl.: its own device on the tailnet,
+    # https://kibbl.<tailnet>.ts.net, with Tailscale Funnel on 443 (deploy/tailscale/serve.json):
+    # the app, the devices' socket, the MCP endpoint and its OAuth. Not started by deploy.sh; the
+    # first start needs an auth key, after that the login is kept in data/tailscale:
     # TS_AUTHKEY=tskey-... docker compose --profile connector up -d connector
     connector:
         image: tailscale/tailscale:latest

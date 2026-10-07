@@ -128,7 +128,7 @@ MCP_PUBLIC_URL=https://kibbl.tail529b44.ts.net               # where it is reach
 MCP_REDIRECT_URIS=https://assistant.example/callback        # the assistant's OAuth callback(s), comma separated
 ```
 
-Only the callbacks listed (and loopback ones, for desktop clients) can register. The public address is a device of its own on the tailnet, the `connector` service (a Tailscale container named `kibbl`), with Funnel on port 443 and only the MCP and OAuth paths published (`deploy/tailscale/serve.json`); hosted assistants reach port 443 only. jhubuntu's own name stays as it is: its 443 belongs to emoni-lorawan. The first start needs an auth key (Tailscale admin console, Settings, Keys); the login is kept in `data/tailscale` after that, and deploys leave the container running:
+Only the callbacks listed (and loopback ones, for desktop clients) can register. The public address is a device of its own on the tailnet, the `connector` service (a Tailscale container named `kibbl`), with Funnel on port 443 publishing the whole app (`deploy/tailscale/serve.json`): the pages, the devices' socket, `/mcp` and its OAuth; hosted assistants reach port 443 only. It is the server's fixed https address, so `APP_URL`, `DEVICE_BASE_URL` and `GOOGLE_REDIRECT_URI` point to it too. jhubuntu's own name stays as it is: its 443 belongs to emoni-lorawan. The first start needs an auth key (Tailscale admin console, Settings, Keys); the login is kept in `data/tailscale` after that, and deploys leave the container running:
 
 ```bash
 read -rs TS_AUTHKEY && export TS_AUTHKEY && docker compose --profile connector up -d connector; unset TS_AUTHKEY
