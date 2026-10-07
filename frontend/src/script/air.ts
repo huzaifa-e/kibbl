@@ -1,6 +1,7 @@
 import './main';
 import ApexCharts from 'apexcharts';
 import {
+    airSensorError,
     fanModes,
     lampColors,
     type AirEvent,
@@ -585,6 +586,7 @@ const root = () => byId('air-settings');
 socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     if (deviceId !== device?._id || !device.air || !telemetry.air) return;
     device.air.state = telemetry.air;
+    device.air.sensorError = airSensorError(telemetry.air, device.air.sensorError);
     renderTiles();
 });
 

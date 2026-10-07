@@ -34,6 +34,10 @@ static void add_state(cJSON *json) {
         cJSON_AddNumberToObject(json, "temperature", (int)(state.temperature * 10 + (state.temperature < 0 ? -0.5f : 0.5f)) / 10.0);
         cJSON_AddNumberToObject(json, "humidity", (int)(state.humidity * 10 + 0.5f) / 10.0);
     }
+    // with every telemetry: the sensor may come up or get lost after the hello
+    if (!air_sensor_ok()) {
+        cJSON_AddStringToObject(json, "sensorError", "no CO2 sensor answers");
+    }
     cJSON_AddStringToObject(json, "level", air_level_name(state.level));
     cJSON_AddNumberToObject(json, "fan", fan_level_now());
     cJSON_AddStringToObject(json, "window", !air_detecting() ? "paused" : window_open() ? "open" : "closed");
@@ -47,9 +51,6 @@ void product_add_info(cJSON *json, cmd_source_t source) {
     cJSON_AddStringToObject(json, "model", PRODUCT_MODEL); // the product, as the app names it
     cJSON_AddStringToObject(json, "board", BOARD_NAME);
     cJSON_AddStringToObject(json, "sensor", scd30_name());
-    if (!air_sensor_ok()) {
-        cJSON_AddStringToObject(json, "sensorError", "no CO2 sensor answers");
-    }
     cJSON_AddStringToObject(json, "expander", ioexp_name());
     cJSON_AddBoolToObject(json, "powerOn", ioexp_power_on());
 

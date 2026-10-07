@@ -111,6 +111,14 @@ export interface AirState {
     calibrating: boolean;
     puffs: number; // of a cigarette going on
     fire: boolean; // the fire alarm of the device sounds
+    sensorError?: string; // the CO2 sensor does not answer
+}
+
+/* The sensor error to show: what the device reports now. A reading means the sensor
+ * answers, whatever an earlier hello said (an older firmware reports it only there). */
+export function airSensorError(state: AirState | undefined, before?: string) {
+    if (!state || state.co2 !== undefined) return undefined;
+    return state.sensorError ?? before;
 }
 
 // the settings stored on the device (air_config, fan, lamp)

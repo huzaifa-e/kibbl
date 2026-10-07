@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
 import {
+    airSensorError,
     capabilityCommands,
     commonCommands,
     type AirDevice,
@@ -68,12 +69,13 @@ export function getLive(deviceId: string) {
 function airSummary(doc: DeviceDoc, dev: LiveDevice | undefined): AirDevice | undefined {
     if (!doc.caps?.includes('air')) return undefined;
     const info = dev?.info ?? {};
+    const state = dev ? (dev.telemetry?.air ?? parseAirState(info)) : undefined;
     return {
-        state: dev ? (dev.telemetry?.air ?? parseAirState(info)) : undefined,
+        state,
         settings: doc.air,
         fan: doc.fanSettings,
         lamp: doc.lamp,
-        sensorError: typeof info.sensorError === 'string' ? info.sensorError : undefined,
+        sensorError: airSensorError(state, typeof info.sensorError === 'string' ? info.sensorError : undefined),
         schedule: nightSchedule(doc),
     };
 }

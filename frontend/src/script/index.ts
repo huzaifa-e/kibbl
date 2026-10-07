@@ -1,6 +1,6 @@
 import './main';
 import type ApexCharts from 'apexcharts';
-import type { ActivityBucket, DeviceSummary, DeviceTelemetry, MotionEvent } from '../../../shared/protocol';
+import { airSensorError, type ActivityBucket, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
 import { airNowHtml, bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
@@ -241,6 +241,7 @@ socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     const d = devices.find((x) => x._id === deviceId);
     if (!d?.air || !telemetry.air) return;
     d.air.state = telemetry.air;
+    d.air.sensorError = airSensorError(telemetry.air, d.air.sensorError);
     const el = document.querySelector<HTMLElement>(`[data-air-now="${deviceId}"]`);
     if (el) el.innerHTML = airNowHtml(d);
 });

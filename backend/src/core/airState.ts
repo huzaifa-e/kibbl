@@ -20,6 +20,7 @@ export function parseAirState(msg: Record<string, unknown>): AirState | undefine
         calibrating: msg.calibrating === true,
         puffs: num('puffs') ?? 0,
         fire: msg.fire === true,
+        sensorError: typeof msg.sensorError === 'string' ? msg.sensorError : undefined,
     };
 }
 
