@@ -28,15 +28,21 @@ const downloads = new Map<string, Download>();
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES, files: 1 } });
 
-function appVersion(image: Buffer) {
-    if (image.length < APP_DESC_OFFSET + 48 || image[0] !== ESP_IMAGE_MAGIC || image.readUInt32LE(APP_DESC_OFFSET) !== APP_DESC_MAGIC) {
+// the project each product is built as (project() in firmware/<product>/CMakeLists.txt)
+const PROJECTS: Record<string, string> = { 'kibbl-cam': 'KIBBL-FW', 'kibbl-air': 'KIBBL-AIR' };
+
+// version and project of an application image, undefined when it is none
+function appInfo(image: Buffer) {
+    if (image.length < APP_DESC_OFFSET + 80 || image[0] !== ESP_IMAGE_MAGIC || image.readUInt32LE(APP_DESC_OFFSET) !== APP_DESC_MAGIC) {
         return undefined;
     }
-    // esp_app_desc_t: magic, secure_version, reserv1[2], version[32]
-    return image
-        .subarray(APP_DESC_OFFSET + 16, APP_DESC_OFFSET + 48)
-        .toString('utf-8')
-        .replace(/\0.*$/s, '');
+    // esp_app_desc_t: magic, secure_version, reserv1[2], version[32], project_name[32]
+    const text = (from: number) =>
+        image
+            .subarray(APP_DESC_OFFSET + from, APP_DESC_OFFSET + from + 32)
+            .toString('utf-8')
+            .replace(/\0.*$/s, '');
+    return { version: text(16), project: text(48) };
 }
 
 function deviceBaseUrl() {
@@ -66,10 +72,16 @@ export default function initFirmwareRoutes(app: express.Application) {
             return res.status(500).send('DEVICE_BASE_URL is not set on the server.');
         }
         const image = req.file?.buffer;
-        const version = image ? appVersion(image) : undefined;
-        if (!image || !version) {
+        const info = image ? appInfo(image) : undefined;
+        if (!image || !info) {
             return res.status(400).send('This is no kibbl. firmware file.');
         }
+        // a camera image on a kibbl. air (or the other way round) would not even start
+        const expected = doc.model ? PROJECTS[doc.model] : undefined;
+        if (expected && info.project !== expected) {
+            return res.status(400).send(`This firmware is for another product (${info.project}); this device takes ${expected}.`);
+        }
+        const version = info.version;
 
         const token = crypto.randomBytes(16).toString('hex');
         await mkdir(firmwareRoot(), { recursive: true });
