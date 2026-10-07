@@ -4,6 +4,7 @@ import { default as initAccountRoutes } from './account';
 import { default as initAuthRoutes } from './auth';
 import { default as initFirmwareRoutes } from './firmware';
 import { default as initHealthRoutes } from './health';
+import { default as initHealthAccessRoutes } from './healthAccess';
 import { default as initMcpRoutes } from './mcp';
 import { default as initMeterRoutes } from './meters';
 import { initPageRoutes } from './pages';
@@ -19,6 +20,7 @@ export function initRoutes(app: express.Application) {
     initStreamRoutes(app);
     initFirmwareRoutes(app);
     initHealthRoutes(app);
+    initHealthAccessRoutes(app);
     initMeterRoutes(app);
     initMcpRoutes(app);
     initPageRoutes(app);

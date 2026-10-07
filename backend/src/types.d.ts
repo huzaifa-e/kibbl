@@ -159,6 +159,14 @@ declare global {
         expiresAt: Date;
     }
 
+    interface HealthAccessRequestDoc {
+        _id: string; // the user's id
+        googleEmail: string;
+        status: 'waiting' | 'added';
+        requestedAt: number;
+        addedAt?: number;
+    }
+
     type RequestWithSessionInfo = express.Request & { sessionInfo?: SessionInfo };
 }
 

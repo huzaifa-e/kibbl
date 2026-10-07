@@ -16,6 +16,7 @@ export let AccessToken: Model<AccessTokenDoc>;
 export let OAuthClient: Model<OAuthClientDoc>;
 export let OAuthGrant: Model<OAuthGrantDoc>;
 export let PasswordReset: Model<PasswordResetDoc>;
+export let HealthAccessRequest: Model<HealthAccessRequestDoc>;
 
 let isConnected = false;
 
@@ -231,6 +232,20 @@ async function init() {
         { versionKey: false },
     );
     PasswordReset = model<PasswordResetDoc>('PasswordReset', passwordResetSchema);
+
+    /* A person asking the admin to put their Google account on the tester list of the
+     * Google app (testing mode): one per account, until it is done or withdrawn. */
+    const healthAccessSchema = new Schema<HealthAccessRequestDoc>(
+        {
+            _id: { type: String, required: true }, // the user's id
+            googleEmail: { type: String, required: true },
+            status: { type: String, required: true, enum: ['waiting', 'added'] },
+            requestedAt: { type: Number, required: true },
+            addedAt: Number,
+        },
+        { versionKey: false },
+    );
+    HealthAccessRequest = model<HealthAccessRequestDoc>('HealthAccessRequest', healthAccessSchema);
 
     connection.on('connected', () => {
         isConnected = true;

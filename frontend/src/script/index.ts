@@ -3,6 +3,7 @@ import type ApexCharts from 'apexcharts';
 import type { ActivityBucket, DeviceSummary, MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
 import { controlsHtml, bindControls } from './controls';
+import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
 import { bindEventViewer, eventCardHtml } from './events';
 import { request, socket } from './socket';
@@ -22,6 +23,7 @@ const others = () => devices.filter((d) => d.status === 'approved' && !d.caps.in
 function layout() {
     byId('container').innerHTML = `
         <div id="pending-alert"></div>
+        <div id="access-alert"></div>
         <div class="row row-deck row-cards mb-3" id="stats"></div>
         <div class="row row-cards" id="camera-grid"></div>
         <div class="row row-cards mt-1" id="other-devices"></div>
@@ -179,7 +181,21 @@ function renderAll() {
     renderEvents();
 }
 
+// for the admin: people waiting to be put on the tester list of the Google app
+async function renderAccessAlert() {
+    const setup = await loadSetup();
+    const waiting = setup?.admin ? (setup.requests ?? []).filter((r) => r.status === 'waiting').length : 0;
+    const slot = document.getElementById('access-alert');
+    if (!slot) return;
+    slot.innerHTML = waiting
+        ? `<div class="alert alert-info d-flex align-items-center"><i class="ti ti-user-plus me-2"></i>
+            <div class="flex-fill">${waiting} ${waiting > 1 ? 'people ask' : 'person asks'} for health access.</div>
+            <a href="/health" class="btn btn-info btn-sm">Review</a></div>`
+        : '';
+}
+
 async function load() {
+    void renderAccessAlert();
     [devices, events, activity] = await Promise.all([
         request<DeviceSummary[]>('getDevices'),
         request<MotionEvent[]>('getEvents', { limit: 100, from: startOfDay() - 6 * 86400000 }),

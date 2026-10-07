@@ -3,6 +3,7 @@ import { checkAuthMiddleware } from '../core/auth';
 import { HealthLink } from '../core/db';
 import { logger } from '../core/logger';
 import { isAdmin } from '../core/owners';
+import { accessInfo } from './healthAccess';
 import { HealthError, SCOPES, configured, exchangeCode, newAuthorization } from '../health/google';
 import { INTRADAY_TYPES, RANGES, dropCached, forget, intraday, latestHeartRate, summary, syncNow, syncStatus, trackers } from '../health/service';
 import { deleteStoredHealth, storageStats } from '../health/store';
@@ -79,6 +80,7 @@ export default function initHealthRoutes(app: express.Application) {
             testing: process.env.GOOGLE_APP_PUBLISHED !== 'true',
             admin,
             ...(admin ? { redirectUri: redirectUri(req), scopes: SCOPES } : {}),
+            ...(await accessInfo(req.sessionInfo!.userID, admin)),
         });
     });
 

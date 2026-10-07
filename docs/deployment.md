@@ -73,6 +73,8 @@ The health page reads a fitness tracker through the Google Health API v4 (the su
 
 Everybody else connects with the same button, no console of their own: in Testing mode their Google e-mail has to be on the app's **Test users** list first (Google Auth Platform, Audience; up to 100). The health page shows each person the steps through Google's screens, and the admin the console setup with this server's redirect URI and scopes. `GOOGLE_APP_PUBLISHED=true` tells the guides the app is published.
 
+The tester list has no API, so the app does everything around it: a person enters their Google e-mail and taps *Request access* on the health page; the admin sees the request on the health page (and a notice on the home page, and a mail when SMTP is set up), copies the address into **Test users** (`GOOGLE_PROJECT_ID` makes the link open the right project), and taps *Done*; the person is told to connect, in the app and by mail.
+
 While the OAuth app is in **Testing** mode, Google ends the access after 7 days (the page says when). Publishing it to **Production** makes it last, but Google then asks for a home page and privacy policy on an authorised domain. Without a domain, renew the access before it ends (the stored history is not affected by a lapse, only new data pauses):
 
 ```bash

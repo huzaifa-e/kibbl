@@ -1,5 +1,5 @@
 import './main';
-import { adminGuide, connectGuide, loadSetup, type HealthSetup } from './healthGuide';
+import { accessSlot, adminGuide, connectGuide, loadSetup, requestsSlot, watchAccess, type HealthSetup } from './healthGuide';
 import type ApexCharts from 'apexcharts';
 import {
     STAGE_LABELS,
@@ -106,6 +106,7 @@ function connectCard(title: string, text: string, again = false) {
         <p class="text-secondary mx-auto" style="max-width:520px">${text}</p>
         <a class="btn btn-primary" href="/api/health/google/connect"><i class="ti ti-brand-google me-1"></i> ${again ? 'Connect again' : 'Connect Google Health'}</a>
         <p class="text-secondary small mt-3 mb-0">Read only: heart rate, sleep, blood oxygen, breathing, temperature and workouts. Disconnect any time below or in your Google account.</p>
+        ${again ? '' : accessSlot()}
         ${again ? '' : connectGuide(setup)}
         ${setup?.admin ? adminGuide(setup) : ''}
     </div></div>`;
@@ -315,7 +316,7 @@ function render(notice = '') {
     const sleep = summary.series?.sleep ?? [];
     const stageButtons = ['DEEP', 'LIGHT', 'REM', 'AWAKE'].map((st) => `<button class="btn btn-sm" data-stage="${st}">${STAGE_LABELS[st]}</button>`).join('');
 
-    byId('container').innerHTML = `
+    byId('container').innerHTML = `${requestsSlot()}
         ${notice}
         <div class="row row-cards mb-3">
             <div class="col-lg-7">${statusCard()}</div>
@@ -447,8 +448,9 @@ let waitingHtml = '';
 
 async function load() {
     const notice = connectNotice();
-    const [{ status, body }, guide] = await Promise.all([getJson(summaryUrl()), setup ? Promise.resolve(setup) : loadSetup()]);
+    const [{ status, body }, guide] = await Promise.all([getJson(summaryUrl()), loadSetup()]);
     setup = guide;
+    watchAccess(byId('container'), setup);
     if (body.configured === false && !body.series) {
         byId('container').innerHTML =
             notice +
@@ -472,6 +474,7 @@ async function load() {
     }
     if (!body.linked) {
         byId('container').innerHTML =
+            requestsSlot() +
             notice +
             connectCard(
                 'Your health, next to your home',
