@@ -13,11 +13,11 @@ extern "C" {
 
 bool fan_setup(void);
 
-// mode, level and the pulse times of the settings; takes effect at once
+// mode, level, the pulse times and the thresholds (auto) of the settings; takes effect at once
 void fan_configure(const air_settings_t *settings);
 
-// the air level, for the auto mode
-void fan_set_air_level(air_level_t level);
+// the air level and the CO2 (ppm, mean), for the auto mode
+void fan_set_air(air_level_t level, uint16_t co2);
 
 // night mode: the fan runs at most at cap % (0: off); 100 lifts it
 void fan_set_cap(uint8_t cap);

@@ -23,7 +23,7 @@ typedef enum {
     FAN_MODE_OFF = 0,
     FAN_MODE_ON,
     FAN_MODE_PULSE, // on for onSeconds, off for offSeconds
-    FAN_MODE_AUTO,  // on from yellow, off again below it
+    FAN_MODE_AUTO,  // the speed follows the CO2, up to the level at red
 } fan_mode_t;
 
 typedef struct {

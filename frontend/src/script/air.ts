@@ -40,7 +40,7 @@ const SENSITIVITY = [
     { label: 'Medium', rise: 150 },
     { label: 'Low', rise: 250 },
 ];
-const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'From yellow on' };
+const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂' };
 
 let devices: DeviceSummary[] = [];
 let device: DeviceSummary | undefined;
@@ -447,7 +447,7 @@ function renderSettings() {
                     <div class="col-6"><label class="form-label">On</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="fan-on" min="1" max="3600" value="${fan?.onSeconds ?? 60}" ${off} /><span class="input-group-text">s</span></div></div>
                     <div class="col-6"><label class="form-label">Off</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="fan-off" min="1" max="3600" value="${fan?.offSeconds ?? 240}" ${off} /><span class="input-group-text">s</span></div></div>
                 </div>
-                <div class="text-secondary small mt-2">The fan draws room air past the sensor and keeps the device cool, the measurement is best with it on.</div>
+                <div class="text-secondary small mt-2">The fan draws room air past the sensor and keeps the device cool, the measurement is best with it on. With the CO₂ it runs slowly in fresh air and speeds up as the CO₂ climbs, up to the speed above at red.</div>
             </div>
         </div>
         <div class="card mb-3">

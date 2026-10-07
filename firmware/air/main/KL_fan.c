@@ -11,6 +11,15 @@
 #define FAN_DUTY_MAX 255
 #define FAN_TICK_US  (1000 * 1000)
 
+/* Auto: the speed follows the CO2. Below yellow - FAN_AUTO_LEAD it idles at FAN_AUTO_MIN,
+ * which still draws room air past the sensor; from there it rises in a line to the set
+ * level at red. It moves at most FAN_AUTO_STEP a second, so it is not heard jumping,
+ * and only by whole FAN_AUTO_GRAIN, so the noise of the sensor does not move it. */
+#define FAN_AUTO_MIN   20 // %
+#define FAN_AUTO_LEAD  400 // ppm below yellow where it starts to rise
+#define FAN_AUTO_STEP  2 // % per second
+#define FAN_AUTO_GRAIN 5 // %
+
 static bool available = false;
 
 static volatile uint8_t mode       = FAN_MODE_ON;
@@ -18,6 +27,9 @@ static volatile uint8_t level      = 100;
 static volatile uint16_t on_s      = 60;
 static volatile uint16_t off_s     = 240;
 static volatile air_level_t air    = AIR_LEVEL_NONE;
+static volatile uint16_t co2       = 0; // ppm, 0 until the first reading
+static volatile uint16_t yellow    = 1000;
+static volatile uint16_t red       = 2000;
 static volatile uint8_t level_now  = 0;
 static volatile uint8_t cap        = 100;
 
@@ -36,27 +48,63 @@ static void write_level(uint8_t value) {
     DEBUG("fan: %u %%\n", value);
 }
 
-static void update(void) {
-    bool on = false;
+// the speed auto wants for the CO2 now, before the night cap
+static uint8_t auto_target(void) {
+    uint8_t top = level;
+    uint8_t low = FAN_AUTO_MIN < top ? FAN_AUTO_MIN : top;
+    if (co2 == 0) {
+        return top; // no reading yet: air past the sensor helps the first one
+    }
+    int start = (int)yellow - FAN_AUTO_LEAD;
+    if (start < 0) {
+        start = 0;
+    }
+    if (co2 >= red || air == AIR_LEVEL_RED) {
+        return top;
+    }
+    if (co2 <= start) {
+        return low;
+    }
+    int value = low + (top - low) * ((int)co2 - start) / ((int)red - start);
+    value     = (value + FAN_AUTO_GRAIN / 2) / FAN_AUTO_GRAIN * FAN_AUTO_GRAIN;
+    return value < low ? low : value > top ? top : (uint8_t)value;
+}
+
+static uint8_t capped(uint8_t value) {
+    return value < cap ? value : cap;
+}
+
+// ramp: called every second, the auto speed moves towards its target by FAN_AUTO_STEP
+static void update(bool ramp) {
     switch (mode) {
     case FAN_MODE_ON:
-        on = true;
+        write_level(capped(level));
         break;
     case FAN_MODE_PULSE:
-        on = pulse_s < on_s;
+        write_level(pulse_s < on_s ? capped(level) : 0);
         break;
-    case FAN_MODE_AUTO:
-        on = air == AIR_LEVEL_YELLOW || air == AIR_LEVEL_RED;
-        break;
-    default:
+    case FAN_MODE_AUTO: {
+        int target = capped(auto_target());
+        int now    = level_now;
+        if (now == 0 || !ramp) {
+            // starting, or a change of settings or night: the ramp goes on from there
+            write_level(now == 0 || now > target ? target : now);
+        } else if (now < target) {
+            write_level(now + FAN_AUTO_STEP < target ? now + FAN_AUTO_STEP : target);
+        } else if (now > target) {
+            write_level(now - FAN_AUTO_STEP > target ? now - FAN_AUTO_STEP : target);
+        }
         break;
     }
-    write_level(on ? (level < cap ? level : cap) : 0);
+    default:
+        write_level(0);
+        break;
+    }
 }
 
 static void tick_cb(void *arg) {
     pulse_s = (pulse_s + 1) % (on_s + off_s);
-    update();
+    update(true);
 }
 
 bool fan_setup(void) {
@@ -98,23 +146,23 @@ void fan_configure(const air_settings_t *settings) {
     level   = settings->fan_level;
     on_s    = settings->fan_on_s;
     off_s   = settings->fan_off_s;
+    yellow  = settings->yellow;
+    red     = settings->red;
     pulse_s = 0; // a new pulse cycle starts on
     if (available) {
-        update();
+        update(false);
     }
 }
 
-void fan_set_air_level(air_level_t new_level) {
+void fan_set_air(air_level_t new_level, uint16_t new_co2) {
     air = new_level;
-    if (available) {
-        update();
-    }
+    co2 = new_co2; // the auto speed follows on the next tick
 }
 
 void fan_set_cap(uint8_t new_cap) {
     cap = new_cap > 100 ? 100 : new_cap;
     if (available) {
-        update();
+        update(false);
     }
 }
 

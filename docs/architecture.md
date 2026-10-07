@@ -51,7 +51,7 @@ ISIS IC EHW0001-0013 with a new firmware (the original ESW0002 is backed up in `
 | `KL_scd30`      | Sensirion SCD30 over I2C with crc, settings written only when they differ (they live in its flash) |
 | `KL_ioexp`      | the expander, the power-on flag (it keeps its state over an ESP reset), the watchdog feed task (1 s) |
 | `KL_lamp`       | the traffic light task: blinks, provisioning and errors in white, night off, modes traffic/off/white/warm/candle/custom colours; a change fades over 0.6 s by switching fast between the old and the new look; during a firmware update the colours fade round and round |
-| `KL_fan`        | pwm 25 kHz: off, on, pulse, auto (from yellow), capped at night |
+| `KL_fan`        | pwm 25 kHz: off, on, pulse, auto (the default: 20 % up to 400 ppm below yellow, then rising with the CO2 to the set level at red, 2 % a second), capped at night |
 | `KL_buzzer`     | the tones of ESW0002 on a timer, muted at night |
 | `KL_button`     | short press: a cigarette logged; held 10 s: the Wi-Fi forgotten |
 | `KL_air_config` | thresholds, buzzer, asc, altitude, lamp, fan, smoke, night fan in nvs |

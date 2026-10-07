@@ -15,9 +15,10 @@ static SemaphoreHandle_t air_config_mutex;
 
 static air_settings_t air_settings;
 
-/* The thresholds and the fan of ESW0002 (the original Conny firmware): 1000 and 2000 ppm
- * after the guidance of the German Environment Agency, the fan always on. It draws room
- * air past the sensor and cools the board. */
+/* The thresholds of ESW0002 (the original Conny firmware): 1000 and 2000 ppm after the
+ * guidance of the German Environment Agency. The fan draws room air past the sensor and
+ * cools the board: ESW0002 ran it always on, here it follows the CO2 (auto), slow in
+ * fresh air and up to full at red. */
 static const air_settings_t air_defaults = {
     .yellow    = 1000,
     .red       = 2000,
@@ -27,7 +28,7 @@ static const air_settings_t air_defaults = {
     .lamp_mode   = LAMP_MODE_TRAFFIC,
     .lamp_colors = LAMP_MASK_WHITE | LAMP_MASK_YELLOW,
     .lamp_fade   = true,
-    .fan_mode  = FAN_MODE_ON,
+    .fan_mode  = FAN_MODE_AUTO,
     .fan_level = 100,
     .fan_on_s  = 60,
     .fan_off_s = 240,

@@ -74,9 +74,9 @@ static air_level_t level_of(uint16_t co2, air_level_t now) {
     return AIR_LEVEL_GREEN;
 }
 
-static void show_level(air_level_t level, air_level_t before) {
+static void show_level(air_level_t level, air_level_t before, uint16_t co2) {
     lamp_set_level(level);
-    fan_set_air_level(level);
+    fan_set_air(level, co2);
     if (settings.buzzer && level > before && before != AIR_LEVEL_NONE) {
         buzzer_play(level == AIR_LEVEL_RED ? TONE_RED : TONE_YELLOW);
     }
@@ -146,6 +146,7 @@ static void air_task(void *pvParams) {
                 sensor_ok = false;
                 last_try  = now;
                 set_status_led(LED_ERROR);
+                fan_set_air(AIR_LEVEL_NONE, 0); // auto runs at its level until a reading comes back
                 xSemaphoreTake(state_mutex, portMAX_DELAY);
                 state.valid = false;
                 xSemaphoreGive(state_mutex);
@@ -183,7 +184,7 @@ static void air_task(void *pvParams) {
         // the light first: the correction of the temperature depends on it
         air_level_t before = state.level;
         air_level_t level  = level_of(co2, before);
-        show_level(level, before);
+        show_level(level, before, co2);
 
         xSemaphoreTake(state_mutex, portMAX_DELAY);
         state.valid       = true;
