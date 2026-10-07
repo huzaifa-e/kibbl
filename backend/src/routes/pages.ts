@@ -13,6 +13,8 @@ const pages = [
     { name: 'activity', path: 'activity', auth: true },
     { name: 'health', path: 'health', auth: true },
     { name: 'meter', path: 'meter/:meterID', auth: true },
+    { name: 'air', path: 'air', auth: true },
+    { name: 'air', path: 'air/:deviceID', auth: true },
     { name: 'devices', path: 'devices', auth: true },
     { name: 'settings', path: 'settings', auth: true },
 

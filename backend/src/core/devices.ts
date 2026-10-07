@@ -3,11 +3,16 @@ import { WebSocket } from 'ws';
 import {
     capabilityCommands,
     commonCommands,
+    type AirDevice,
+    type AirSettings,
     type CameraSettings,
+    type FanSettings,
+    type LampSettings,
     type DeviceSummary,
     type DeviceTelemetry,
     type MotionSettings,
 } from '../../../shared/protocol';
+import { nightSchedule, parseAirState } from './airState';
 import db, { Device } from './db';
 import { hub } from './hub';
 import { logger } from './logger';
@@ -59,6 +64,20 @@ export function getLive(deviceId: string) {
 
 /* ----------------------------------------------------------------------- */
 
+// what the app shows of a kibbl. air: the live state, the settings it reported, the schedule
+function airSummary(doc: DeviceDoc, dev: LiveDevice | undefined): AirDevice | undefined {
+    if (!doc.caps?.includes('air')) return undefined;
+    const info = dev?.info ?? {};
+    return {
+        state: dev ? (dev.telemetry?.air ?? parseAirState(info)) : undefined,
+        settings: doc.air,
+        fan: doc.fanSettings,
+        lamp: doc.lamp,
+        sensorError: typeof info.sensorError === 'string' ? info.sensorError : undefined,
+        schedule: nightSchedule(doc),
+    };
+}
+
 export function summarize(doc: DeviceDoc): DeviceSummary {
     const dev = live.get(doc._id);
     const info = dev?.info ?? {};
@@ -81,6 +100,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         wifiChangeFailed: str('wifiChangeFailed'),
         light: typeof info.light === 'number' ? info.light : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
+        air: airSummary(doc, dev),
         telemetry: dev?.telemetry,
         viewers: viewers.get(doc._id) ?? 0,
         lastSeen: dev ? Date.now() : doc.lastSeen,
@@ -205,6 +225,10 @@ export async function handleHello(deviceId: string, msg: Record<string, unknown>
             fw: str('fw'),
             caps,
             camera: typeof msg.camera === 'object' ? (msg.camera as CameraSettings) : undefined,
+            // a kibbl. air: the settings it has stored
+            air: typeof msg.air === 'object' ? (msg.air as AirSettings) : undefined,
+            fanSettings: typeof msg.fanSettings === 'object' ? (msg.fanSettings as FanSettings) : undefined,
+            lamp: typeof msg.lamp === 'object' ? (msg.lamp as LampSettings) : undefined,
             lastSeen: Date.now(),
         },
     );
@@ -227,6 +251,7 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
         cameraFps: num('cameraFps'),
         fps: num('fps'),
         frameBytes: num('frameBytes'),
+        air: parseAirState(msg),
         time: Date.now(),
     };
     hub.emit('telemetry', deviceId, dev.telemetry);
@@ -294,6 +319,16 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
         if (dev) dev.info.camera = resp.camera;
     } else if (cmd === 'light' && typeof resp.light === 'number' && dev) {
         dev.info.light = resp.light;
+    } else if ((cmd === 'air_config' || cmd === 'fan' || cmd === 'lamp') && typeof resp.air === 'object') {
+        // the device answers with all its settings
+        await Device.updateOne(
+            { _id: deviceId },
+            { air: resp.air as AirSettings, fanSettings: resp.fanSettings as FanSettings, lamp: resp.lamp as LampSettings },
+        );
+    } else if (cmd === 'night' && typeof resp.night === 'boolean' && dev) {
+        // shown at once, not only with the next telemetry
+        dev.info.night = resp.night;
+        if (dev.telemetry?.air) dev.telemetry.air.night = resp.night;
     }
     await publishDevice(deviceId);
 }

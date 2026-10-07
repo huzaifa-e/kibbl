@@ -1,14 +1,20 @@
 import { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import {
+    fanModes,
     framesizes,
+    lampColors,
+    lampModes,
     type ActivityBucket,
+    type AirEvent,
     type DeviceSummary,
     type DeviceTelemetry,
     type MotionEvent,
     type MotionSettings,
+    type NightSchedule,
     type SetupInfo,
 } from '../../../shared/protocol';
+import { removeAirData, setNightOverride, setNightSchedule } from '../core/air';
 import { AUTH_COOKIE, checkAuthToken, readCookie } from '../core/auth';
 import { Device, Meter, MotionEventModel } from '../core/db';
 import {
@@ -40,6 +46,7 @@ interface ServerToClientEvents {
     telemetry: (deviceId: string, telemetry: DeviceTelemetry) => void;
     motionEvent: (event: MotionEvent) => void;
     meterUpdate: (meterId: string) => void;
+    airEvent: (event: AirEvent) => void;
 }
 
 interface EventQuery {
@@ -56,6 +63,7 @@ interface ClientToServerEvents {
     renameDevice: (deviceId: string, name: string, cb: Callback<Result>) => void;
     removeDevice: (deviceId: string, cb: Callback<Result>) => void;
     setMotionSettings: (deviceId: string, settings: Partial<MotionSettings>, cb: Callback<Result>) => void;
+    setNightSchedule: (deviceId: string, schedule: NightSchedule, cb: Callback<Result>) => void;
     getEvents: (query: EventQuery, cb: Callback<MotionEvent[]>) => void;
     deleteEvent: (eventId: string, cb: Callback<Result>) => void;
     countEventPictures: (deviceId: string, cb: Callback<Result & { count?: number }>) => void;
@@ -136,6 +144,62 @@ function cleanCommand(command: Record<string, unknown>): Record<string, unknown>
                 : undefined;
         case 'thermostat':
             return typeof command.target === 'number' && command.target >= 5 && command.target <= 30 ? { cmd, target: command.target } : undefined;
+        // kibbl. air: only the keys present go to the device, each in its range
+        case 'air_config': {
+            const ranges: Record<string, [number, number]> = {
+                yellow: [400, 5000],
+                red: [400, 10000],
+                altitude: [0, 3000],
+                puffRise: [30, 2000],
+                nightFan: [0, 100],
+            };
+            const out: Record<string, unknown> = { cmd };
+            for (const [key, [min, max]] of Object.entries(ranges)) {
+                if (command[key] === undefined) continue;
+                if (!int(command[key], min, max)) return undefined;
+                out[key] = command[key];
+            }
+            for (const key of ['buzzer', 'asc', 'smoke']) {
+                if (command[key] === undefined) continue;
+                if (typeof command[key] !== 'boolean') return undefined;
+                out[key] = command[key];
+            }
+            return out;
+        }
+        case 'fan': {
+            const out: Record<string, unknown> = { cmd };
+            if (command.mode !== undefined) {
+                if (!fanModes.includes(command.mode as never)) return undefined;
+                out.mode = command.mode;
+            }
+            const ranges: Record<string, [number, number]> = { level: [1, 100], onSeconds: [1, 3600], offSeconds: [1, 3600] };
+            for (const [key, [min, max]] of Object.entries(ranges)) {
+                if (command[key] === undefined) continue;
+                if (!int(command[key], min, max)) return undefined;
+                out[key] = command[key];
+            }
+            return out;
+        }
+        case 'lamp': {
+            const out: Record<string, unknown> = { cmd };
+            if (command.mode !== undefined) {
+                if (!lampModes.includes(command.mode as never)) return undefined;
+                out.mode = command.mode;
+            }
+            if (command.colors !== undefined) {
+                if (!Array.isArray(command.colors) || command.colors.length > 4 || !command.colors.every((c) => lampColors.includes(c))) return undefined;
+                out.colors = [...new Set(command.colors)];
+            }
+            if (command.fade !== undefined) {
+                if (typeof command.fade !== 'boolean') return undefined;
+                out.fade = command.fade;
+            }
+            return out;
+        }
+        case 'night':
+            return typeof command.on === 'boolean' ? { cmd, on: command.on } : undefined;
+        case 'calibrate':
+            return int(command.ppm ?? 420, 400, 2000) ? { cmd, ppm: command.ppm ?? 420 } : undefined;
         default:
             return undefined;
     }
@@ -163,6 +227,8 @@ function registerEvents(socket: BrowserSocket) {
         // a scan holds the radio for a few seconds, longer than other commands
         const resp = await sendCommand(deviceId, clean, clean.cmd === 'wifi_scan' ? 15000 : undefined);
         await applyCommandResult(deviceId, clean.cmd as string, resp);
+        // switched by hand: the night schedule leaves it until it changes next
+        if (clean.cmd === 'night' && resp.ok) setNightOverride(deviceId, clean.on as boolean);
         log.info('command', { device: deviceId, cmd: String(clean.cmd), result: resp.ok ? 'ok' : resp.error, user: socket.data.session.email });
         cb(resp);
     });
@@ -218,6 +284,7 @@ function registerEvents(socket: BrowserSocket) {
         await Device.deleteOne({ _id: deviceId });
         await MotionEventModel.deleteMany({ deviceId });
         await deleteDeviceImages(deviceId);
+        await removeAirData(deviceId);
         log.info('device removed with its events', { device: deviceId, user: socket.data.session.email });
         forgetOwner(deviceId);
         hub.emit('deviceRemoved', deviceId, doc.ownerID ?? null);
@@ -250,6 +317,24 @@ function registerEvents(socket: BrowserSocket) {
         });
         invalidateMotionSettings(deviceId);
         await updateDemand(deviceId);
+        await publishDevice(deviceId);
+        cb({ ok: true });
+    });
+
+    socket.on('setNightSchedule', async (deviceId, schedule, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await usableDevice(socket, deviceId);
+        if (!doc || !doc.caps.includes('night')) {
+            cb({ ok: false, error: 'device not found' });
+            return;
+        }
+        const hour = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 23;
+        if (typeof schedule?.enabled !== 'boolean' || !hour(schedule.from) || !hour(schedule.to)) {
+            cb({ ok: false, error: 'hours 0 to 23' });
+            return;
+        }
+        await setNightSchedule(deviceId, { enabled: schedule.enabled, from: schedule.from, to: schedule.to });
+        log.info('night schedule', { device: deviceId, night: schedule.enabled ? `${schedule.from}-${schedule.to}h` : 'off', user: socket.data.session.email });
         await publishDevice(deviceId);
         cb({ ok: true });
     });
@@ -407,6 +492,7 @@ export function initBrowserSocket(http: HttpServer) {
     hub.on('deviceRemoved', (deviceId, owner) => io.to(roomOf(owner)).emit('deviceRemoved', deviceId));
     hub.on('telemetry', (deviceId, telemetry) => toOwner(deviceId, (room) => io.to(room).emit('telemetry', deviceId, telemetry)));
     hub.on('motionEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('motionEvent', event)));
+    hub.on('airEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('airEvent', event)));
     hub.on('meterUpdate', (meterId) => {
         Meter.findById(meterId, { ownerID: 1 })
             .lean()

@@ -14,7 +14,16 @@ const capabilityLabels: Record<string, string> = {
     switch: 'switch',
     feeder: 'pet feeder',
     thermostat: 'heating',
+    air: 'CO2',
+    lamp: 'lamp',
+    fan: 'fan',
+    night: 'night mode',
+    smoke: 'cigarettes',
+    window: 'windows',
+    fire: 'fire warning',
 };
+// shown on the device page instead
+const hiddenCapabilities = new Set(['blink', 'buzzer', 'calibrate']);
 
 function pendingCard(d: DeviceSummary) {
     return `<div class="col-md-6">
@@ -39,11 +48,14 @@ function pendingCard(d: DeviceSummary) {
 }
 
 function deviceRow(d: DeviceSummary) {
-    const caps = d.caps.map((c) => `<span class="badge bg-blue-lt me-1">${escapeHtml(capabilityLabels[c] ?? c)}</span>`).join('');
+    const caps = d.caps
+        .filter((c) => !hiddenCapabilities.has(c))
+        .map((c) => `<span class="badge bg-blue-lt me-1">${escapeHtml(capabilityLabels[c] ?? c)}</span>`)
+        .join('');
     return `<tr data-row="${d._id}">
         <td>
             <div class="d-flex align-items-center">
-                <span class="avatar me-2 ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}"><i class="ti ti-${d.caps.includes('camera') ? 'device-cctv' : 'cpu'}"></i></span>
+                <span class="avatar me-2 ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}"><i class="ti ti-${d.caps.includes('camera') ? 'device-cctv' : d.caps.includes('air') ? 'wind' : 'cpu'}"></i></span>
                 <div>
                     <div class="fw-bold">${escapeHtml(d.name)}</div>
                     <div class="text-secondary small">${escapeHtml(productName(d.model, d.caps))} · <span class="text-mono">${escapeHtml(d._id)}</span></div>
@@ -59,6 +71,7 @@ function deviceRow(d: DeviceSummary) {
                 <button class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}'>Actions</button>
                 <div class="dropdown-menu dropdown-menu-end">
                     ${d.caps.includes('camera') ? `<a class="dropdown-item" href="/camera/${d._id}"><i class="ti ti-video me-2"></i> Live view</a>` : ''}
+                    ${d.caps.includes('air') ? `<a class="dropdown-item" href="/air/${d._id}"><i class="ti ti-wind me-2"></i> Open</a>` : ''}
                     <a class="dropdown-item" href="#" data-action="rename" data-device="${d._id}"><i class="ti ti-pencil me-2"></i> Rename</a>
                     <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="wifi" data-device="${d._id}"><i class="ti ti-wifi me-2"></i> Wi-Fi network</a>
                     ${d.caps.includes('blink') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="blink" data-device="${d._id}"><i class="ti ti-bulb me-2"></i> Blink to find it</a>` : ''}

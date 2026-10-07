@@ -354,3 +354,39 @@ html[data-bs-theme='dark'] .theme-label-dark {
         animation: loading-in 1ms linear 350ms both;
     }
 }
+
+/* kibbl. air: the looks of the lamp as tiles, the colours as dots */
+.lamp-presets {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.5rem;
+}
+.lamp-preset {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.25rem;
+}
+.lamp-preset.active {
+    border-color: var(--tblr-primary);
+    box-shadow: 0 0 0 1px var(--tblr-primary);
+}
+.lamp-swatch {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 1px solid var(--tblr-border-color);
+}
+.lamp-dot {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    border: 1px solid var(--tblr-border-color);
+    display: inline-block;
+}
+@media (max-width: 400px) {
+    .lamp-presets {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}

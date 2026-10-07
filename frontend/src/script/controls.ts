@@ -1,13 +1,72 @@
-import type { DeviceSummary } from '../../../shared/protocol';
+import { climateHints } from '../../../shared/climate';
+import type { AirLevel, DeviceSummary } from '../../../shared/protocol';
 import { request } from './socket';
 import { escapeHtml } from './utils';
 
 /* The controls of a device, built from the capabilities it reports: the camera's
  * flash led today, the feeder, switches and heating of docs/protocol.md once those
  * devices exist. A device with a new capability needs a block here, nothing else. */
+export const levelColors: Record<AirLevel, string> = {
+    none: 'var(--tblr-secondary)',
+    green: 'var(--tblr-green)',
+    yellow: 'var(--tblr-yellow)',
+    red: 'var(--tblr-red)',
+};
+
+// the lamp looks the home card offers; the device page has all of them and the colours
+const quickLamps = [
+    { mode: 'traffic', icon: 'traffic-lights', label: 'Air' },
+    { mode: 'warm', icon: 'bulb', label: 'Warm' },
+    { mode: 'off', icon: 'bulb-off', label: 'Off' },
+];
+
+// the air now: CO2 in the colour of the traffic light, temperature, humidity, the window
+export function airNowHtml(d: DeviceSummary) {
+    const s = d.air?.state;
+    if (!d.online || !s) return `<div class="text-secondary">offline${d.lastSeen ? ' since ' + new Date(d.lastSeen).toLocaleString() : ''}</div>`;
+    if (d.air?.sensorError) return `<div class="text-danger"><i class="ti ti-alert-triangle"></i> ${escapeHtml(d.air.sensorError)}</div>`;
+    const co2 = s.co2 === undefined ? '–' : String(s.co2);
+    // the most pressing health hint of the climate, without the weather outside (the device page has it)
+    const worst = climateHints(s).find((h) => h.level === 'alert' || h.level === 'warn');
+    return `<div class="d-flex align-items-baseline gap-2 mb-1">
+            <i class="ti ti-circle-filled" style="color:${levelColors[s.level]}"></i>
+            <span class="stat-value">${co2}</span><span class="text-secondary">ppm CO₂</span>
+        </div>
+        <div class="text-secondary small">
+            ${s.temperature !== undefined ? `<i class="ti ti-temperature"></i> ${s.temperature.toFixed(1)} °C · ` : ''}${s.humidity !== undefined ? `<i class="ti ti-droplet"></i> ${Math.round(s.humidity)} %` : ''}
+            ${s.window === 'open' ? ` · <span class="text-orange"><i class="ti ti-window"></i> window open</span>` : ''}
+            ${s.night ? ` · <i class="ti ti-moon"></i> night` : ''}
+        </div>
+        ${worst ? `<div class="small mt-1 ${worst.level === 'alert' ? 'text-danger' : 'text-orange'}"><i class="ti ti-${worst.icon}"></i> ${escapeHtml(worst.title)}</div>` : ''}`;
+}
+
 export function controlsHtml(d: DeviceSummary) {
     const disabled = d.online ? '' : 'disabled';
     const blocks: string[] = [];
+
+    if (d.caps.includes('air')) {
+        blocks.push(`<div class="mb-3" data-air-now="${d._id}">${airNowHtml(d)}</div>`);
+    }
+    if (d.caps.includes('lamp')) {
+        const mode = d.air?.lamp?.mode;
+        blocks.push(
+            `<div class="mb-3 btn-group w-100">${quickLamps
+                .map(
+                    (l) =>
+                        `<button class="btn btn-sm ${mode === l.mode ? 'active' : ''}" data-control="lamp" data-mode="${l.mode}" data-device="${d._id}" ${disabled}><i class="ti ti-${l.icon} me-1"></i> ${l.label}</button>`,
+                )
+                .join('')}</div>`,
+        );
+    }
+    if (d.caps.includes('night')) {
+        blocks.push(`<div class="mb-3 d-flex align-items-center">
+            <label class="form-check form-switch mb-0 flex-fill">
+                <input class="form-check-input" type="checkbox" data-control="night" data-device="${d._id}" ${d.air?.state?.night ? 'checked' : ''} ${disabled} />
+                <span class="form-check-label"><i class="ti ti-moon me-1"></i> Night mode</span>
+            </label>
+            <a href="/air/${d._id}" class="btn btn-sm">Details <i class="ti ti-chevron-right ms-1"></i></a>
+        </div>`);
+    }
 
     if (d.caps.includes('light')) {
         blocks.push(`<div class="mb-3">
@@ -69,6 +128,8 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'light', level: Number(el.value) });
         } else if (el.dataset.control === 'switch') {
             send(deviceId, { cmd: 'switch', channel: 'main', on: el.checked });
+        } else if (el.dataset.control === 'night') {
+            send(deviceId, { cmd: 'night', on: el.checked });
         }
     });
 
@@ -79,6 +140,10 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         e.stopPropagation();
         if (el.dataset.control === 'feed') {
             send(deviceId, { cmd: 'feed', portions: 1 });
+        } else if (el.dataset.control === 'lamp') {
+            void send(deviceId, { cmd: 'lamp', mode: el.dataset.mode }).then((resp) => {
+                if (resp.ok) el.parentElement?.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === el));
+            });
         } else if (el.dataset.control === 'thermostat') {
             const input = root.querySelector<HTMLInputElement>(`[data-thermostat-input="${deviceId}"]`);
             send(deviceId, { cmd: 'thermostat', target: Number(input?.value) });

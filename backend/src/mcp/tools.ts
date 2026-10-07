@@ -14,10 +14,13 @@ import { configured } from '../health/google';
 import { INTRADAY_TYPES, intraday, summary, syncStatus, trackers } from '../health/service';
 import { storageStats } from '../health/store';
 import { meterPeriods, meterReadings, meterState } from '../meters/service';
+import { climateHints } from '../../../shared/climate';
+import { airEvents, airReadings, smokeDays } from '../core/air';
+import { outdoorWeather } from '../core/weather';
 
 /*
  * What the MCP endpoint offers: every kind of data the app has (cameras, motion,
- * meters, health), read only. Times are the server's local time, which is the home's,
+ * meters, health, the air of a kibbl. air), read only. Times are the server's local time, which is the home's,
  * written as "YYYY-MM-DD HH:MM:SS"; days as YYYY-MM-DD.
  */
 
@@ -83,6 +86,13 @@ async function findDevice(userID: string, ref: string) {
     const docs = await Device.find({ status: 'approved', ownerID: userID }).lean();
     const lower = ref.trim().toLowerCase();
     return docs.find((d) => d._id === ref.trim().toUpperCase()) ?? docs.find((d) => d.name.toLowerCase() === lower);
+}
+
+// a kibbl. air of the user, by name or id
+async function findAir(userID: string, ref: string) {
+    const docs = await Device.find({ ownerID: userID, status: 'approved', caps: 'air' }).lean();
+    const lower = ref.trim().toLowerCase();
+    return docs.find((d) => d._id.toLowerCase() === lower) ?? docs.find((d) => d.name.toLowerCase() === lower) ?? (ref.trim() ? undefined : docs[0]);
 }
 
 async function findMeter(userID: string, ref: string) {
@@ -169,7 +179,8 @@ export function createMcpServer(session: SessionInfo) {
         { name: 'kibbl', title: 'kibbl.', version },
         {
             instructions:
-                "kibbl. is the user's home: cameras with motion detection, utility meters and health data from a fitness tracker. " +
+                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), " +
+                'utility meters and health data from a fitness tracker. ' +
                 "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends.",
         },
     );
@@ -196,7 +207,15 @@ export function createMcpServer(session: SessionInfo) {
                 user: session.name,
                 devices: devices.map((d) => {
                     const s = summarize(d);
-                    return { id: s._id, name: s.name, product: productName(s.model, s.caps), online: s.online, last_seen: localTime(s.lastSeen) };
+                    const air = s.air?.state;
+                    return {
+                        id: s._id,
+                        name: s.name,
+                        product: productName(s.model, s.caps),
+                        online: s.online,
+                        last_seen: localTime(s.lastSeen),
+                        ...(air ? { co2: air.co2, temperature: air.temperature, humidity: air.humidity, window: air.window } : {}),
+                    };
                 }),
                 meters: states.map((m) => ({ id: m._id, name: m.name, medium: m.medium, unit: m.unit, latest: m.latest?.value ?? null, today: m.today })),
                 health: {
@@ -423,6 +442,92 @@ export function createMcpServer(session: SessionInfo) {
                 from: range.from,
                 to: range.to,
                 readings: rows.map((r) => ({ at: localTime(r.at), value: r.value, battery_mv: r.batteryMv, signal_dbm: r.rssi })),
+            });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_air',
+        {
+            title: 'Air now',
+            description:
+                'A kibbl. air (CO2 traffic light) now: CO2, temperature (corrected for the device warmth), humidity, the traffic light level, ' +
+                'window open, night mode, fire alarm, the weather outside, and the health hints of the room climate (cold, heat, dry, humid, mould on outer walls, stale air).',
+            inputSchema: { device: z.string().default('').describe('the kibbl. air, by name or id; the first one if left empty') },
+            annotations: readOnly,
+        },
+        async ({ device }) => {
+            const doc = await findAir(session.userID, device);
+            if (!doc) return fail(`No kibbl. air "${device}". kibbl_devices lists the devices.`);
+            const s = summarize(doc);
+            const state = s.air?.state;
+            const weather = outdoorWeather();
+            return json({
+                device: doc.name,
+                online: s.online,
+                state: state ?? null,
+                settings: s.air?.settings ?? null,
+                night_schedule: s.air?.schedule,
+                outside: weather ? { temperature: weather.temperature, humidity: weather.humidity, at: localTime(weather.at) } : null,
+                climate: state ? climateHints(state, weather).map((h) => ({ level: h.level, title: h.title, text: h.text })) : [],
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_air_readings',
+        {
+            title: 'Air readings',
+            description:
+                'CO2 (ppm), temperature (°C) and humidity (%) of a kibbl. air, a mean per minute, as longer means for long windows (at most about 2000 points).',
+            inputSchema: {
+                device: z.string().default('').describe('the kibbl. air, by name or id; the first one if left empty'),
+                from: day.optional().describe('first day; default today'),
+                to: day.optional().describe('last day; default today'),
+            },
+            annotations: readOnly,
+        },
+        async ({ device, from, to }) => {
+            const doc = await findAir(session.userID, device);
+            if (!doc) return fail(`No kibbl. air "${device}". kibbl_devices lists the devices.`);
+            const range = dayRange(from, to, 1);
+            const rows = await airReadings(doc._id, new Date(range.start), new Date(range.end));
+            return json({
+                device: doc.name,
+                from: range.from,
+                to: range.to,
+                readings: rows.map((r) => ({ at: localTime(r.at), co2: r.co2, temperature: r.temperature, humidity: r.humidity })),
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_air_events',
+        {
+            title: 'Cigarettes, windows, fire',
+            description:
+                'What a kibbl. air detected: cigarettes (source button = logged by hand, auto = found in the CO2 of exhaled smoke, rough; ' +
+                'auto with button true was logged too and counts once), windows opened and closed, fire alerts; and cigarettes per day.',
+            inputSchema: {
+                device: z.string().default('').describe('the kibbl. air, by name or id; the first one if left empty'),
+                days: z.number().int().min(1).max(366).default(7),
+            },
+            annotations: readOnly,
+        },
+        async ({ device, days }) => {
+            const doc = await findAir(session.userID, device);
+            if (!doc) return fail(`No kibbl. air "${device}". kibbl_devices lists the devices.`);
+            const [events, perDay] = await Promise.all([airEvents(doc._id, Date.now() - days * DAY_MS, 1000), smokeDays(doc._id, days)]);
+            return json({
+                device: doc.name,
+                cigarettes_per_day: perDay,
+                events: events.map((e) => ({
+                    at: localTime(e.at),
+                    kind: e.kind,
+                    ...Object.fromEntries(Object.entries(e).filter(([k]) => !['_id', 'deviceId', 'at', 'kind'].includes(k))),
+                })),
             });
         },
     );

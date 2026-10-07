@@ -60,7 +60,7 @@ The device pings every 10 s; the server closes a connection that was silent for 
 { "type": "telemetry", "uptime": 3600, "rssi": -61, "heap": 150000, "psram": 3300000, "cameraFps": 2, "fps": 2, "frameBytes": 24500 }
 ```
 
-A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mean of 3 readings), `temperature` (°C, corrected for the warmth of the board), `humidity`, `level` (`none`, `green`, `yellow`, `red`), `fan` (pwm % now), `window` (`open`, `closed`), `night`, `calibrating`, `puffs` (of a cigarette going on); its hello also `air`, `fanSettings` and `lamp` (the settings below), `sensor`, `expander`, `powerOn`.
+A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mean of 3 readings), `temperature` (°C, corrected for the warmth of the board), `humidity`, `level` (`none`, `green`, `yellow`, `red`), `fan` (pwm % now), `window` (`open`, `closed`), `night`, `calibrating`, `puffs` (of a cigarette going on), `fire` (its alarm sounds); its hello also `air`, `fanSettings` and `lamp` (the settings below), `sensor`, `expander`, `powerOn`.
 
 ### `event` (kibbl. air)
 
@@ -69,7 +69,10 @@ A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mea
 { "type": "event", "event": "smoke", "source": "button", "ageSeconds": 0 }
 { "type": "event", "event": "window", "state": "open", "co2": 640, "co2Before": 1020, "temperatureChange": -0.9, "ageSeconds": 0 }
 { "type": "event", "event": "window", "state": "closed", "co2": 610, "co2Before": 580, "temperatureChange": 0.4, "openSeconds": 720, "ageSeconds": 0 }
+{ "type": "event", "event": "fire", "co2": 1450, "co2Rise": 520, "temperature": 34.1, "temperatureRise": 2.3, "ageSeconds": 0 }
 ```
+
+A `fire` event comes with the alarm of the device (red flashing, the buzzer, also in night mode, a press of the button silences it): CO₂ and temperature rising together within a minute, the temperature rising 2 °C a minute for two minutes, or the sensor at 60 °C.
 
 The device has no clock: an event happened `ageSeconds` (it waited for the server) plus `delaySeconds` (a cigarette is known only 4 min after its last puff) before it arrived. A cigarette found by the detector with `button: true` was logged with the button already and counts once.
 

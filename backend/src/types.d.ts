@@ -1,4 +1,4 @@
-import type { CameraSettings, MotionSettings } from '../../shared/protocol';
+import type { AirSettings, CameraSettings, FanSettings, LampSettings, MotionSettings, NightSchedule } from '../../shared/protocol';
 import type express from 'express';
 
 declare global {
@@ -32,8 +32,29 @@ declare global {
         caps: string[];
         camera?: CameraSettings;
         motion: MotionSettings;
+        // kibbl. air: the settings the device reported, the night schedule the server keeps
+        air?: AirSettings;
+        fanSettings?: FanSettings;
+        lamp?: LampSettings;
+        night?: NightSchedule;
         lastSeen?: number;
         createdAt: number;
+    }
+
+    interface AirReadingDoc {
+        deviceId: string;
+        at: Date; // the start of the minute
+        co2: number;
+        temperature: number;
+        humidity: number;
+    }
+
+    interface AirEventDoc {
+        _id: string;
+        deviceId: string;
+        kind: 'smoke' | 'window' | 'fire';
+        at: number;
+        data: Record<string, unknown>; // the fields of the event as the device sent them
     }
 
     interface MotionEventDoc {

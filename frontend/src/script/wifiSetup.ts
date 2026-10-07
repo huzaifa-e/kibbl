@@ -112,7 +112,9 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
     try {
         device = port ? await UsbDevice.open(port) : await UsbDevice.choose();
     } catch (err) {
-        body.innerHTML = errorAlert(err instanceof DOMException && err.name === 'NotFoundError' ? 'No port chosen.' : `The port could not be opened: ${(err as Error).message}`);
+        body.innerHTML = errorAlert(
+            err instanceof DOMException && err.name === 'NotFoundError' ? 'No port chosen.' : `The port could not be opened: ${(err as Error).message}`,
+        );
         return;
     }
     let finished = false;
@@ -130,6 +132,8 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
     }
 
     const id = String(info.deviceId ?? '');
+    // a kibbl. air (the CO2 traffic light) or a camera
+    const isAir = Array.isArray(info.caps) && (info.caps as string[]).includes('air');
     const known = devices().find((d) => d._id === id);
     const setup = await request<SetupInfo>('getSetupInfo');
     const serverUrl = setup.deviceSocketUrl ?? String(info.server ?? '');
@@ -138,7 +142,7 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
     const renderForm = (message = '') => {
         body.innerHTML = `
             <div class="d-flex align-items-center mb-3">
-                <span class="hud-icon hud-pumpkin me-3"><i class="ti ti-device-cctv"></i></span>
+                <span class="hud-icon hud-pumpkin me-3"><i class="ti ti-${isAir ? 'wind' : 'device-cctv'}"></i></span>
                 <div>
                     <div class="fw-bold">${escapeHtml(productName(info.model as string | undefined, (info.caps as string[]) ?? []))}</div>
                     <div class="text-secondary small"><span class="text-mono">${escapeHtml(id)}</span> · ${escapeHtml(info.fw ?? '')}</div>
@@ -148,7 +152,7 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
             ${message}
             <div class="mb-3">
                 <label class="form-label">Name</label>
-                <input type="text" class="form-control" id="usb-name" maxlength="40" value="${escapeHtml(known?.name ?? `Camera ${id.slice(-4)}`)}" />
+                <input type="text" class="form-control" id="usb-name" maxlength="40" value="${escapeHtml(known?.name ?? `${isAir ? 'Air' : 'Camera'} ${id.slice(-4)}`)}" />
             </div>
             ${networkPickerHtml(networks, String(info.ssid ?? ''))}
             <details class="mb-3">
@@ -256,8 +260,13 @@ export async function setupOverUsb(devices: () => DeviceSummary[], port?: Parame
         if (finished) return;
         if (!online) return fail(4, `${name} is on the Wi-Fi but does not reach ${server}. Is that address reachable from your home network?`);
         next(4, `<b>${escapeHtml(name)}</b> is online`);
-        show(`<div class="text-secondary mb-3">You can unplug it and put it where it should watch.</div>
-            <a class="btn btn-primary w-100" href="/camera/${escapeHtml(id)}"><i class="ti ti-video me-1"></i> Open the live view</a>`);
+        show(
+            isAir
+                ? `<div class="text-secondary mb-3">You can unplug the adapter and put it where it should measure the air.</div>
+            <a class="btn btn-primary w-100" href="/air/${escapeHtml(id)}"><i class="ti ti-wind me-1"></i> Open it</a>`
+                : `<div class="text-secondary mb-3">You can unplug it and put it where it should watch.</div>
+            <a class="btn btn-primary w-100" href="/camera/${escapeHtml(id)}"><i class="ti ti-video me-1"></i> Open the live view</a>`,
+        );
     };
 
     renderForm();

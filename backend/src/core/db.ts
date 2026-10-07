@@ -17,10 +17,13 @@ export let OAuthClient: Model<OAuthClientDoc>;
 export let OAuthGrant: Model<OAuthGrantDoc>;
 export let PasswordReset: Model<PasswordResetDoc>;
 export let HealthAccessRequest: Model<HealthAccessRequestDoc>;
+export let AirReading: Model<AirReadingDoc>;
+export let AirEventModel: Model<AirEventDoc>;
 
 let isConnected = false;
 
 const motionDefaults: DeviceDoc['motion'] = { enabled: true, sensitivity: 'medium', quietFrom: 0, quietTo: 0, blink: true, keepPictures: false };
+const nightDefaults: NonNullable<DeviceDoc['night']> = { enabled: false, from: 22, to: 7 };
 
 async function init() {
     mongooseSet('strictQuery', false);
@@ -56,6 +59,15 @@ async function init() {
             quietTo: { type: Number, default: motionDefaults.quietTo },
             blink: { type: Boolean, default: motionDefaults.blink },
             keepPictures: { type: Boolean, default: motionDefaults.keepPictures },
+        },
+        // kibbl. air
+        air: { type: Schema.Types.Mixed },
+        fanSettings: { type: Schema.Types.Mixed },
+        lamp: { type: Schema.Types.Mixed },
+        night: {
+            enabled: { type: Boolean, default: nightDefaults.enabled },
+            from: { type: Number, default: nightDefaults.from },
+            to: { type: Number, default: nightDefaults.to },
         },
         lastSeen: Number,
         createdAt: { type: Number, required: true },
@@ -247,6 +259,34 @@ async function init() {
     );
     HealthAccessRequest = model<HealthAccessRequestDoc>('HealthAccessRequest', healthAccessSchema);
 
+    /* kibbl. air: a minute of CO2, temperature and humidity per device (the mean of its
+     * telemetry), and what it detected (cigarettes, windows, fire). */
+    const airReadingSchema = new Schema<AirReadingDoc>(
+        {
+            deviceId: { type: String, required: true },
+            at: { type: Date, required: true },
+            co2: { type: Number, required: true },
+            temperature: { type: Number, required: true },
+            humidity: { type: Number, required: true },
+        },
+        { versionKey: false },
+    );
+    airReadingSchema.index({ deviceId: 1, at: 1 }, { unique: true });
+    AirReading = model<AirReadingDoc>('AirReading', airReadingSchema);
+
+    const airEventSchema = new Schema<AirEventDoc>(
+        {
+            _id: { type: String, required: true },
+            deviceId: { type: String, required: true },
+            kind: { type: String, required: true, enum: ['smoke', 'window', 'fire'] },
+            at: { type: Number, required: true },
+            data: { type: Schema.Types.Mixed, default: {} },
+        },
+        { versionKey: false },
+    );
+    airEventSchema.index({ deviceId: 1, at: -1 });
+    AirEventModel = model<AirEventDoc>('AirEvent', airEventSchema);
+
     connection.on('connected', () => {
         isConnected = true;
         log.info('connected to MongoDB');
@@ -266,4 +306,5 @@ export default {
     init,
     isConnected: () => isConnected,
     motionDefaults,
+    nightDefaults,
 };

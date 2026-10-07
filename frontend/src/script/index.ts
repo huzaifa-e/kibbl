@@ -1,8 +1,8 @@
 import './main';
 import type ApexCharts from 'apexcharts';
-import type { ActivityBucket, DeviceSummary, MotionEvent } from '../../../shared/protocol';
+import type { ActivityBucket, DeviceSummary, DeviceTelemetry, MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
-import { controlsHtml, bindControls } from './controls';
+import { airNowHtml, bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
 import { bindEventViewer, eventCardHtml } from './events';
@@ -133,7 +133,7 @@ function renderOthers() {
     byId('other-devices').innerHTML = list
         .map(
             (d) => `<div class="col-md-6 col-xl-4"><div class="card">
-                <div class="card-header"><h3 class="card-title">${escapeHtml(d.name)}</h3>
+                <div class="card-header"><h3 class="card-title">${d.caps.includes('air') ? `<a href="/air/${d._id}" class="text-reset">${escapeHtml(d.name)}</a>` : escapeHtml(d.name)}</h3>
                     <div class="card-actions"><span class="badge ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}">${d.online ? 'online' : 'offline'}</span></div></div>
                 <div class="card-body">${controlsHtml(d)}</div></div></div>`,
         )
@@ -234,6 +234,15 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
 // a new meter reading: the meter cards show it
 socket.on('meterUpdate', () => {
     if (rendered) void renderHomeCards(byId('camera-grid'));
+});
+
+// a kibbl. air reports its air every 10 s: the home card shows it without redrawing the controls
+socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
+    const d = devices.find((x) => x._id === deviceId);
+    if (!d?.air || !telemetry.air) return;
+    d.air.state = telemetry.air;
+    const el = document.querySelector<HTMLElement>(`[data-air-now="${deviceId}"]`);
+    if (el) el.innerHTML = airNowHtml(d);
 });
 
 socket.on('deviceRemoved', (deviceId: string) => {

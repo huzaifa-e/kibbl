@@ -12,6 +12,8 @@ import { logger } from './core/logger';
 import { assignUnowned } from './core/owners';
 
 const log = logger('server');
+import { initAir } from './core/air';
+import { initWeather } from './core/weather';
 import { closeStaleEvents, initMotionWatchdog } from './core/motion';
 import { initStorageCleanup } from './core/storage';
 import { initHealthSync } from './health/service';
@@ -47,6 +49,8 @@ async function main() {
     initMotionWatchdog();
     initHealthSync();
     initMeterSync();
+    initAir();
+    initWeather();
 
     const app: express.Application = express();
     app.disable('x-powered-by');

@@ -1,6 +1,7 @@
 import express from 'express';
 import { version } from '../../../shared/version';
 import { default as initAccountRoutes } from './account';
+import { default as initAirRoutes } from './air';
 import { default as initAuthRoutes } from './auth';
 import { default as initFirmwareRoutes } from './firmware';
 import { default as initHealthRoutes } from './health';
@@ -22,6 +23,7 @@ export function initRoutes(app: express.Application) {
     initHealthRoutes(app);
     initHealthAccessRoutes(app);
     initMeterRoutes(app);
+    initAirRoutes(app);
     initMcpRoutes(app);
     initPageRoutes(app);
 }

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { IncomingMessage, Server } from 'node:http';
 import { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
+import { handleAirEvent } from '../core/air';
 import { Device } from '../core/db';
 import {
     MAX_PENDING_DEVICES,
@@ -145,6 +146,9 @@ async function onMessage(ws: DeviceSocket, data: Buffer, isBinary: boolean) {
             break;
         case 'response':
             handleResponse(ws.deviceId, msg);
+            break;
+        case 'event':
+            await handleAirEvent(ws.deviceId, ws.approved, msg);
             break;
         default:
             log.debug('unknown message type', { device: ws.deviceId, type: String(msg.type) });
