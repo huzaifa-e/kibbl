@@ -33,6 +33,22 @@ const signInLimiter = rateLimit({
  * from the internet) OAuth is offered too, for assistants that connect themselves.
  * Stateless: every request gets a server and transport of its own. */
 export default function initMcpRoutes(app: express.Application) {
+    /* What a connector asks for while it sets itself up, and every refused call: without it
+     * a connector that gives up says nothing about where. Successful tool calls are logged below. */
+    app.use(['/mcp', '/authorize', '/token', '/register', '/revoke', '/.well-known'], (req, res, next) => {
+        res.on('finish', () => {
+            if (req.method === 'POST' && req.baseUrl === '/mcp' && res.statusCode < 400) return;
+            log.info('connector request', {
+                method: req.method,
+                path: req.originalUrl.split('?')[0].slice(0, 80),
+                status: res.statusCode,
+                agent: (req.header('user-agent') ?? '').slice(0, 60),
+                ip: req.ip,
+            });
+        });
+        next();
+    });
+
     const publicUrl = process.env.MCP_PUBLIC_URL?.replace(/\/+$/, '');
     let resourceMetadataUrl: string | undefined;
     if (publicUrl) {
