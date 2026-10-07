@@ -5,7 +5,8 @@ import { sendCommand } from './devices';
 import { hub } from './hub';
 import { logger } from './logger';
 import { notifyOwner } from './notify';
-import { outdoorWeather } from './weather';
+import { deviceOwner } from './owners';
+import { weatherForUser } from './weather';
 import { climateHints } from '../../../shared/climate';
 
 /*
@@ -263,8 +264,10 @@ const CLIMATE_REPEAT_MS = 12 * 3600_000;
 const climateSince = new Map<string, number>(); // device|hint id: since when it is shown
 const climateSent = new Map<string, number>();
 
-function checkClimate(deviceId: string, state: AirState) {
-    const hints = climateHints(state, outdoorWeather()).filter((h) => h.notify && h.level !== 'good' && h.level !== 'info');
+async function checkClimate(deviceId: string, state: AirState) {
+    const owner = await deviceOwner(deviceId);
+    const weather = owner ? await weatherForUser(owner) : null;
+    const hints = climateHints(state, weather).filter((h) => h.notify && h.level !== 'good' && h.level !== 'info');
     const now = Date.now();
     const shown = new Set(hints.map((h) => `${deviceId}|${h.id}`));
     for (const key of climateSince.keys()) {
@@ -301,6 +304,6 @@ export function initAir() {
         if (!telemetry.air || !schedules.get(deviceId)?.approved) return;
         recordState(deviceId, telemetry.air);
         reconcileNight(deviceId, telemetry.air);
-        checkClimate(deviceId, telemetry.air);
+        checkClimate(deviceId, telemetry.air).catch((err) => log.warn('climate not checked', { device: deviceId }, err));
     });
 }

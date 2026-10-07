@@ -16,7 +16,7 @@ import { storageStats } from '../health/store';
 import { meterPeriods, meterReadings, meterState } from '../meters/service';
 import { climateHints } from '../../../shared/climate';
 import { airEvents, airReadings, smokeDays } from '../core/air';
-import { outdoorWeather } from '../core/weather';
+import { weatherForUser } from '../core/weather';
 
 /*
  * What the MCP endpoint offers: every kind of data the app has (cameras, motion,
@@ -463,7 +463,7 @@ export function createMcpServer(session: SessionInfo) {
             if (!doc) return fail(`No kibbl. air "${device}". kibbl_devices lists the devices.`);
             const s = summarize(doc);
             const state = s.air?.state;
-            const weather = outdoorWeather();
+            const weather = await weatherForUser(session.userID);
             return json({
                 device: doc.name,
                 online: s.online,

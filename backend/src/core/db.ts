@@ -36,6 +36,8 @@ async function init() {
         salt: { type: String, required: true },
         // raised on a password change: every token issued before is refused
         tokenVersion: { type: Number, required: true, default: 0 },
+        // where the home is, for the weather outside (kibbl. air)
+        home: { latitude: Number, longitude: Number, name: String },
         createdAt: { type: Number, required: true },
     });
 

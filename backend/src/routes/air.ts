@@ -3,7 +3,6 @@ import { airEvents, airReadings, smokeDays } from '../core/air';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
 import { summarize } from '../core/devices';
-import { outdoorWeather } from '../core/weather';
 
 const isDeviceID = (v: unknown): v is string => typeof v === 'string' && /^[0-9A-F]{12}$/.test(v);
 const HOUR_MS = 3600_000;
@@ -27,11 +26,6 @@ export default function initAirRoutes(app: express.Application) {
             return;
         }
         res.json(summarize(doc));
-    });
-
-    // the weather outside the home now, null without HOME_LATITUDE/HOME_LONGITUDE
-    app.get('/api/weather', auth, (req, res) => {
-        res.json(outdoorWeather());
     });
 
     // a minute each, means of longer steps for long windows (?hours=24, up to a year)

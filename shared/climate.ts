@@ -22,6 +22,13 @@ export interface Weather {
     at: number; // when it was measured
 }
 
+// where a home is, for the weather outside; chosen in the settings of the app
+export interface HomeLocation {
+    latitude: number;
+    longitude: number;
+    name: string; // the place as the search found it, "Frankfurt am Main, Hesse, Germany"
+}
+
 export type HintLevel = 'good' | 'info' | 'warn' | 'alert';
 
 export interface ClimateHint {

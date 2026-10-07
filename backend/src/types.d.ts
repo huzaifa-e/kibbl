@@ -1,5 +1,6 @@
 import type { AirSettings, CameraSettings, FanSettings, LampSettings, MotionSettings, NightSchedule } from '../../shared/protocol';
 import type express from 'express';
+import type { HomeLocation } from '../../shared/climate';
 
 declare global {
     interface User {
@@ -9,6 +10,7 @@ declare global {
         password: string; // scrypt hash, hex
         salt: string;
         tokenVersion: number;
+        home?: HomeLocation; // for the weather outside (kibbl. air)
         createdAt: number;
     }
 

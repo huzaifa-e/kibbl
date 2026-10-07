@@ -218,7 +218,7 @@ function renderClimate() {
     const s = device!.online ? device!.air?.state : undefined;
     byId('climate-outdoor').innerHTML = weather
         ? `<i class="ti ti-cloud"></i> outside ${weather.temperature.toFixed(1)} °C · ${Math.round(weather.humidity)} %`
-        : '<span title="HOME_LATITUDE and HOME_LONGITUDE on the server">no weather outside</span>';
+        : '<a href="/settings">set the home location</a> for the weather outside';
     const hints = s ? climateHints(s, weather) : [];
     byId('climate-hints').innerHTML = hints.length
         ? hints

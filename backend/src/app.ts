@@ -63,7 +63,8 @@ async function main() {
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'no-referrer');
-        res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        // geolocation for the app itself: the settings may fill in the home's location
+        res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
 
         if (!db.isConnected() && (req.path.startsWith('/api') || req.path === '/mcp')) {
             res.sendStatus(503);
