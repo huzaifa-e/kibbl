@@ -14,7 +14,7 @@ The first run copies the repository and creates `~/kibbl/.env` with a random `JW
 * `DEVICE_BASE_URL`: the server as the cameras reach it, for firmware downloads and as the address the app writes into a device set up over USB (`DEVICE_SOCKET_URL` overrides the latter)
 * `COOKIE_SECURE=true` once the app is served over https
 
-Then run `./deploy/deploy.sh` again. It connects over Tailscale (`jh@100.84.217.119`, port 4711), in the office and away from it; on the office network without Tailscale: `HOST=jh@10.0.1.99 ./deploy/deploy.sh`. Every later run updates the code and restarts the app; `.env` and `data/` are never touched.
+Then run `./deploy/deploy.sh` again. It connects over Tailscale (`jh@100.84.217.119`, port 4711), in the office and away from it; on the office network without Tailscale: `HOST=jh@10.0.1.99 ./deploy/deploy.sh`. Every later run updates the code and restarts the app; `.env` and `data/` are never touched. Each run is a new version: it raises the last number in `shared/version.ts` (v0.2.1, v0.2.2, …), commits and pushes that, and the pages (at the bottom), `/api/version` and the MCP endpoint show it.
 
 ## Logs
 
