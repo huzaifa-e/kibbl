@@ -62,6 +62,7 @@ function feederTuningHtml(d: DeviceSummary, disabled: string, busy: string) {
             <div class="small text-secondary mt-2 mb-1">Steps by hand (+ closes; the stroke is 1792)</div>
             <div class="btn-group w-100">${[-200, -50, 50, 200].map(jog).join('')}</div>
             <button class="btn btn-sm w-100 mt-2" data-control="feeder-home" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-target me-1"></i> Find the zero (fully open, into the stop)</button>
+            <button class="btn btn-sm w-100 mt-2" data-control="feeder-release" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-hand-stop me-1"></i> Motor off for 10 s (turns by hand)</button>
         </div>
     </details>`;
 }
@@ -232,6 +233,8 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'feeder_move', steps: Number(el.dataset.steps) });
         } else if (el.dataset.control === 'feeder-home') {
             send(deviceId, { cmd: 'feeder_home' });
+        } else if (el.dataset.control === 'feeder-release') {
+            send(deviceId, { cmd: 'feeder_release', ms: 10000 });
         } else if (el.dataset.control === 'lamp') {
             void send(deviceId, { cmd: 'lamp', mode: el.dataset.mode }).then((resp) => {
                 if (resp.ok) el.parentElement?.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === el));

@@ -58,4 +58,6 @@ test('tuning a feeder: speed, acceleration, steps, the zero', () => {
     assert.equal(cleanCommand({ cmd: 'feeder_move', steps: 5000 }), undefined);
     assert.equal(cleanCommand({ cmd: 'feeder_move', steps: 1.5 }), undefined);
     assert.deepEqual(cleanCommand({ cmd: 'feeder_home', extra: true }), { cmd: 'feeder_home' });
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_release' }), { cmd: 'feeder_release', ms: 10000 });
+    assert.equal(cleanCommand({ cmd: 'feeder_release', ms: 60000 }), undefined);
 });

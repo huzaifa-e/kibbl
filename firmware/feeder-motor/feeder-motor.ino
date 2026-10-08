@@ -18,6 +18,7 @@
  *   {"cmd":"close"}                      close
  *   {"cmd":"home"}                       home        a whole stroke towards open and into the stop: the zero from anywhere
  *   {"cmd":"zero"}                       zero        the iris is open by hand: here is 0
+ *   {"cmd":"release","ms":5000}          release 5000  the motor off (EN high) for 100-30000 ms: turns by hand
  *   {"cmd":"move","steps":-50}           move -50    relative, no limits, at the set speed, for setting up
  *   {"cmd":"stop"}                       stop
  *   {"cmd":"info"}                       info
@@ -229,6 +230,7 @@ static void jobUpdate() {
             jobAt++;
         } else {
             if (a.kind == RELEASE) PORTB |= _BV(EN_BIT);
+            else PORTB &= ~_BV(EN_BIT);  // a wait after a release: enabled again
             waitUntil = millis() + a.value;
             waiting = true;
         }
@@ -432,6 +434,15 @@ static void command(char *text) {
         // from wherever it really is: a whole stroke and the overtravel towards open
         findZero(readPosition() - STROKE - HOME_OVERTRAVEL);
         startJob(id, "home");
+    } else if (!strcmp(cmd, "release")) {
+        // the S42B holds the angle it is left at as its target once enabled again: the count here
+        // stays, so an iris turned by hand meanwhile needs zero or home afterwards
+        float ms = 5000;
+        if (json) number(text, "ms", ms); else if (hasValue) ms = value;
+        if (ms < 100 || ms > 30000) { respond(id, false, "ms must be 100 to 30000"); return; }
+        add(RELEASE, (int32_t)ms);
+        add(WAIT, 50);
+        startJob(id, "release");
     } else if (!strcmp(cmd, "zero")) {
         noInterrupts();
         position = target = 0;

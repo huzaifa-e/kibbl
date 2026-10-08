@@ -196,6 +196,8 @@ async function run(msg: Json): Promise<Json> {
         cmd = { cmd: 'move', steps: msg.steps };
     } else if (msg.cmd === 'feeder_home') {
         cmd = { cmd: 'home' };
+    } else if (msg.cmd === 'feeder_release') {
+        cmd = { cmd: 'release', ms: msg.ms };
     } else if (msg.cmd === 'info') {
         return { ok: true, ...hello() };
     } else if (msg.cmd === 'reboot') {

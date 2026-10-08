@@ -94,6 +94,9 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
             return int(command.steps, -FEEDER_MOVE_MAX, FEEDER_MOVE_MAX) && command.steps !== 0 ? { cmd, steps: command.steps } : undefined;
         case 'feeder_home':
             return { cmd };
+        // the motor off for a while: the iris turns by hand
+        case 'feeder_release':
+            return int(command.ms ?? 10000, 100, 30000) ? { cmd, ms: command.ms ?? 10000 } : undefined;
         // the iris of a feeder to an opening, the closed one included
         case 'iris':
             return mm(command.opening, FEEDER_MIN_MM, FEEDER_MAX_MM) ? { cmd, opening: Math.round((command.opening as number) * 10) / 10 } : undefined;
