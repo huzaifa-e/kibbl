@@ -1,5 +1,4 @@
 import './main';
-import { version } from '../../../shared/version';
 import { load as loadAssistant } from './assistant';
 import type { HomeLocation } from '../../../shared/climate';
 import { byId, errorAlert, escapeHtml, isDarkMode, setTheme, successAlert } from './utils';
@@ -61,7 +60,6 @@ function render() {
                         <p>The cameras stream only while someone watches, and at 2 frames a second while motion detection is on. Nothing is sent anywhere but this server.</p>
                         <p class="mb-0">Motion snapshots are deleted automatically after the retention period of the server (14 days unless set otherwise).</p>
                     </div>
-                    <div class="card-footer text-secondary small">kibbl. ${version}</div>
                 </div>
             </div>
             <div class="col-12">

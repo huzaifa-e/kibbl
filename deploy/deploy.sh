@@ -15,6 +15,9 @@ REMOTE_DIR="${REMOTE_DIR:-kibbl}"
 SSH=(ssh -p "$SSH_PORT" -o ConnectTimeout=20)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# the build shown at the bottom of every page: the commit and the time of this deploy
+BUILD="$(git -C "$ROOT" rev-parse --short=7 HEAD) $(date '+%Y-%m-%d %H:%M')"
+
 echo "Copying to $HOST:$REMOTE_DIR"
 rsync -az --delete -e "${SSH[*]}" \
     --exclude '.git/' \
@@ -27,9 +30,10 @@ rsync -az --delete -e "${SSH[*]}" \
     --exclude '.simulated-device.json' \
     "$ROOT/" "$HOST:$REMOTE_DIR/"
 
-"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" <<'EOF'
+"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" "$BUILD" <<'EOF'
 set -euo pipefail
 cd "$1"
+echo "$2" > .deploy-build
 if [ ! -f .env ]; then
     cp .env.example .env
     sed -i "s/^JWT_SECRET=$/JWT_SECRET=$(openssl rand -hex 32)/" .env

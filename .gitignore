@@ -7,6 +7,8 @@ node_modules
 dist
 .turbo
 .env
+# written by deploy/deploy.sh on the server
+/.deploy-build
 *.local
 
 # Editor directories and files
