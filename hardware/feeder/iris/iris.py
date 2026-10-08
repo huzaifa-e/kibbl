@@ -10,7 +10,8 @@ the portion.
 
 Parts (all printed flat, without supports):
     base      floor with the pivot pins, blade cavity, ring ledge, motor mount
-    blade     6x, 1.2 mm, drive pin on top
+    blade     3x, 1.2 mm, drive pin on top, on the floor (blades 1, 3, 5)
+    blade_upper  3x, the same with a shorter pin, one level up on a boss of the base (2, 4, 6)
     ring      ring gear (75 T, module 1.5) with the six curved drive slots
     pinion    15 T, module 1.5, 5 mm D-shaft, M3 set screw
     lid       closes the housing; its sleeve guides the kibble onto the blades
@@ -20,6 +21,7 @@ All dimensions in mm. The blade outline and the pin paths below are the ones
 --check verifies, so a changed parameter is checked before it is printed.
 """
 import argparse
+import copy
 import math
 import os
 
@@ -55,12 +57,21 @@ Z_BLADES = FLOOR_T  # floor top, the blades lie here
 Z_RING = FLOOR_T + CAVITY  # ledge the ring runs on
 Z_TOP = Z_RING + RING_T + GAP  # top of the base wall, the lid sits here
 
+# Two levels, no weaving: a blade only ever overlaps its two neighbours, and six is even, so blades
+# 1, 3, 5 lie on the floor and 2, 4, 6 one level up, flat on a boss around their pivot and on the
+# lower blades beside them. A blade that had to lie under one neighbour and over the other would
+# have to bend 1.2 mm within a few mm: it jams.
+LEVEL_GAP = 0.2  # between the lower blades' top and the upper blades; keeps the boss top on a 0.2 mm layer
+Z_UPPER = Z_BLADES + BLADE_T + LEVEL_GAP
+BOSS_D = 7.6  # under the upper blades' pivots; no lower blade comes this close to a pivot (--check)
+
 PIVOT_PIN_D = 3.6  # printed upright on the floor
 PIVOT_HOLE_D = 4.0  # in the blade
-DRIVE_PIN_D = 4.0  # printed upright on the blade
+DRIVE_PIN_D = 6.0  # printed upright on the blade: its layers carry the ring torque in bending, Ø4 snaps when one blade jams
+DRIVE_PIN_ROOT = 0.8  # cone at the pin root, as wide as high: spreads the bending into the blade
 DRIVE_PIN_H = (CAVITY - BLADE_T) + RING_T - 1.0  # reaches 1 mm below the ring top
-SLOT_W = 4.5  # drive slot in the ring
-R_RING_BORE = 28.0  # clears the lid sleeve
+SLOT_W = 6.5  # drive slot in the ring
+R_RING_BORE = 25.0  # clears the lid sleeve (R 23) by 2 mm, and leaves 5 mm of ring inside the slots
 
 # ───────────────────────────── gears ─────────────────────────────
 MODULE = 1.5
@@ -71,7 +82,7 @@ CENTER_DIST = MODULE * (TEETH_RING + TEETH_PINION) / 2  # 67.5, motor axis on +x
 
 # ───────────────────────────── housing ─────────────────────────────
 R_LEDGE = 47.0  # blade cavity wall; the blades sweep out to 45.6
-R_RING_POCKET = TEETH_RING * MODULE / 2 + MODULE + 1.0
+R_RING_POCKET = TEETH_RING * MODULE / 2 + MODULE + 0.4  # the tooth tips locate the ring: more float lets the mesh push it off the pinion
 R_PINION_POCKET = TEETH_PINION * MODULE / 2 + MODULE + 1.25
 R_HOUSING = 65.0
 LID_SCREW_R = 61.5
@@ -83,10 +94,17 @@ NEMA_HOLE = 31.0  # NEMA 17 screw square
 NEMA_PILOT_D = 22.6  # the 22 mm centering boss
 NEMA_BODY = 42.3
 SHAFT_D, SHAFT_FLAT = 5.15, 4.65  # D-shaft: diameter, and flat to the far side
+SHAFT_CLEAR_D = 7.0  # the shaft (24 mm on a 17HS4401) runs up through the lid and funnel flange
 M3_HEAD_D, M3_HEAD_SEAT = 6.2, 3.5  # counterbore and the floor left under the head
 
+# bought parts, for the assembly only: envelopes, not their detail
+MOTOR_L = 40.0  # 17HS4401 body
+MOTOR_SHAFT_L = 24.0  # from the mounting face
+MOTOR_BOSS_D, MOTOR_BOSS_H = 22.0, 2.0
+S42B_GAP, S42B_PCB_T, S42B_H = 2.0, 1.6, 12.0  # BTT S42B v1.0 on the back of the motor: gap, board, overall
+
 WALL = 2.4
-SLEEVE_BOTTOM = Z_BLADES + 2 * BLADE_T + GAP  # just above the blade stack
+SLEEVE_BOTTOM = Z_BLADES + 2 * BLADE_T + LEVEL_GAP + GAP  # just above the blade stack
 FUNNEL_H, FUNNEL_TOP_R, COLLAR_H = 32.0, 50.0, 15.0
 
 
@@ -254,10 +272,19 @@ def check():
         for i in range(N):
             pins = [rot(rot((RP, 0), 0), 360 * i / N), rot(drive_pin(a), 360 * i / N)]
             for pin in pins:
-                disc = Point(pin).buffer(DRIVE_PIN_D / 2 + 0.5, 32)
+                disc = Point(pin).buffer(max(DRIVE_PIN_D / 2 + DRIVE_PIN_ROOT, BOSS_D / 2) + 0.3, 32)
                 for j in range(N):
                     if j != i and blades[j].intersection(disc).area > 0.05:
                         pin_hits += 1
+
+    # the two levels: no blade may overlap one on its own level, and the upper ones must rest on both neighbours
+    same_level, least_rest = 0.0, float('inf')
+    for a in [k * ALPHA_MAX / 20 for k in range(21)]:
+        blades = [blade(i, a) for i in range(N)]
+        for i in range(N):
+            same_level = max(same_level, blades[i].intersection(blades[(i + 2) % N]).area)
+            if i % 2:
+                least_rest = min(least_rest, blades[i].intersection(blades[i - 1]).area, blades[i].intersection(blades[(i + 1) % N]).area)
 
     # pressure angle: slot normal against the pin's velocity about its pivot
     worst_pa = 0.0
@@ -279,14 +306,86 @@ def check():
     print()
     report('blades in the open aperture (mm2)', round(open_intrusion, 3), open_intrusion < 0.01)
     report('opening at the closed stop (mm)', round(closed_opening, 1), closed_opening <= MAX_CLOSED_OPENING)
-    report('most blades over one point', worst_layers, worst_layers * BLADE_T + 0.5 <= CAVITY)
+    report('most blades over one point', worst_layers, worst_layers * BLADE_T + LEVEL_GAP + 0.4 <= CAVITY)
     report('blade reach (mm), cavity wall at', f'{reach:.1f} < {R_LEDGE}', reach < R_LEDGE - 0.8)
-    report('pins covered by another blade', pin_hits, pin_hits == 0)
+    report('pins and bosses covered by another blade', pin_hits, pin_hits == 0)
+    report('overlap with a blade on the same level (mm2)', round(same_level, 3), N % 2 == 0 and same_level < 0.01)
+    report('least an upper blade rests on, each side (mm2)', round(least_rest, 1), least_rest > 20)
     report('worst pressure angle of the ring slots (deg)', round(worst_pa, 1), worst_pa < 55)
+    names = list(LOAD_DIRECTION)
+    worst = {k: max(loads(ALPHA_MAX * j / 20, DRIVER_A)[k] for j in range(21)) for k in names}
+    safety = {k: MATERIALS[MATERIAL][LOAD_DIRECTION[k]] / worst[k] for k in names}
+    weakest = min(safety, key=safety.get)
+    report(f'weakest part, one blade jammed at {DRIVER_A} A in {MATERIAL}', f'{weakest} {worst[weakest]:.1f} MPa, safety {safety[weakest]:.1f}',
+           safety[weakest] >= MIN_SAFETY)
     turn = K_RING * ALPHA_MAX
     print(f'    ring turn {turn:.1f} deg, motor {turn * TEETH_RING / TEETH_PINION:.1f} deg, '
           f'{turn * TEETH_RING / TEETH_PINION / 1.8 * 16:.0f} microsteps at 1/16')
     return ok
+
+
+# ═════════════════════════════ loads ═════════════════════════════
+MOTOR_TORQUE_PER_A = 0.42 / 1.7  # 17HS4401: 0.42 N·m holding at its rated 1.7 A
+DRIVER_A = 0.3  # S42B current: the ring linkage multiplies it, a jammed blade sees all of it
+MATERIAL = 'PLA'
+MIN_SAFETY = 2.0  # checked with one blade jammed at DRIVER_A
+LEWIS_Y = {TEETH_PINION: 0.290, TEETH_RING: 0.435}  # 20 deg full depth
+
+# printed strength, conservative (MPa): along the layers, across them (upright pins), in compression.
+# Typical values for 100 % infill; check the data sheet of the filament you use.
+MATERIALS = {
+    'PLA': {'xy': 40.0, 'z': 25.0, 'compression': 60.0, 'E': 3300.0, 'softens': 55},
+    'PETG': {'xy': 35.0, 'z': 20.0, 'compression': 50.0, 'E': 2000.0, 'softens': 70},
+}
+# which strength each stress is held against
+LOAD_DIRECTION = {'drive pin': 'z', 'pivot pin': 'z', 'pivot hole': 'compression', 'D-bore': 'compression',
+                  'pinion tooth': 'xy', 'ring tooth': 'xy'}
+
+
+def loads(alpha, amps, jammed=True):
+    """Forces (N) and stresses (MPa) at a blade swing of alpha with the driver at amps.
+
+    jammed: one blade is held (a kibble wedged under it), its drive pin carries the whole ring.
+    Otherwise the six pins share. The pin is a cantilever from the blade to the middle of the ring.
+    """
+    torque = MOTOR_TORQUE_PER_A * amps
+    ring_torque = torque * TEETH_RING / TEETH_PINION
+    # the slot pushes the pin along the slot normal, in the world frame
+    h = 0.01
+    a0, a1 = max(alpha - h, 0.0), min(alpha + h, ALPHA_MAX)
+    p0, p1 = rot(drive_pin(a0), -K_RING * a0), rot(drive_pin(a1), -K_RING * a1)
+    t = rot((p1[0] - p0[0], p1[1] - p0[1]), K_RING * alpha)
+    length = math.hypot(*t)
+    n = (-t[1] / length, t[0] / length)
+    pin = drive_pin(alpha)
+    arm_centre = abs(pin[0] * n[1] - pin[1] * n[0])
+    arm_pivot = abs((pin[0] - RP) * n[1] - pin[1] * n[0])
+    force = ring_torque * 1000 / arm_centre / (1 if jammed else N)
+
+    z_root = Z_BLADES + BLADE_T
+    z_top = z_root + DRIVE_PIN_H
+    z_load = (max(Z_RING + GAP / 2, z_root) + z_top) / 2
+    bending = lambda f, lever, d: f * lever / (math.pi * d ** 3 / 32)
+    pin_cone = bending(force, z_load - z_root - DRIVE_PIN_ROOT, DRIVE_PIN_D)
+    pin_root = bending(force, z_load - z_root, DRIVE_PIN_D + 2 * DRIVE_PIN_ROOT)
+    # the pivot holds the blade against the pin: the reaction, at mid blade height (nothing lies under a blade there)
+    pivot = bending(force, BLADE_T / 2, PIVOT_PIN_D)
+    rp = TEETH_PINION * MODULE / 2
+    face = RING_T - GAP
+    tangential = torque * 1000 / rp
+    flat_w = 2 * math.sqrt((SHAFT_D / 2) ** 2 - (SHAFT_FLAT - SHAFT_D / 2) ** 2)
+    # squeeze on a kibble at the edge of the opening, from the blade's turn about its pivot
+    return {
+        'torque': torque,
+        'pin force': force,
+        'squeeze': force * arm_pivot / (RP - R_AP / 2),
+        'drive pin': max(pin_cone, pin_root),
+        'pivot pin': pivot,
+        'pivot hole': force / (PIVOT_HOLE_D * BLADE_T),
+        'pinion tooth': tangential / (face * MODULE * LEWIS_Y[TEETH_PINION]),
+        'ring tooth': tangential / (face * MODULE * LEWIS_Y[TEETH_RING]),
+        'D-bore': torque * 1000 / (flat_w / 2) / (flat_w * face / 2),
+    }
 
 
 # ═════════════════════════════ solids ═════════════════════════════
@@ -323,7 +422,12 @@ def build_parts():
     blade_face = curve_face(blade_segments()) + Pos(RP, 0) * Circle(RO - RP)
     blade_face = blade_face - Pos(RP, 0) * Circle(PIVOT_HOLE_D / 2)
     dx, dy = polar(D_RAD, D_ANG)
-    blade = extrude(blade_face, amount=BLADE_T) + cyl(DRIVE_PIN_D / 2, BLADE_T - 0.01, BLADE_T + DRIVE_PIN_H, dx, dy)
+    def make_blade(pin_h):
+        b = extrude(blade_face, amount=BLADE_T) + cyl(DRIVE_PIN_D / 2, BLADE_T - 0.01, BLADE_T + pin_h, dx, dy)
+        return b + Pos(dx, dy, BLADE_T - 0.01) * Cone(DRIVE_PIN_D / 2 + DRIVE_PIN_ROOT, DRIVE_PIN_D / 2, DRIVE_PIN_ROOT, align=up)
+
+    blade = make_blade(DRIVE_PIN_H)
+    blade_upper = make_blade(DRIVE_PIN_H - (Z_UPPER - Z_BLADES))  # the same pin top
 
     # ── ring gear ──
     ring_face = curve_face(gear_segments(TEETH_RING, MODULE)) - Circle(R_RING_BORE)
@@ -350,6 +454,8 @@ def build_parts():
     for i in range(N):
         x, y = polar(RP, 360 * i / N)
         base += cyl(PIVOT_PIN_D / 2, Z_BLADES - 0.01, Z_RING - 0.4, x, y)
+        if i % 2:
+            base += cyl(BOSS_D / 2, Z_BLADES - 0.01, Z_UPPER, x, y)
     base -= cyl(NEMA_PILOT_D / 2, -1, Z_RING + 0.01, CENTER_DIST, 0)
     for sx in (-1, 1):
         for sy in (-1, 1):
@@ -367,6 +473,7 @@ def build_parts():
     for a in LID_SCREW_ANGLES:
         x, y = polar(LID_SCREW_R, a)
         lid -= cyl(SCREW_D / 2, Z_TOP - 1, Z_TOP + LID_T + 1, x, y)
+    lid -= cyl(SHAFT_CLEAR_D / 2, Z_TOP - 1, Z_TOP + LID_T + 1, CENTER_DIST, 0)
 
     # ── funnel: flange on the lid, cone up to the hopper collar ──
     z0 = Z_TOP + LID_T
@@ -379,20 +486,89 @@ def build_parts():
     for a in LID_SCREW_ANGLES:
         x, y = polar(LID_SCREW_R, a)
         funnel -= cyl(SCREW_D / 2, z0 - 1, z0 + 4, x, y)
+    funnel -= cyl(SHAFT_CLEAR_D / 2, z0 - 1, z0 + 4, CENTER_DIST, 0)
 
-    parts = {'base': base, 'blade': blade, 'ring': ring, 'pinion': pinion, 'lid': lid, 'funnel': funnel}
+    parts = {'base': base, 'blade': blade, 'blade_upper': blade_upper, 'ring': ring, 'pinion': pinion, 'lid': lid, 'funnel': funnel}
 
     def assembly(alpha):
-        placed = [base, Pos(0, 0, Z_RING + GAP / 2) * Rot(0, 0, K_RING * alpha) * ring, lid, funnel]
+        """The printed parts in place, as (name, solid)."""
+        placed = [('base', base), ('ring', Pos(0, 0, Z_RING + GAP / 2) * Rot(0, 0, K_RING * alpha) * ring), ('lid', lid), ('funnel', funnel)]
         # the ring has a tooth on 0 deg, an odd-toothed pinion a gap on 180 deg: in mesh as placed
-        placed.append(Pos(CENTER_DIST, 0, Z_RING + GAP) * Rot(0, 0, -K_RING * alpha * TEETH_RING / TEETH_PINION) * pinion)
+        placed.append(('pinion', Pos(CENTER_DIST, 0, Z_RING + GAP) * Rot(0, 0, -motor_turn(alpha)) * pinion))
         for i in range(N):
             # swing about the pivot, then to the blade's place on the circle
-            b = Rot(0, 0, 360 * i / N) * Pos(RP, 0, Z_BLADES) * Rot(0, 0, alpha) * Pos(-RP, 0, 0) * blade
-            placed.append(b)
+            z, part = (Z_UPPER, blade_upper) if i % 2 else (Z_BLADES, blade)
+            b = Rot(0, 0, 360 * i / N) * Pos(RP, 0, z) * Rot(0, 0, alpha) * Pos(-RP, 0, 0) * part
+            placed.append((f'blade {i + 1}', b))
         return placed
 
     return parts, assembly
+
+
+def motor_turn(alpha):
+    return K_RING * alpha * TEETH_RING / TEETH_PINION
+
+
+def hardware(alpha=0.0):
+    """Motor, driver and screws in place, as (name, solid): the bought parts of the assembly."""
+    from build123d import Align, Axis, Box, Circle, Cylinder, Pos, Rectangle, Rot, chamfer, extrude
+
+    up = (Align.CENTER, Align.CENTER, Align.MIN)
+    down = (Align.CENTER, Align.CENTER, Align.MAX)
+    gap_deg = 180 / TEETH_PINION
+    at_motor = Pos(CENTER_DIST, 0, 0)
+    placed = []
+
+    # NEMA 17, its mounting face against the underside of the base
+    body = Box(NEMA_BODY, NEMA_BODY, MOTOR_L, align=down)
+    body = chamfer(body.edges().filter_by(Axis.Z), 3.0)
+    body += Cylinder(MOTOR_BOSS_D / 2, MOTOR_BOSS_H, align=up)
+    body -= Cylinder(2.5, MOTOR_BOSS_H + 1, align=up)  # the shaft is its own body
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            body -= Pos(sx * NEMA_HOLE / 2, sy * NEMA_HOLE / 2, 0) * Cylinder(1.25, 4.5, align=down)
+    placed.append(('motor 17HS4401', at_motor * body))
+    # the D-shaft turns with the pinion, its flat under the set screw
+    shaft_face = Circle(2.5) - Pos(4.5 - 2.5 + 5, 0) * Rectangle(10, 10)
+    shaft = extrude(Rot(0, 0, gap_deg) * shaft_face, amount=MOTOR_SHAFT_L)
+    placed.append(('motor shaft', at_motor * Rot(0, 0, -motor_turn(alpha)) * shaft))
+
+    # BTT S42B v1.0 on the back: board, OLED and the connectors
+    z_pcb = -MOTOR_L - S42B_GAP
+    s42b = Pos(0, 0, z_pcb) * Box(NEMA_BODY, NEMA_BODY, S42B_PCB_T, align=down)
+    z_parts = z_pcb - S42B_PCB_T
+    s42b += Pos(0, 4, z_parts) * Box(27, 19, 4, align=down)  # OLED
+    for x in (-9, 0, 9):
+        s42b += Pos(x, -12, z_parts) * Box(6, 6, 3.5, align=down)  # buttons
+    s42b += Pos(-17.5, 0, z_parts) * Box(6, 20, S42B_H - S42B_PCB_T - S42B_GAP, align=down)  # signal and power
+    s42b += Pos(17.5, 0, z_parts) * Box(6, 12, 7, align=down)  # motor
+    placed.append(('driver BTT S42B v1.0', at_motor * s42b))
+
+    def socket_screw(length, head_z):
+        # M3 socket head: head above head_z, shank below
+        return Pos(0, 0, head_z) * Cylinder(2.75, 3.0, align=up) + Pos(0, 0, head_z) * Cylinder(1.5, length, align=down)
+
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = CENTER_DIST + sx * NEMA_HOLE / 2, sy * NEMA_HOLE / 2
+            placed.append(('screw M3x8 motor', Pos(x, y, 0) * socket_screw(8, M3_HEAD_SEAT)))
+    for a in LID_SCREW_ANGLES:
+        x, y = polar(LID_SCREW_R, a)
+        placed.append(('screw M3x16 lid', Pos(x, y, 0) * socket_screw(16, Z_TOP + LID_T + 3.0)))
+    # grub screw from the pinion's outside onto the shaft flat
+    grub = Rot(0, 0, gap_deg) * Pos(SHAFT_FLAT - SHAFT_D / 2 + 0.1, 0, Z_RING + GAP + (RING_T - GAP) / 2) * Rot(0, 90, 0) * Cylinder(1.5, 6, align=up)
+    placed.append(('grub screw M3x6', at_motor * Rot(0, 0, -motor_turn(alpha)) * grub))
+    return placed
+
+
+COLORS = {
+    'base': '#8b5a3c', 'ring': '#e0a526', 'pinion': '#7f9a2e', 'lid': '#c9b18f', 'funnel': '#d9622b',
+    'blade': '#a63d1f', 'motor': '#3a3d42', 'driver': '#1f6b3a', 'screw': '#9aa0a6', 'grub': '#9aa0a6',
+}
+
+
+def color_of(name):
+    return COLORS[name.split()[0]] if name.split()[0] in COLORS else '#888888'
 
 
 def build():
@@ -400,7 +576,7 @@ def build():
     from build123d import Compound, Pos, Rot, export_step, export_stl
 
     parts, assembly = build_parts()
-    base, blade, ring, pinion, lid, funnel = (parts[k] for k in ('base', 'blade', 'ring', 'pinion', 'lid', 'funnel'))
+    base, blade, blade_upper, ring, pinion, lid, funnel = (parts[k] for k in ('base', 'blade', 'blade_upper', 'ring', 'pinion', 'lid', 'funnel'))
     here = os.path.dirname(os.path.abspath(__file__))
     for sub in ('step', 'stl'):
         os.makedirs(os.path.join(here, sub), exist_ok=True)
@@ -409,6 +585,7 @@ def build():
     print_pose = {
         'base': base,
         'blade': blade,
+        'blade_upper': blade_upper,
         'ring': ring,
         'pinion': pinion,
         'lid': Rot(180, 0, 0) * Pos(0, 0, -(Z_TOP + LID_T)) * lid,
@@ -420,7 +597,13 @@ def build():
         print(f'{name}: {part.volume / 1000:.1f} cm3')
 
     # the closed state is the same parts turned: a CAD tool shows it with a joint
-    export_step(Compound(assembly(0)), os.path.join(here, 'step', 'assembly.step'))
+    from build123d import Color
+    children = []
+    for name, solid in assembly(0) + hardware(0):
+        solid = copy.deepcopy(solid)  # the blades share one shape: a copy each keeps its own name
+        solid.label, solid.color = name, Color(color_of(name))
+        children.append(solid)
+    export_step(Compound(label='feeder iris', children=children), os.path.join(here, 'step', 'assembly.step'))
 
 
 if __name__ == '__main__':
