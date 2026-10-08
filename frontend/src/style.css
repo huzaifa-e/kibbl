@@ -468,30 +468,23 @@ html[data-bs-theme='dark'] .theme-label-dark {
 }
 .air-comfort {
     display: flex;
-    flex-direction: column;
-    height: 100%;
+    align-items: center;
+    gap: 0.5rem;
     background: #2f5c46;
     color: #f3efe6;
-    padding: 0.9rem 1rem 1rem;
+    padding: 0.6rem 1rem 0.7rem 0.4rem;
 }
 [data-bs-theme='dark'] .air-comfort {
     background: #213e30;
 }
-.air-comfort-head {
-    display: flex;
-    justify-content: space-between;
-    font-size: 1.25rem;
-    font-weight: 700;
-    text-transform: none;
-}
-.air-comfort-head span {
-    text-transform: uppercase;
+.air-freshness .air-comfort-name {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 .air-dial {
     display: block;
-    width: 66%;
-    max-width: 260px;
-    margin: 0.4rem auto 0.9rem;
+    flex: 0 0 46%;
+    max-width: 190px;
 }
 .air-dial-ring {
     fill: none;
@@ -511,8 +504,9 @@ html[data-bs-theme='dark'] .theme-label-dark {
 }
 .air-comfort-values {
     display: flex;
-    justify-content: space-around;
-    text-align: center;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1 1 auto;
 }
 .air-comfort-caption {
     font-size: 0.72rem;
@@ -521,20 +515,15 @@ html[data-bs-theme='dark'] .theme-label-dark {
     opacity: 0.85;
 }
 .air-comfort-value {
-    font-size: 1.45rem;
+    font-size: 1.3rem;
     font-weight: 700;
+    line-height: 1.15;
 }
 .air-comfort-value small {
     font-size: 0.8rem;
     font-weight: 500;
 }
 
-.air-credit {
-    font-size: 0.68rem;
-    text-align: right;
-    padding: 0 0.6rem 0.3rem;
-    opacity: 0.75;
-}
 .air-comfort-value {
     white-space: nowrap;
 }
@@ -549,8 +538,13 @@ html[data-bs-theme='dark'] .theme-label-dark {
 .air-source {
     font-size: 0.68rem;
     text-align: center;
-    opacity: 0.7;
-    margin-top: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    background: #2f5c46;
+    color: #f3efe6;
+    opacity: 0.85;
+}
+[data-bs-theme='dark'] .air-source {
+    background: #213e30;
 }
 
 /* the chart of a meter or the heart rate on the home page: the room below the numbers */

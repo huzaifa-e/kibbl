@@ -3,7 +3,7 @@ import type ApexCharts from 'apexcharts';
 import type { Weather } from '../../../shared/climate';
 import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
-import { comfortCardHtml, freshnessCardHtml, type WindowEvents } from './airCard';
+import { airCardHtml, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
@@ -166,9 +166,9 @@ function renderOthers() {
     byId('other-devices').innerHTML =
         list
             .map((d) =>
-                // a kibbl. air: two cards of the usual size, its controls are on its own page
+                // a kibbl. air: one card of the usual size, its controls are on its own page
                 d.caps.includes('air')
-                    ? `<div class="col-md-6 col-xl-4">${freshnessCardHtml(d, weather, lastOpen.get(d._id))}</div><div class="col-md-6 col-xl-4">${comfortCardHtml(d)}</div>`
+                    ? `<div class="col-md-6 col-xl-4">${airCardHtml(d, weather, lastOpen.get(d._id))}</div>`
                     : `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`,
             )
             .join('') + heatingCardHtml();
@@ -306,10 +306,8 @@ socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     if (!d?.air || !telemetry.air) return;
     d.air.state = telemetry.air;
     d.air.sensorError = airSensorError(telemetry.air, d.air.sensorError);
-    const fresh = document.querySelector<HTMLElement>(`[data-air-fresh="${deviceId}"]`);
-    if (fresh) fresh.outerHTML = freshnessCardHtml(d, weather, lastOpen.get(deviceId));
-    const feel = document.querySelector<HTMLElement>(`[data-air-comfort="${deviceId}"]`);
-    if (feel) feel.outerHTML = comfortCardHtml(d);
+    const card = document.querySelector<HTMLElement>(`[data-air-card="${deviceId}"]`);
+    if (card) card.outerHTML = airCardHtml(d, weather, lastOpen.get(deviceId));
 });
 
 socket.on('deviceRemoved', (deviceId: string) => {

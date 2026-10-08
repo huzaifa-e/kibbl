@@ -2,7 +2,7 @@ import './main';
 import type { Weather } from '../../../shared/climate';
 import type { HeatingRoom, RoomOverview } from '../../../shared/heating';
 import { productName, roomClimate, type AirEvent, type DeviceSummary, type DeviceTelemetry } from '../../../shared/protocol';
-import { comfortCardHtml, freshnessCardHtml, windowText, type WindowEvents } from './airCard';
+import { airCardHtml, windowText, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { socket } from './socket';
 import { byId, emptyState, errorAlert, escapeHtml } from './utils';
@@ -134,8 +134,7 @@ function renderRoom(r: Room) {
 
     const cards: string[] = [];
     for (const d of r.devices.filter((x) => x.caps.includes('air'))) {
-        cards.push(`<div class="col-md-6 col-xl-4">${freshnessCardHtml(d, weather, windows.get(d._id))}</div>`);
-        cards.push(`<div class="col-md-6 col-xl-4">${comfortCardHtml(d)}</div>`);
+        cards.push(`<div class="col-md-6 col-xl-4">${airCardHtml(d, weather, windows.get(d._id))}</div>`);
     }
     const heating = heatingCardHtml(r.heating.map((h) => h.id));
     if (heating) cards.push(heating);
@@ -255,8 +254,6 @@ socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     const d = rooms.flatMap((r) => r.devices).find((x) => x._id === deviceId);
     if (!d?.air || !telemetry.air) return;
     d.air.state = telemetry.air;
-    const fresh = document.querySelector<HTMLElement>(`[data-air-fresh="${deviceId}"]`);
-    if (fresh) fresh.outerHTML = freshnessCardHtml(d, weather, windows.get(deviceId));
-    const feel = document.querySelector<HTMLElement>(`[data-air-comfort="${deviceId}"]`);
-    if (feel) feel.outerHTML = comfortCardHtml(d);
+    const card = document.querySelector<HTMLElement>(`[data-air-card="${deviceId}"]`);
+    if (card) card.outerHTML = airCardHtml(d, weather, windows.get(deviceId));
 });
