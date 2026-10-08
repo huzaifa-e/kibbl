@@ -14,9 +14,9 @@
  *
  * Serial 115200, one command per line, json as in docs/protocol.md or plain words:
  *   {"cmd":"feed","portions":2,"id":1}   feed 2      portions 1-10; this feed only: "opening" 4-42 mm, "openMs" 100-20000
- *   {"cmd":"open","mm":30}               open 30     opening 2-42 mm (42 without mm)
+ *   {"cmd":"open","mm":30}               open 30     opening 2-42 mm; fully (42, or without mm) also finds the zero again
  *   {"cmd":"close"}                      close
- *   {"cmd":"home"}                       home        to open, HOME_OVERTRAVEL past it and back: takes up a small drift
+ *   {"cmd":"home"}                       home        a whole stroke towards open and into the stop: the zero from anywhere
  *   {"cmd":"zero"}                       zero        the iris is open by hand: here is 0
  *   {"cmd":"move","steps":-50}           move -50    relative, no limits, at the set speed, for setting up
  *   {"cmd":"stop"}                       stop
@@ -39,8 +39,12 @@
 #define AT(steps) ((steps) * STROKE / 1400)  // a step count of the 1400 step stroke in iris.py, here
 static const int OPENING_TABLE[15] = {420, 410, 387, 363, 338, 312, 284, 255, 224, 192, 158, 123, 87, 51, 20};
 #define CLOSED_POS (STROKE - AT(8L))  // short of the stop, the blades already overlap there
-#define HOME_OVERTRAVEL AT(40L)    // past the open stop: the S42B pushes there at its 0.3 A
-#define HOME_SPEED 300                             // steps/s
+// Finding the zero: past the open stop, the S42B pushes against it; EN off for a moment and the
+// S42B takes the angle its encoder reads as its target (its PID_Cal_value_init), stops pushing and
+// holds there: that is 0. A slipped pinion or a skipped tooth (273 steps) is taken up this way.
+#define HOME_OVERTRAVEL AT(320L)  // 410 steps past where open should be: more than one tooth
+#define HOME_SPEED 800            // steps/s, into the stop
+#define RELEASE_MS 120            // EN off: longer than a loop of the S42B with its display
 #define MIN_SPEED 60
 #define NUDGE_STEPS AT(60L)        // reopen a little after closing, then close again: frees kibble in the gap
 
@@ -186,7 +190,7 @@ static int32_t stepsFor(int16_t opening) {
 
 // ─────────────────────────── jobs ───────────────────────────
 // A job is a list of moves and waits, run one after the other from loop().
-enum Step : uint8_t { GO, WAIT };
+enum Step : uint8_t { GO, WAIT, RELEASE, ZERO };
 struct Action { Step kind; int32_t value; uint16_t speed; };
 static Action job[8];  // one portion; a feed repeats it
 static uint8_t jobLength = 0, jobAt = 0, jobRepeats = 0;
@@ -215,7 +219,16 @@ static void jobUpdate() {
         if (a.kind == GO) {
             startMove(a.value, a.speed);
             jobAt++;
+        } else if (a.kind == ZERO) {
+            // enabled again where it stands: the S42B holds its encoder angle, here is open
+            PORTB &= ~_BV(EN_BIT);
+            noInterrupts();
+            position = target = 0;
+            interrupts();
+            savePosition();
+            jobAt++;
         } else {
+            if (a.kind == RELEASE) PORTB |= _BV(EN_BIT);
             waitUntil = millis() + a.value;
             waiting = true;
         }
@@ -292,6 +305,15 @@ static void sendInfo(long id) {
     Serial.print(F(",\"accel\":")); Serial.print(config.accel);
     Serial.print(F(",\"invert\":")); Serial.print(config.invert ? F("true") : F("false"));
     Serial.println(F("}}"));
+}
+
+// into the open stop, release, and zero there
+static void findZero(int32_t beyond) {
+    add(GO, beyond, HOME_SPEED);
+    add(WAIT, 150);
+    add(RELEASE, RELEASE_MS);
+    add(ZERO, 0);
+    add(WAIT, 50);
 }
 
 static void closeWithNudge() {
@@ -399,17 +421,16 @@ static void command(char *text) {
         float mm = 42;
         if (json) number(text, "mm", mm); else if (hasValue) mm = value;
         if (mm < 2 || mm > 42) { respond(id, false, "mm must be 2 to 42"); return; }
-        add(GO, stepsFor((int16_t)(mm * 10 + 0.5f)), config.speed);
+        int32_t to = stepsFor((int16_t)(mm * 10 + 0.5f));
+        add(GO, to, config.speed);
+        if (to == 0) findZero(-HOME_OVERTRAVEL);
         startJob(id, "open");
     } else if (!strcmp(cmd, "close")) {
         closeWithNudge();
         startJob(id, "close");
     } else if (!strcmp(cmd, "home")) {
-        add(GO, -HOME_OVERTRAVEL, HOME_SPEED);
-        add(WAIT, 300);
-        // back by the overtravel: where the stop was, the S42B stops pushing. Without feedback this takes up
-        // a drift of up to HOME_OVERTRAVEL; a position that is lost entirely is set with move and zero.
-        add(GO, 0, HOME_SPEED);
+        // from wherever it really is: a whole stroke and the overtravel towards open
+        findZero(readPosition() - STROKE - HOME_OVERTRAVEL);
         startJob(id, "home");
     } else if (!strcmp(cmd, "zero")) {
         noInterrupts();

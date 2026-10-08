@@ -17,7 +17,7 @@ The motor control of the feeder iris (`hardware/feeder/iris`): an Arduino Nano g
 | --- | --- | --- |
 | D9 | CLK (STEP) | 50 µs pulses from Timer1 |
 | D5 | DIR | high or low by `invert` |
-| D10 | EN | held low: enabled at EnablePin `!Enable` |
+| D10 | EN | held low: enabled at EnablePin `!Enable`; high for 0.12 s to find the zero |
 | GND, 5V | GND, COM | as wired for the samgas NEMA 17 demo, unchanged |
 
 The pins are the ones of `samgas-nema17-demo/stepper_motor_controller`, which ran the same motor and driver first. D7/D8 are not wired.
@@ -80,11 +80,13 @@ Fixed in the sketch:
 | Stroke | 1792 | 157.5° of motor at 4096 a turn (5:1 to the ring, 31.5° of the ring) |
 | Closed | 1782 | 10 short of the closed stop: 2.3 mm left |
 | Nudge | 76 | after closing: open this far and close again, frees kibble caught between the blades |
-| Home overtravel | 51 | `home` goes this far past open and back |
+| Home overtravel | 410 | how far a full open drives past 0 into the open stop (a tooth of the pinion is 273) |
 
 The opening at each step comes from `iris.py` (`OPENING_TABLE`, 15 points over the stroke).
 
-The position is saved in EEPROM after every move, so it survives a reset. The S42B tells nothing back (no position, no stall), so after the iris was turned by hand: open it fully by hand and send `zero`.
+The position is saved in EEPROM after every move, so it survives a reset. The S42B tells nothing back (no position, no stall), and under load the pinion can slip on the shaft or skip a tooth: the count then no longer matches the iris and it stops short of open.
+
+So every **full open** finds the zero again: it drives 410 steps past 0 into the open stop at 800 steps/s, where the S42B pushes against the stop; then EN goes high for 0.12 s. The S42B takes the angle its encoder reads as its new target when it is disabled (`PID_Cal_value_init` in its firmware), stops pushing and holds there once enabled: that is 0. `home` does the same from anywhere, with a whole stroke towards open. `zero` is still there for setting up by hand.
 
 ## Commands
 
@@ -93,11 +95,11 @@ USB serial, 115200 baud, one line each, json as in `docs/protocol.md` or plain w
 | Json | Words | |
 | --- | --- | --- |
 | `{"cmd":"feed","portions":2,"id":1}` | `feed 2` | open to `opening`, wait `openMs`, close with the nudge; 1-10 portions; `opening` and `openMs` in the json for this feed only; ends with `{"type":"event","event":"fed"}` |
-| `{"cmd":"open","mm":30}` | `open 30` | to an opening of 2-42 mm, `open` alone fully |
+| `{"cmd":"open","mm":30}` | `open 30` | to an opening of 2-42 mm; `open` alone (or 42) fully, and finds the zero again |
 | `{"cmd":"close"}` | `close` | |
 | `{"cmd":"move","steps":-50}` | `move -50` | relative, no limits: for setting up |
 | `{"cmd":"zero"}` | `zero` | here is fully open |
-| `{"cmd":"home"}` | `home` | to open, past it and back: takes up a small drift |
+| `{"cmd":"home"}` | `home` | a whole stroke towards open into the stop, the zero there: from wherever the iris is |
 | `{"cmd":"stop"}` | `stop` | |
 | `{"cmd":"info"}` | `info` | position, opening, settings |
 | `{"cmd":"feeder_config","speed":2400}` | `config speed 2400` | any of `opening`, `openMs`, `speed`, `accel`, `invert` |
@@ -149,4 +151,4 @@ avrdude -c arduino -p m328p -P /dev/cu.usbserial-XXXX -b 57600 -U flash:w:nano-b
 | buzzes in bursts at power-up | DIP 4 ON on an uncalibrated board: it calibrates, with the pinion on it runs into the stops. Power off, pinion off |
 | turns slowly | `speed` too low; `Err` growing while it moves means the motor lags: more Motor mA |
 | turns the wrong way | `config invert true` |
-| closes short or into the stop | the zero is off: open fully by hand, `zero` |
+| opens short of 42 mm, or closes into the stop | the zero moved (pinion slipped, tooth skipped): `open` (fully) or `home` finds it. If it keeps moving: tighten the grub screw on the shaft's flat |

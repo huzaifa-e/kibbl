@@ -92,7 +92,7 @@ Seen from above the ring turns counter-clockwise to close, so the motor turns cl
 | 1333 | 1706 | 30° | 4 mm |
 | 1400 | 1792 | 31.5° | 2 mm (closed stop) |
 
-* **Homing**: the S42B closes the loop on its encoder and keeps pushing against a hard stop instead of stalling. Home at the set 0.3 A: step towards open past the stop by a few degrees, then take that as 0; a switch at the open position is the cleaner way.
+* **Homing**: the S42B closes the loop on its encoder and keeps pushing against a hard stop instead of stalling. Every full open drives past 0 into the open stop, then disables the S42B for a moment: it takes the angle it stands at as its target, and that is 0 (`firmware/feeder-motor`).
 * **Portions**: open to a set opening (e.g. 22 mm, 800 microsteps) for a set time, then close. Grams per second depend on the kibble; weigh a few runs once and the feeder doses by time. Closing through falling kibble: if the closed position is not reached in time, reopen a little and close again, rather than raising the current.
 * The feeder joins the server as a device with the `feeder` capability (`docs/protocol.md`, command `{"cmd":"feed","portions":n}`).
 
