@@ -19,7 +19,7 @@
  *   {"cmd":"home"}                       home        a whole stroke towards open and into the stop: the zero from anywhere
  *   {"cmd":"zero"}                       zero        the iris is open by hand: here is 0
  *   {"cmd":"release","ms":5000}          release 5000  the motor off (EN high) for 100-30000 ms: turns by hand
- *   {"cmd":"run","dir":"close"}          run close   turns until stop; that stop is taught as the closed limit
+ *   {"cmd":"run","dir":"close"}          run close   at full speed until stop (30 s at most); that stop is the closed limit
  *   {"cmd":"run","dir":"open"}           run open    the same towards open: that stop becomes 0, the open limit
  *   {"cmd":"move","steps":-50}           move -50    relative, no limits, at the set speed, for setting up
  *   {"cmd":"stop"}                       stop
@@ -45,7 +45,12 @@ static const int OPENING_TABLE[15] = {420, 410, 387, 363, 338, 312, 284, 255, 22
 // The limits are taught under load (run, stop): 0 is where the open run stopped, closedPos where
 // the closed one did. The opening table of the design stretches over them.
 #define CLOSED_POS ((int32_t)config.closedPos)
-#define TEACH_SPEED 800  // steps/s at most while teaching: a stop lands where it is meant
+// a teaching run: full speed until stopped, the stop at once (no braking ramp: the S42B's own loop
+// brings the shaft to rest), and over by itself only after RUN_MAX_MS
+#define RUN_SPEED 4000
+#define RUN_ACCEL 20000
+#define RUN_STEPS 2000000L
+#define RUN_MAX_MS 30000UL
 // Finding the zero: past the open stop, the S42B pushes against it; EN off for a moment and the
 // S42B takes the angle its encoder reads as its target (its PID_Cal_value_init), stops pushing and
 // holds there: that is 0. A slipped pinion or a skipped tooth (273 steps) is taken up this way.
@@ -114,10 +119,15 @@ static void setSpeed(float stepsPerSecond) {
 // ─────────────────────────── motion ───────────────────────────
 static float speedNow = 0;
 static uint16_t moveSpeed = 0;
+static uint16_t moveAccel = 3000;
+static uint32_t runSince = 0;
 static bool moving = false;
 static uint32_t lastRamp = 0;
 
+static bool running();
+
 static void startMove(int32_t to, uint16_t speed) {
+    moveAccel = running() ? RUN_ACCEL : config.accel;
     int32_t from = readPosition();
     if (to == from) return;
     int8_t dir = to > from ? 1 : -1;
@@ -162,15 +172,15 @@ static void rampUpdate() {
         savePosition();
         return;
     }
-    float braking = sqrt(2.0f * config.accel * labs(left));
-    speedNow = min(min(speedNow + config.accel * dt, (float)moveSpeed), max(braking, (float)MIN_SPEED));
+    float braking = sqrt(2.0f * moveAccel * labs(left));
+    speedNow = min(min(speedNow + moveAccel * dt, (float)moveSpeed), max(braking, (float)MIN_SPEED));
     setSpeed(speedNow);
 }
 
 static void stopMove() {
     // brakes from here: the shortest stop the ramp allows
     int32_t p = readPosition();
-    int32_t brake = min((int32_t)(speedNow * speedNow / (2.0f * config.accel)), labs(target - p));
+    int32_t brake = min((int32_t)(speedNow * speedNow / (2.0f * moveAccel)), labs(target - p));
     noInterrupts();
     target = p + (stepDir > 0 ? brake : -brake);
     interrupts();
@@ -267,6 +277,7 @@ static void jobUpdate() {
 }
 
 static bool busy() { return moving || *jobName; }
+static bool running() { return !strcmp(jobName, "run"); }
 
 static void startJob(long id, const char *name) {
     jobAt = 0;
@@ -411,11 +422,18 @@ static void command(char *text) {
 
     if (!strcmp(cmd, "info")) { sendInfo(id); return; }
     if (!strcmp(cmd, "stop")) {
-        bool run = !strcmp(jobName, "run");
+        bool run = running();
         jobLength = jobAt = jobPortions = jobRepeats = 0;
         jobName = "";
         waiting = false;
-        if (moving) stopMove();
+        if (run && moving) {
+            // the limit is where Stop was pressed: no more steps from here
+            noInterrupts();
+            target = position;
+            interrupts();
+        } else if (moving) {
+            stopMove();
+        }
         if (run) {
             // where it comes to rest is the limit: taught in jobUpdate once it stands
             jobName = "teach";
@@ -491,8 +509,9 @@ static void command(char *text) {
         if (!close && !open) { respond(id, false, "dir must be open or close"); return; }
         teachDir = close ? 1 : -1;
         // far enough for any load, short of running away: two strokes
-        add(GO, readPosition() + teachDir * 2 * STROKE, min(config.speed, (uint16_t)TEACH_SPEED));
         startJob(id, "run");
+        add(GO, readPosition() + teachDir * RUN_STEPS, RUN_SPEED);
+        runSince = millis();
         sendInfo(id);  // answered now, running: the stop answers with the limit it taught
         jobId = -1;
         return;
@@ -566,6 +585,8 @@ void loop() {
             line[lineLength++] = c;
         }
     }
+    // a run nobody stops: over after RUN_MAX_MS, braked, nothing taught
+    if (running() && moving && millis() - runSince > RUN_MAX_MS) stopMove();
     rampUpdate();
     jobUpdate();
 }

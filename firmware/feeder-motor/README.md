@@ -90,8 +90,10 @@ The position is saved in EEPROM after every move, so it survives a reset. The S4
 
 With kibble in the hopper the iris does not reach the empty stops. In the app (feeder card → Tuning → Teach the loaded limits), or over serial:
 
-1. **Run closing** (`run close`): the motor turns towards closed at up to 800 steps/s until **Stop** (`stop`). Where it comes to rest is the closed limit, if it is at least 300 steps from 0.
-2. **Run opening** (`run open`) and **Stop**: where it rests becomes 0, the open limit; the closed limit keeps its place.
+1. **Run opening** (`run open`) and **Stop** (`stop`) at fully open: where it rests becomes 0, the open limit; the closed limit keeps its place.
+2. **Run closing** (`run close`) and **Stop** at closed: that is the closed limit, if it is 300-4000 steps from 0.
+
+A run goes at full speed (4000 steps/s, 20000 steps/s²) until Stop, and ends by itself, braked and teaching nothing, after 30 s. Stop takes no braking ramp: no more steps from the moment it arrives, the S42B brings the shaft to rest.
 
 `close`, `open`, the slider and the feeding levels then work between the two: the opening table of the design is stretched over them. Teach again when the load or the mechanics change.
 
