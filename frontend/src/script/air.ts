@@ -17,6 +17,7 @@ import { allRoomHints, type HintLevel, type RecentAir, type Weather } from '../.
 import { baseOptions } from './activityCharts';
 import { loadRooms, roomSelectHtml } from './roomsPanel';
 import { windowText } from './airCard';
+import { bindUpdateInstall, updateNoticeHtml } from './updateNotice';
 import { levelColors } from './controls';
 import { tone } from './healthCharts';
 import { request, socket } from './socket';
@@ -238,7 +239,7 @@ function renderTiles() {
         alerts.push(
             `<div class="alert alert-secondary">${escapeHtml(d.name)} is offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}. It keeps measuring and showing the air by itself; what it detects in the meantime arrives when it is back.</div>`,
         );
-    byId('air-alerts').innerHTML = alerts.join('');
+    byId('air-alerts').innerHTML = updateNoticeHtml(d) + alerts.join('');
     renderClimate();
 }
 
@@ -773,3 +774,6 @@ window.setInterval(() => {
 window.setInterval(() => {
     if (!document.hidden && device) renderTiles();
 }, 60_000);
+
+// the Install button of the update notice
+bindUpdateInstall(document.body, (html) => (byId('air-result').innerHTML = html));

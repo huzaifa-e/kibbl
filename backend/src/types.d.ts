@@ -45,6 +45,8 @@ declare global {
         roomId?: string;
         lastSeen?: number;
         createdAt: number;
+        // the last update offered to it (core/firmware.ts): attempts set to 0 tries again
+        ota?: { version: string; attempts: number; lastAt: number; error?: string };
     }
 
     interface TadoLinkDoc {
@@ -67,6 +69,23 @@ declare global {
         name: string;
         kind?: string; // RoomKind, chosen in the app; none: guessed from the name
         createdAt: number;
+    }
+
+    /* The firmware of a product an account published: devices on an older version take it.
+     * The rules below can be changed in the database; the server reads them every minute. */
+    interface FirmwareReleaseDoc {
+        _id: string; // ownerID|model
+        ownerID: string;
+        model: string;
+        version: string;
+        file: string; // the image on the server's disk
+        size: number;
+        at: number;
+        auto: boolean; // devices take it by themselves (false: only "Install" in the app)
+        maxAttempts: number; // tries per device before it waits for "Install"
+        retryMinutes: number; // between two tries on one device
+        only: string[]; // device ids that take it; empty: all of the product
+        exclude: string[]; // device ids that never take it by themselves
     }
 
     interface TadoReadingDoc {

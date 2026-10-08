@@ -22,6 +22,7 @@ export let AirEventModel: Model<AirEventDoc>;
 export let TadoLink: Model<TadoLinkDoc>;
 export let Room: Model<RoomDoc>;
 export let TadoReading: Model<TadoReadingDoc>;
+export let FirmwareRelease: Model<FirmwareReleaseDoc>;
 
 let isConnected = false;
 
@@ -71,6 +72,8 @@ async function init() {
         lamp: { type: Schema.Types.Mixed },
         claimHash: String,
         roomId: { type: String, index: true },
+        // the last update offered to it (core/firmware.ts): attempts set to 0 tries again
+        ota: { version: String, attempts: Number, lastAt: Number, error: String, _id: false },
         night: {
             enabled: { type: Boolean, default: nightDefaults.enabled },
             from: { type: Number, default: nightDefaults.from },
@@ -326,6 +329,25 @@ async function init() {
         { versionKey: false },
     );
     Room = model<RoomDoc>('Room', roomSchema);
+
+    const firmwareReleaseSchema = new Schema<FirmwareReleaseDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true },
+            model: { type: String, required: true },
+            version: { type: String, required: true },
+            file: { type: String, required: true },
+            size: { type: Number, required: true },
+            at: { type: Number, required: true },
+            auto: { type: Boolean, default: true },
+            maxAttempts: { type: Number, default: 3 },
+            retryMinutes: { type: Number, default: 10 },
+            only: { type: [String], default: [] },
+            exclude: { type: [String], default: [] },
+        },
+        { versionKey: false },
+    );
+    FirmwareRelease = model<FirmwareReleaseDoc>('FirmwareRelease', firmwareReleaseSchema);
 
     const tadoReadingSchema = new Schema<TadoReadingDoc>(
         {

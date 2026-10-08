@@ -13,6 +13,7 @@ import { heatmapChart } from './activityCharts';
 import { bindControls, controlsHtml } from './controls';
 import { bindEventViewer, eventCardHtml } from './events';
 import { request, socket } from './socket';
+import { bindUpdateInstall, updateNoticeHtml } from './updateNotice';
 import { byId, cameraProblem, emptyState, errorAlert, escapeHtml, formatBytes, formatUptime, signalQuality, successAlert, timeAgo } from './utils';
 
 const deviceId = window.location.pathname.split('/')[2]?.toUpperCase() ?? '';
@@ -38,6 +39,7 @@ function layout(d: DeviceSummary) {
     byId('page-title').textContent = d.name;
     byId('page-pretitle').textContent = productName(d.model, d.caps);
     byId('container').innerHTML = `
+        <div id="camera-update"></div>
         <div class="row row-cards">
             <div class="col-lg-8">
                 <div class="card">
@@ -334,6 +336,8 @@ async function renderHeatmap() {
 }
 
 function renderDevice() {
+    const update = document.getElementById('camera-update');
+    if (update && device) update.innerHTML = updateNoticeHtml(device);
     renderBadges();
     renderStatus();
     updateStream();
@@ -364,6 +368,7 @@ window.addEventListener('themechange', () => {
 });
 
 socket.on('connect', load);
+bindUpdateInstall(document.body);
 
 socket.on('deviceUpdate', (d: DeviceSummary) => {
     if (d._id !== deviceId || !rendered) return;

@@ -177,7 +177,19 @@ idf.py -B ~/esp/builds/kibbl-air -p /dev/cu.usbserial-XXXX -b 115200 flash monit
 
 `-B` puts the build outside the repository folder: ESP-IDF 5.1 cannot build in a path with parentheses (`(39) home-monitor`). In a checkout without them `idf.py build` works as usual. 921600 baud is too fast for the ESP32-CAM-MB adapter.
 
-Updates after the first flash: Devices → Actions → Update firmware with `KIBBL-FW.bin` (cam) or `KIBBL-AIR.bin` (air) from the build folder, or `KIBBL-AIR-<version>-<commit>.bin` from the `firmware-air-…` artifact of the CI build. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+Updates after the first flash: Devices → **Update all** with `KIBBL-FW.bin` (cam) or `KIBBL-AIR.bin` (air) from the build folder, or `KIBBL-AIR-<version>-<commit>.bin` from the `firmware-air-…` artifact of the CI build. The file becomes the release of its product on the server (`data/app/firmware/releases/`, one per account and product): every device of the product on an older version number takes it, an online one right away, an offline one when it connects next. A device never goes back to an older number. Until it runs the release its page and the device list say *update available*, with *Install now*. Actions → *Update from a file* puts a file on a single device without storing it. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+
+The rules of a release are in MongoDB, collection `firmwarereleases` (`_id` is `<ownerID>|<model>`), and can be changed there; the server reads them every minute:
+
+| Field | Default | |
+| --- | --- | --- |
+| `auto` | `true` | devices take it by themselves; `false`: only *Install now* in the app |
+| `maxAttempts` | 3 | tries per device; a device that comes back on its old version is tried again until then |
+| `retryMinutes` | 10 | between two tries on one device |
+| `only` | `[]` | device ids that take it; empty: every device of the product |
+| `exclude` | `[]` | device ids that never take it by themselves |
+
+Each device keeps its last try in `devices.ota` (`version`, `attempts`, `lastAt`, `error`); `attempts: 0` lets it try again. `version` and `file` are set by the upload.
 
 ## Versions
 

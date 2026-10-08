@@ -1,30 +1,18 @@
-import crypto from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import express from 'express';
 import multer from 'multer';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
-import { getLive, sendCommand } from '../core/devices';
+import { getLive } from '../core/devices';
+import { deviceBaseUrl, downloadFor, offerUpdate, publishRelease, releaseFor, startUpdate } from '../core/firmware';
 import { logger } from '../core/logger';
 
 const log = logger('ota');
-import { firmwareRoot, resolveInside } from '../core/storage';
 
 const MAX_IMAGE_BYTES = 0x1e0000; // one app slot of kibbl_partition_tbl.csv
-const LINK_LIFETIME_MS = 15 * 60 * 1000;
 
 const ESP_IMAGE_MAGIC = 0xe9;
 const APP_DESC_MAGIC = 0xabcd5432; // esp_app_desc_t, right after the image and first segment header
 const APP_DESC_OFFSET = 24 + 8;
-
-interface Download {
-    file: string;
-    deviceId: string;
-    expires: number;
-}
-
-// a download link per update, valid for one device and 15 minutes: the device fetches it without a cookie
-const downloads = new Map<string, Download>();
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES, files: 1 } });
 
@@ -45,43 +33,17 @@ function appInfo(image: Buffer) {
     return { version: text(16), project: text(48) };
 }
 
-function deviceBaseUrl() {
-    return (process.env.DEVICE_BASE_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
-}
-
-async function expireDownloads() {
-    const now = Date.now();
-    for (const [token, d] of downloads) {
-        if (d.expires < now) {
-            downloads.delete(token);
-            await rm(d.file, { force: true });
-        }
-    }
-}
-
-// the image for one device behind a link of its own, and the command to fetch it
-async function startUpdate(deviceId: string, image: Buffer): Promise<{ ok: boolean; error?: string }> {
-    const token = crypto.randomBytes(16).toString('hex');
-    await mkdir(firmwareRoot(), { recursive: true });
-    const file = resolveInside(firmwareRoot(), `${token}.bin`);
-    await writeFile(file, image);
-    downloads.set(token, { file, deviceId, expires: Date.now() + LINK_LIFETIME_MS });
-    const resp = await sendCommand(deviceId, { cmd: 'ota', url: `${deviceBaseUrl()}/firmware/${token}.bin` });
-    if (!resp.ok) {
-        downloads.delete(token);
-        await rm(file, { force: true });
-        return { ok: false, error: resp.error };
-    }
-    return { ok: true };
-}
-
+/* Updates (core/firmware.ts): a file for one device, a file published for every device of
+ * its product (stored, offline ones take it when they connect), and the stored one now. */
 export default function initFirmwareRoutes(app: express.Application) {
-    setInterval(() => expireDownloads().catch(() => undefined), 60 * 1000);
+    const auth = checkAuthMiddleware as express.RequestHandler;
+    const user = (req: RequestWithSessionInfo) => req.sessionInfo!.userID;
 
-    app.post('/api/devices/:deviceID/firmware', checkAuthMiddleware, upload.single('firmware'), async (req: RequestWithSessionInfo, res) => {
+    // a file for this one device, not stored
+    app.post('/api/devices/:deviceID/firmware', auth, upload.single('firmware'), async (req: RequestWithSessionInfo, res) => {
         const deviceId = req.params.deviceID;
         const doc = /^[0-9A-F]{12}$/.test(deviceId) ? await Device.findById(deviceId).lean() : null;
-        if (!doc || doc.status !== 'approved' || doc.ownerID !== req.sessionInfo!.userID || !doc.caps.includes('ota')) {
+        if (!doc || doc.status !== 'approved' || doc.ownerID !== user(req) || !doc.caps.includes('ota')) {
             return res.status(404).send('No device that takes updates.');
         }
         if (!deviceBaseUrl()) {
@@ -97,15 +59,15 @@ export default function initFirmwareRoutes(app: express.Application) {
         if (expected && info.project !== expected) {
             return res.status(400).send(`This firmware is for another product (${info.project}); this device takes ${expected}.`);
         }
-        const started = await startUpdate(deviceId, image);
+        const started = await startUpdate(deviceId, { image });
         if (!started.ok) return res.status(502).send(`The device did not start the update: ${started.error}`);
         log.info('update started', { device: deviceId, version: info.version, user: req.sessionInfo!.email });
         res.json({ version: info.version });
     });
 
-    /* One file to every device of its product the person owns: each online one starts, the
-     * others are listed. One already on this version is left as it is. */
-    app.post('/api/firmware/rollout', checkAuthMiddleware, upload.single('firmware'), async (req: RequestWithSessionInfo, res) => {
+    /* A file for every device of its product the person owns: stored on the server, each one
+     * on an older version that is online starts now, the others when they connect. */
+    app.post('/api/firmware/rollout', auth, upload.single('firmware'), async (req: RequestWithSessionInfo, res) => {
         if (!deviceBaseUrl()) {
             return res.status(500).send('DEVICE_BASE_URL is not set on the server.');
         }
@@ -115,28 +77,38 @@ export default function initFirmwareRoutes(app: express.Application) {
         if (!image || !info || !model) {
             return res.status(400).send('This is no kibbl. firmware file.');
         }
-        const docs = await Device.find({ ownerID: req.sessionInfo!.userID, status: 'approved', model, caps: 'ota' }).sort({ name: 1 }).lean();
+        await publishRelease(user(req), model, info.version, image);
+        const docs = await Device.find({ ownerID: user(req), status: 'approved', model, caps: 'ota' })
+            .sort({ name: 1 })
+            .lean();
         const devices = await Promise.all(
-            docs.map(async (doc) => {
-                const base = { id: doc._id, name: doc.name };
-                if (doc.fw === info.version) return { ...base, result: 'current' as const };
-                if (!getLive(doc._id)) return { ...base, result: 'offline' as const };
-                const started = await startUpdate(doc._id, image);
-                return started.ok ? { ...base, result: 'started' as const } : { ...base, result: 'failed' as const, error: started.error };
-            }),
+            docs.map(async (doc) => ({ id: doc._id, name: doc.name, result: await offerUpdate({ _id: doc._id, online: !!getLive(doc._id) }, true) })),
         );
-        log.info('rollout', {
-            version: info.version,
-            started: devices.filter((d) => d.result === 'started').length,
-            of: devices.length,
-            user: req.sessionInfo!.email,
-        });
+        log.info('release published', { version: info.version, started: devices.filter((d) => d.result === 'started').length, of: devices.length });
         res.json({ version: info.version, devices });
     });
 
+    // the stored release on this device now, also after tries that did not take
+    app.post('/api/devices/:deviceID/update', auth, async (req: RequestWithSessionInfo, res) => {
+        const doc = await Device.findOne({ _id: req.params.deviceID, ownerID: user(req), status: 'approved' }, { _id: 1 }).lean();
+        if (!doc) return res.status(404).send('No such device.');
+        const result = await offerUpdate({ _id: doc._id, online: !!getLive(doc._id) }, true);
+        res.json({ result });
+    });
+
+    // the releases stored for the person's products
+    app.get('/api/firmware', auth, (req: RequestWithSessionInfo, res) => {
+        res.json(
+            Object.keys(PROJECTS)
+                .map((model) => ({ model, ...releaseFor(user(req), model) }))
+                .filter((r) => r.version)
+                .map(({ model, version, at }) => ({ model, version, at })),
+        );
+    });
+
     app.get('/firmware/:token.bin', (req, res) => {
-        const download = downloads.get(req.params.token);
-        if (!download || download.expires < Date.now()) {
+        const download = downloadFor(req.params.token);
+        if (!download) {
             res.sendStatus(404);
             return;
         }

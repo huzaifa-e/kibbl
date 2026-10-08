@@ -67,7 +67,7 @@ function deviceRow(d: DeviceSummary) {
             ${d.wifiChangeFailed ? `<div class="text-orange small"><i class="ti ti-alert-triangle"></i> could not join ${escapeHtml(d.wifiChangeFailed)}, went back</div>` : ''}</td>
         <td class="d-none d-md-table-cell">${caps}</td>
         <td style="min-width:140px">${roomSelectHtml(d.roomId, `data-device-room="${d._id}" aria-label="Room of ${escapeHtml(d.name)}"`)}</td>
-        <td class="d-none d-lg-table-cell text-mono small">${escapeHtml(d.fw ?? '–')}</td>
+        <td class="d-none d-lg-table-cell text-mono small">${escapeHtml(d.fw ?? '–')}${d.update ? `<div><span class="badge bg-azure-lt">${d.update.installing ? 'installing' : 'update available'}</span></div>` : ''}</td>
         <td class="text-end">
             <div class="dropdown">
                 <button class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}'>Actions</button>
@@ -78,7 +78,8 @@ function deviceRow(d: DeviceSummary) {
                     <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="wifi" data-device="${d._id}"><i class="ti ti-wifi me-2"></i> Wi-Fi network</a>
                     ${d.caps.includes('blink') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="blink" data-device="${d._id}"><i class="ti ti-bulb me-2"></i> Blink to find it</a>` : ''}
                     <a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="reboot" data-device="${d._id}"><i class="ti ti-refresh me-2"></i> Restart</a>
-                    ${d.caps.includes('ota') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="update" data-device="${d._id}"><i class="ti ti-upload me-2"></i> Update firmware</a>` : ''}
+                    ${d.update && !d.update.installing ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="install" data-device="${d._id}"><i class="ti ti-download me-2"></i> Install ${escapeHtml(d.update.version)}</a>` : ''}
+                    ${d.caps.includes('ota') ? `<a class="dropdown-item ${d.online ? '' : 'disabled'}" href="#" data-action="update" data-device="${d._id}"><i class="ti ti-upload me-2"></i> Update from a file</a>` : ''}
                     <div class="dropdown-divider"></div>
                     <a class="dropdown-item text-danger" href="#" data-action="remove" data-device="${d._id}"><i class="ti ti-trash me-2"></i> Remove</a>
                 </div>
@@ -355,6 +356,14 @@ async function onAction(action: string, deviceId: string) {
         if (!confirm(`${what} ${d.name}? Its recorded activity and snapshots are deleted. It can pair again and wait for approval.`)) return;
         const res = await request<{ ok: boolean }>('removeDevice', deviceId);
         if (!res.ok) result(errorAlert('Not removed.'));
+    } else if (action === 'install') {
+        const res = await fetch(`/api/devices/${deviceId}/update`, { method: 'POST' }).catch(() => undefined);
+        const out = res?.ok ? ((await res.json()) as { result: string }).result : 'failed';
+        result(
+            out === 'started'
+                ? successAlert(`${d.name} is installing the update. It restarts by itself in about a minute.`)
+                : errorAlert(out === 'offline' ? `${d.name} is offline.` : 'The update did not start.'),
+        );
     } else if (action === 'update') {
         const input = byId<HTMLInputElement>('firmware-file');
         input.value = '';
@@ -378,8 +387,9 @@ async function onAction(action: string, deviceId: string) {
 
 const ROLLOUT_WORDS: Record<string, string> = {
     started: 'installing, restarts in about a minute',
-    current: 'already on it',
-    offline: 'offline, not updated',
+    current: 'already on it or newer',
+    offline: 'offline: updates when it is online again',
+    waiting: 'waits (see the release in the database)',
     failed: 'did not start',
 };
 

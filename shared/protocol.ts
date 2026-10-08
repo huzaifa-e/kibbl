@@ -240,6 +240,7 @@ export interface SmokeDay {
 export interface DeviceSummary {
     _id: string;
     name: string;
+    update?: { version: string; installing: boolean }; // the release of its product on the server is newer than its firmware
     status: 'pending' | 'approved';
     online: boolean;
     model?: string;

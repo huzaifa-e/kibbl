@@ -15,6 +15,7 @@ import {
 } from '../../../shared/protocol';
 import { pairedRoom } from '../tado/service';
 import { roomKindOf } from './rooms';
+import { installing, updateFor } from './firmware';
 import { nightSchedule, parseAirState } from './airState';
 import db, { Device } from './db';
 import { hub } from './hub';
@@ -84,6 +85,11 @@ function airSummary(doc: DeviceDoc, dev: LiveDevice | undefined): AirDevice | un
     };
 }
 
+function updateSummary(doc: DeviceDoc) {
+    const version = updateFor(doc);
+    return version ? { version, installing: installing(doc, version) } : undefined;
+}
+
 export function summarize(doc: DeviceDoc): DeviceSummary {
     const dev = live.get(doc._id);
     const info = dev?.info ?? {};
@@ -107,6 +113,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         light: typeof info.light === 'number' ? info.light : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         air: airSummary(doc, dev),
+        update: updateSummary(doc),
         roomId: doc.roomId,
         telemetry: dev?.telemetry,
         viewers: viewers.get(doc._id) ?? 0,
