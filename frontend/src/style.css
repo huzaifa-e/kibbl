@@ -527,6 +527,12 @@ html[data-bs-theme='dark'] .theme-label-dark {
     margin-top: 0.5rem;
 }
 
+/* a workout of the health page and its heart rate */
+.workout-hr {
+    min-height: 150px;
+    margin: 0.3rem -0.5rem 0 -0.8rem;
+}
+
 /* the chart of a meter or the heart rate on the home page: the room below the numbers */
 .home-chart {
     flex: 1 1 auto;

@@ -93,9 +93,23 @@ test('the latest heart rate zones, names in title case', () => {
 
 test('a workout type as words', () => {
     const [w] = parseExercise([
-        { exercise: { exerciseType: 'STRENGTH_TRAINING', interval: { startTime: '2026-10-04T16:00:00Z' }, metricsSummary: { caloriesKcal: '547' } } },
+        {
+            exercise: {
+                exerciseType: 'STRENGTH_TRAINING',
+                interval: { startTime: '2026-10-04T16:00:00Z', endTime: '2026-10-04T16:45:00Z' },
+                metricsSummary: { caloriesKcal: '547' },
+            },
+        },
     ]);
-    assert.deepEqual(w, { date: '2026-10-04', type: 'Strength Training', calories: 547, avg_hr: null, azm: null });
+    assert.deepEqual(w, {
+        date: '2026-10-04',
+        type: 'Strength Training',
+        start: Date.parse('2026-10-04T16:00:00Z'),
+        end: Date.parse('2026-10-04T16:45:00Z'),
+        calories: 547,
+        avg_hr: null,
+        azm: null,
+    });
 });
 
 test('the first number of a data point skips dates and times at every level', () => {

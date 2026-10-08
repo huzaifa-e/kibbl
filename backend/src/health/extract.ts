@@ -224,9 +224,13 @@ export function parseExercise(points: Json[]) {
         const e = p?.exercise ?? {};
         const m = e.metricsSummary ?? {};
         const start: string = e.interval?.startTime ?? '';
+        const end: string = e.interval?.endTime ?? '';
         out.push({
             date: start.slice(0, 10),
             type: title(String(e.exerciseType ?? 'WORKOUT').replace(/_/g, ' ')),
+            // when it ran, ms: the heart rate of the workout is read for this time
+            start: start ? Date.parse(start) : null,
+            end: end ? Date.parse(end) : null,
             calories: num(m.caloriesKcal),
             avg_hr: num(m.averageHeartRateBeatsPerMinute),
             azm: num(m.activeZoneMinutes),

@@ -17,6 +17,7 @@ import {
     syncStatus,
     trackers,
     recentHeartRate,
+    heartRateBetween,
 } from '../health/service';
 import { deleteStoredHealth, storageStats } from '../health/store';
 import { saveTokens } from '../health/tokens';
@@ -116,6 +117,21 @@ export default function initHealthRoutes(app: express.Application) {
         }
         try {
             res.json(await intraday(req.sessionInfo!.userID, type, date));
+        } catch (err) {
+            sendError(res, err);
+        }
+    });
+
+    // the heart rate between two times (?from=&to=, ms, at most 12 hours), for a workout
+    app.get('/api/health/hr-range', auth, async (req: RequestWithSessionInfo, res) => {
+        const from = Number(req.query.from);
+        const to = Number(req.query.to);
+        if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 12 * 3600_000) {
+            res.status(400).json({ error: 'from and to in ms, at most 12 hours apart' });
+            return;
+        }
+        try {
+            res.json(await heartRateBetween(req.sessionInfo!.userID, from, to));
         } catch (err) {
             sendError(res, err);
         }

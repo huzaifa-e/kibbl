@@ -14,6 +14,7 @@ import {
     type Tone,
 } from './healthCharts';
 import { SLEEP_BIN, sleepStageQuantiles, trend, type Direction, type SeriesPoint, type SleepNight } from './healthStats';
+import { heartRateChart, type HrPoint, type HrZone } from './hrChart';
 import { orbHtml } from './orb';
 import { byId, emptyState, errorAlert, escapeHtml, localDayKey, successAlert, timeAgo } from './utils';
 
@@ -206,20 +207,56 @@ function zonesCard() {
     </div></div>`;
 }
 
+const WORKOUTS_SHOWN = 12;
+const hhmm = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// each workout with its numbers and its heart rate over its time, drawn once the card is in the page
 function workoutsCard() {
     const list = [...(summary.series?.exercise ?? [])].reverse();
     if (!list.length) return '';
-    const rows = list
-        .slice(0, 12)
-        .map(
-            (w: any) =>
-                `<tr><td>${shortDate(w.date)}</td><td>${escapeHtml(w.type)}</td><td class="text-end">${fmt(w.calories, 0)}</td><td class="text-end">${fmt(w.avg_hr, 0)}</td><td class="text-end d-none d-md-table-cell">${fmt(w.azm, 0)}</td></tr>`,
-        )
+    const items = list
+        .slice(0, WORKOUTS_SHOWN)
+        .map((w: any, i: number) => {
+            const when = w.start && w.end ? `${hhmm(w.start)}–${hhmm(w.end)} · ${Math.max(1, Math.round((w.end - w.start) / 60_000))} min` : '';
+            const stats = [
+                w.calories != null ? `${fmt(w.calories, 0)} kcal` : '',
+                w.avg_hr != null ? `avg ${fmt(w.avg_hr, 0)} bpm` : '',
+                w.azm != null ? `${fmt(w.azm, 0)} zone min` : '',
+            ]
+                .filter(Boolean)
+                .join(' · ');
+            return `<div class="list-group-item workout">
+                <div class="d-flex flex-wrap align-items-baseline column-gap-2">
+                    <span class="fw-bold">${escapeHtml(w.type)}</span>
+                    <span class="text-secondary small">${shortDate(w.date)}${when ? ` · ${when}` : ''}</span>
+                    <span class="ms-auto text-secondary small">${stats}</span>
+                </div>
+                ${w.start && w.end ? `<div class="workout-hr" data-workout="${i}" data-from="${w.start}" data-to="${w.end}"><div class="text-secondary small py-4 text-center">Reading the heart rate…</div></div>` : ''}
+            </div>`;
+        })
         .join('');
     return `<div class="card"><div class="card-header"><h3 class="card-title">Workouts</h3><div class="card-actions text-secondary small">${list.length} ${range === 'all' ? 'in total' : `in ${RANGES[range].toLowerCase()}`}</div></div>
-        <div class="table-responsive"><table class="table table-vcenter card-table">
-            <thead><tr><th>Day</th><th>Type</th><th class="text-end">kcal</th><th class="text-end">Avg HR</th><th class="text-end d-none d-md-table-cell">Zone min</th></tr></thead>
-            <tbody>${rows}</tbody></table></div></div>`;
+        <div class="list-group list-group-flush">${items}</div></div>`;
+}
+
+/* The heart rate of each workout shown, one after the other: an old day is read from the
+ * stored history, today's from Google. A redraw of the page in between leaves the old ones. */
+async function loadWorkoutCharts() {
+    for (const el of document.querySelectorAll<HTMLElement>('[data-workout]')) {
+        const res = await fetch(`/api/health/hr-range?from=${el.dataset.from}&to=${el.dataset.to}`, { headers: { Accept: 'application/json' } }).catch(
+            () => undefined,
+        );
+        if (!el.isConnected) return;
+        const data = res?.ok ? ((await res.json()) as { points: HrPoint[]; zones: HrZone[] }) : undefined;
+        if (!data?.points.length) {
+            el.innerHTML = '<div class="text-secondary small py-2">No heart rate recorded during this workout.</div>';
+            continue;
+        }
+        el.innerHTML = '';
+        const chart = heartRateChart(el, data.points, data.zones, 150);
+        void chart.render();
+        charts.push(chart);
+    }
 }
 
 const DISCOVERED_LABELS: Record<string, string> = {
@@ -377,6 +414,7 @@ function render(notice = '') {
     byId('health-delete').addEventListener('click', deleteHistory);
     renderRanges();
     updateLiveHr();
+    void loadWorkoutCharts();
 }
 
 // the range of the page: 30 days, 90 days, a year or everything stored

@@ -411,6 +411,34 @@ export async function recentHeartRate(userID: string, minutes = 30) {
     return { points: points.filter((p) => p.at >= from), latest, zones: await heartRateZones(userID) };
 }
 
+const HR_RANGE_POINTS = 600;
+
+/* The heart rate between two times, for a workout: from each day it touches as it is read for
+ * the day (stored, or today's from Google), means over equal steps when there are many. */
+export async function heartRateBetween(userID: string, from: number, to: number) {
+    const dates: string[] = [];
+    for (const d = new Date(from); d.getTime() <= to; d.setDate(d.getDate() + 1)) {
+        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (!dates.includes(date)) dates.push(date);
+        d.setHours(0, 0, 0, 0);
+    }
+    const points: { at: number; bpm: number }[] = [];
+    for (const date of dates) {
+        const data = (await intraday(userID, HEART_RATE, date)) as { points?: { t: string; value: number }[] };
+        for (const p of data.points ?? []) {
+            const at = new Date(`${date}T${p.t}`).getTime();
+            if (at >= from && at <= to) points.push({ at, bpm: p.value });
+        }
+    }
+    const step = Math.max(1, Math.ceil(points.length / HR_RANGE_POINTS));
+    const out: { at: number; bpm: number }[] = [];
+    for (let i = 0; i < points.length; i += step) {
+        const slice = points.slice(i, i + step);
+        out.push({ at: slice[0].at, bpm: Math.round(slice.reduce((s, p) => s + p.bpm, 0) / slice.length) });
+    }
+    return { points: out, zones: await heartRateZones(userID) };
+}
+
 // Google's personal zones (light, moderate, vigorous, peak) of the latest day it computed them
 async function heartRateZones(userID: string) {
     const zones = parseHrZones(await loadPoints(userID, 'daily-heart-rate-zones', day(14)))[0]?.zones ?? [];

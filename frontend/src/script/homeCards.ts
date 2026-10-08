@@ -1,6 +1,7 @@
 import ApexCharts from 'apexcharts';
 import { baseOptions } from './activityCharts';
 import { tone } from './healthCharts';
+import { heartRateChart, type HrZone } from './hrChart';
 import { hourlyConsumption } from './meterHours';
 import { escapeHtml, timeAgo } from './utils';
 
@@ -59,22 +60,6 @@ export function peakHour(values: number[]) {
     const max = Math.max(0, ...values);
     return max > 0 ? values.indexOf(max) : -1;
 }
-
-// the zone a heart rate is in: the index in Google's zones (light first), -1 below them
-export interface HrZone {
-    zone: string;
-    min: number;
-    max: number;
-}
-export function zoneOf(bpm: number, zones: HrZone[]) {
-    let at = -1;
-    zones.forEach((z, i) => {
-        if (bpm >= z.min) at = i;
-    });
-    return at;
-}
-const ZONE_TONES = ['olive', 'mustard', 'pumpkin', 'rust'] as const;
-const zoneColour = (i: number) => (i < 0 ? tone('bark') : tone(ZONE_TONES[Math.min(i, ZONE_TONES.length - 1)]));
 
 async function meterCards() {
     const meters: any[] = (await json('/api/meters')) ?? [];
@@ -155,74 +140,7 @@ async function healthCard() {
             stat(`${fmt(Math.min(...values), 0)}–${fmt(Math.max(...values), 0)}`, 'bpm', 'range'),
         'home-health',
     );
-    const zones = recent.zones ?? [];
-    const low = Math.min(...values);
-    const high = Math.max(...values);
-    const yMin = Math.floor((low - 5) / 20) * 20;
-    const yMax = Math.ceil((high + 5) / 20) * 20;
-    /* the line in the colour of the zone it is in: a gradient over the height of the line,
-     * from its highest point down to its lowest, with a hard step at each zone's lower bound */
-    const stops: { offset: number; color: string; opacity: number }[] = [];
-    const offset = (bpm: number) => (high === low ? 0 : ((high - bpm) / (high - low)) * 100);
-    let colour = zoneColour(zoneOf(high, zones));
-    stops.push({ offset: 0, color: colour, opacity: 1 });
-    for (const z of [...zones].reverse()) {
-        if (z.min <= low || z.min > high) continue;
-        stops.push({ offset: offset(z.min), color: colour, opacity: 1 });
-        colour = zoneColour(zoneOf(z.min - 1, zones));
-        stops.push({ offset: offset(z.min), color: colour, opacity: 1 });
-    }
-    stops.push({ offset: 100, color: colour, opacity: 1 });
-    // the zones as faint bands behind the line, named on the right
-    const bands = zones
-        .map((z, i) => ({ z, i }))
-        .filter(({ z }) => z.max > yMin && z.min < yMax)
-        .map(({ z, i }) => ({
-            y: Math.max(z.min, yMin),
-            y2: Math.min(z.max, yMax),
-            fillColor: zoneColour(i),
-            opacity: 0.1,
-            borderColor: 'transparent',
-            label: {
-                // a zone only just in view is not named: its name would cover the next one
-                text: Math.min(z.max, yMax) - Math.max(z.min, yMin) >= 8 ? z.zone : '',
-                position: 'right',
-                textAnchor: 'end',
-                borderWidth: 0,
-                offsetY: 14,
-                style: { background: 'transparent', color: zoneColour(i), fontSize: '10px' },
-            },
-        }));
-    const draw = (el: HTMLElement) => {
-        const o = plotOptions(el);
-        return new ApexCharts(el, {
-            ...o,
-            chart: { ...o.chart, type: 'line' },
-            series: [{ name: 'Heart rate', data: recent.points.map((p) => [p.at, p.bpm]) }],
-            colors: [zoneColour(zoneOf(high, zones))],
-            stroke: { curve: 'straight', width: 2.5 },
-            fill: zones.length ? { type: 'gradient', gradient: { type: 'vertical', colorStops: stops } } : { type: 'solid' },
-            annotations: { yaxis: bands },
-            xaxis: {
-                type: 'datetime',
-                tickAmount: 4,
-                labels: { ...axisLabel, datetimeUTC: false, format: 'HH:mm' },
-                axisTicks: { show: false },
-                tooltip: { enabled: false },
-            },
-            yaxis: { min: yMin, max: yMax, tickAmount: (yMax - yMin) / 20, labels: { ...axisLabel, formatter: (v: number) => fmt(v, 0) } },
-            tooltip: {
-                ...o.tooltip,
-                x: { format: 'HH:mm:ss' },
-                y: {
-                    formatter: (v: number) => {
-                        const i = zoneOf(v, zones);
-                        return `${fmt(v, 0)} bpm${i >= 0 ? ` · ${zones[i].zone}` : ''}`;
-                    },
-                },
-            },
-        });
-    };
+    const draw = (el: HTMLElement) => heartRateChart(el, recent.points, recent.zones ?? [], Math.max(170, el.clientHeight));
     return [{ html, id: 'home-health', draw, empty: false }];
 }
 
