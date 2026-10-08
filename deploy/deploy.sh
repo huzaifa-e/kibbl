@@ -15,10 +15,19 @@ REMOTE_DIR="${REMOTE_DIR:-kibbl}"
 SSH=(ssh -p "$SSH_PORT" -o ConnectTimeout=20)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# the build shown at the bottom of every page: the commit and the time of this deploy
-# (Apple's git when the one first on the PATH does not run, as an Intel build on an arm Mac)
-COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || /usr/bin/git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
-BUILD="$COMMIT $(date '+%Y-%m-%d %H:%M')"
+# Apple's git when the one first on the PATH does not run (an Intel build on an arm Mac)
+GIT=git
+git --version > /dev/null 2>&1 || GIT=/usr/bin/git
+
+# every deploy is a new version: the last number of shared/version.ts goes up by one, the
+# change is committed and pushed, the pages and the server show it
+VERSION_FILE="$ROOT/shared/version.ts"
+CURRENT="$(sed -n "s/.*'v\([0-9]*\.[0-9]*\.[0-9]*\)'.*/\1/p" "$VERSION_FILE")"
+NEXT="${CURRENT%.*}.$(( ${CURRENT##*.} + 1 ))"
+sed -i '' "s/'v$CURRENT'/'v$NEXT'/" "$VERSION_FILE"
+"$GIT" -C "$ROOT" commit -q -m "version v$NEXT" -- shared/version.ts
+"$GIT" -C "$ROOT" push -q || echo "v$NEXT committed but not pushed"
+echo "Deploying v$NEXT"
 
 echo "Copying to $HOST:$REMOTE_DIR"
 rsync -az --delete -e "${SSH[*]}" \
@@ -32,10 +41,9 @@ rsync -az --delete -e "${SSH[*]}" \
     --exclude '.simulated-device.json' \
     "$ROOT/" "$HOST:$REMOTE_DIR/"
 
-"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" "$(printf %q "$BUILD")" <<'EOF'
+"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" <<'EOF'
 set -euo pipefail
 cd "$1"
-echo "$2" > .deploy-build
 if [ ! -f .env ]; then
     cp .env.example .env
     sed -i "s/^JWT_SECRET=$/JWT_SECRET=$(openssl rand -hex 32)/" .env

@@ -9,11 +9,6 @@ for (const file of readdirSync(resolve(__dirname, 'src', 'pages'))) {
     }
 }
 
-/* The build of a deploy: deploy/deploy.sh writes the commit and the time to .deploy-build on the
- * server before the image is built; a build without it is a local one. */
-const buildFile = resolve(__dirname, '..', '.deploy-build');
-const build = existsSync(buildFile) ? readFileSync(buildFile, 'utf-8').trim() : 'dev';
-
 const plugins = [
     {
         name: 'inject-partials',
@@ -64,7 +59,6 @@ const plugins = [
 
 export default defineConfig({
     plugins: plugins,
-    define: { __APP_BUILD__: JSON.stringify(build) },
     build: {
         outDir: '../backend/dist/frontend',
         chunkSizeWarningLimit: 1300,

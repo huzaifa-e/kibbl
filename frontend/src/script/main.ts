@@ -7,8 +7,8 @@ import '@fontsource-variable/rubik';
 import '../style.css';
 import '../theme.css';
 
-declare const __APP_BUILD__: string; // vite.config.ts: the commit and time of the deploy, 'dev' locally
 import './orb';
+import { version } from '../../../shared/version';
 import { isDarkMode, setTheme } from './utils';
 
 const bc = new BroadcastChannel('kibbl');
@@ -70,9 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const year = document.getElementById('year');
     if (year) year.textContent = String(new Date().getFullYear());
-    // the one place the version is shown: the commit and time of the deploy, new with each one
+    // the one place the version is shown; deploy/deploy.sh raises it with every deploy
     const versionTxt = document.getElementById('versionTxt');
-    if (versionTxt) versionTxt.textContent = __APP_BUILD__ === 'dev' ? 'dev build' : `build ${__APP_BUILD__}`;
+    if (versionTxt) versionTxt.textContent = version;
 
     document.getElementById('theme-toggle')?.addEventListener('click', (e) => {
         e.preventDefault();
