@@ -6,8 +6,8 @@ import { escapeHtml, timeAgo } from './utils';
 
 /* The cards next to the cameras on the home page: each meter with its consumption per hour of
  * the last 24 hours, and the heart rate of the last 30 minutes. Each one links to its page.
- * The charts fill the card below the numbers, with their axes: an hour that used far more
- * than usual and a heart rate in a higher zone stand out in their own colour. */
+ * The charts fill the card below the numbers, with their axes: the hour that used the most
+ * and a heart rate in a higher zone stand out in their own colour. */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -54,13 +54,10 @@ function plotOptions(el: HTMLElement) {
 
 const axisLabel = { style: { fontSize: '10px' } };
 
-/* an hour that used more than twice the usual hour of the day (the median of those that used
- * anything): what stands out on the chart */
-export function spikes(values: number[]) {
-    const used = values.filter((v) => v > 0).sort((a, b) => a - b);
-    if (used.length < 4) return values.map(() => false);
-    const median = used[Math.floor(used.length / 2)];
-    return values.map((v) => v > 2 * median);
+// the hour that used the most: the one bar in the darker colour (none while nothing was used)
+export function peakHour(values: number[]) {
+    const max = Math.max(0, ...values);
+    return max > 0 ? values.indexOf(max) : -1;
 }
 
 // the zone a heart rate is in: the index in Google's zones (light first), -1 below them
@@ -100,7 +97,7 @@ async function meterCards() {
             `home-meter-${i}`,
         );
         const values = hours.map((h) => Math.round(h.consumption * 100) / 100);
-        const high = spikes(values);
+        const peak = peakHour(values);
         const draw = (el: HTMLElement) => {
             const o = plotOptions(el);
             return new ApexCharts(el, {
@@ -112,7 +109,7 @@ async function meterCards() {
                         data: hours.map((h, j) => ({
                             x: hourLabel(h.start),
                             y: values[j],
-                            fillColor: high[j] ? tone('rust') : tone('mustard'),
+                            fillColor: j === peak ? tone('rust') : tone('mustard'),
                         })),
                     },
                 ],
