@@ -19,7 +19,7 @@
  *   {"cmd":"home"}                       home        a whole stroke towards open and into the stop: the zero from anywhere
  *   {"cmd":"zero"}                       zero        the iris is open by hand: here is 0
  *   {"cmd":"release","ms":5000}          release 5000  the motor off (EN high) for 100-30000 ms: turns by hand
- *   {"cmd":"run","dir":"close"}          run close   at full speed until stop (30 s at most); that stop is the closed limit
+ *   {"cmd":"run","dir":"close"}          run close   at full speed until stop, no limits; that stop is the closed limit
  *   {"cmd":"run","dir":"open"}           run open    the same towards open: that stop becomes 0, the open limit
  *   {"cmd":"move","steps":-50}           move -50    relative, no limits, at the set speed, for setting up
  *   {"cmd":"stop"}                       stop
@@ -46,11 +46,10 @@ static const int OPENING_TABLE[15] = {420, 410, 387, 363, 338, 312, 284, 255, 22
 // the closed one did. The opening table of the design stretches over them.
 #define CLOSED_POS ((int32_t)config.closedPos)
 // a teaching run: full speed until stopped, the stop at once (no braking ramp: the S42B's own loop
-// brings the shaft to rest), and over by itself only after RUN_MAX_MS
+// brings the shaft to rest). No limits: it runs until stopped, and any stop is taught
 #define RUN_SPEED 4000
 #define RUN_ACCEL 20000
-#define RUN_STEPS 2000000L
-#define RUN_MAX_MS 30000UL
+#define RUN_STEPS 100000000L  // hours at full speed: it ends with stop
 // Finding the zero: past the open stop, the S42B pushes against it; EN off for a moment and the
 // S42B takes the angle its encoder reads as its target (its PID_Cal_value_init), stops pushing and
 // holds there: that is 0. A slipped pinion or a skipped tooth (273 steps) is taken up this way.
@@ -68,14 +67,14 @@ struct Config {
     uint16_t speed;    // steps/s
     uint16_t accel;    // steps/s^2
     uint8_t invert;    // DIR level for closing
-    int16_t closedPos; // taught closed limit, steps from the open one (0)
+    int32_t closedPos; // taught closed limit, steps from the open one (0)
 };
-#define CONFIG_MAGIC 0x4B46
+#define CONFIG_MAGIC 0x4B47  // 0x4B47: closedPos 32 bit
 #define CONFIG_ADDR 0
 #define POSITION_ADDR 32  // int32 + its inverse, so a half written value is seen
 
 static Config config;
-static const Config DEFAULTS = {CONFIG_MAGIC, 220, 1000, 2400, 8000, 0, (int16_t)DESIGN_CLOSED};  // 2400 steps/s: closed in 1.6 s, open in 1.1 s
+static const Config DEFAULTS = {CONFIG_MAGIC, 220, 1000, 2400, 8000, 0, DESIGN_CLOSED};  // 2400 steps/s: closed in 1.6 s, open in 1.1 s
 
 // ─────────────────────────── stepping (Timer1) ───────────────────────────
 static volatile int32_t position = 0;
@@ -120,7 +119,6 @@ static void setSpeed(float stepsPerSecond) {
 static float speedNow = 0;
 static uint16_t moveSpeed = 0;
 static uint16_t moveAccel = 3000;
-static uint32_t runSince = 0;
 static bool moving = false;
 static uint32_t lastRamp = 0;
 
@@ -187,7 +185,7 @@ static void stopMove() {
 }
 
 // the design's step (its closed limit at DESIGN_CLOSED) for a real one, and back
-static int32_t toDesign(int32_t steps) { return steps * DESIGN_CLOSED / CLOSED_POS; }
+static int32_t toDesign(int32_t steps) { return (int32_t)((float)steps * DESIGN_CLOSED / CLOSED_POS); }
 
 static int16_t openingAt(int32_t real) {
     int32_t steps = toDesign(real);
@@ -205,7 +203,7 @@ static int32_t stepsFor(int16_t opening) {
         if (opening >= OPENING_TABLE[k + 1]) {
             int32_t span = OPENING_TABLE[k] - OPENING_TABLE[k + 1];
             int32_t design = (STROKE * k + STROKE * (int32_t)(OPENING_TABLE[k] - opening) / span) / 14;
-            return min(design * CLOSED_POS / DESIGN_CLOSED, CLOSED_POS);
+            return min((int32_t)((float)design * CLOSED_POS / DESIGN_CLOSED), CLOSED_POS);
         }
     }
     return CLOSED_POS;
@@ -348,9 +346,10 @@ static int8_t teachDir = 0;
 
 static void teachLimit() {
     int32_t p = readPosition();
+    // any stop is kept; only 0 is not a stroke
     if (teachDir > 0) {
-        if (p >= 300 && p <= 4000) {
-            config.closedPos = (int16_t)p;
+        if (p != 0) {
+            config.closedPos = p;
             EEPROM.put(CONFIG_ADDR, config);
         }
     } else if (teachDir < 0) {
@@ -361,8 +360,8 @@ static void teachLimit() {
         target = position;
         interrupts();
         savePosition();
-        if (closed >= 300 && closed <= 4000) {
-            config.closedPos = (int16_t)closed;
+        if (closed != 0) {
+            config.closedPos = closed;
             EEPROM.put(CONFIG_ADDR, config);
         }
     }
@@ -511,7 +510,6 @@ static void command(char *text) {
         // far enough for any load, short of running away: two strokes
         startJob(id, "run");
         add(GO, readPosition() + teachDir * RUN_STEPS, RUN_SPEED);
-        runSince = millis();
         sendInfo(id);  // answered now, running: the stop answers with the limit it taught
         jobId = -1;
         return;
@@ -534,7 +532,7 @@ static void command(char *text) {
     } else if (!strcmp(cmd, "move")) {
         float f = 0;
         if (json) number(text, "steps", f); else if (hasValue) f = value;
-        if (f == 0 || fabs(f) > 2L * STROKE) { respond(id, false, "steps must be 1 to 3584, either way"); return; }
+        if (f == 0 || fabs(f) > 1000000L) { respond(id, false, "steps must be 1 to 1000000, either way"); return; }
         add(GO, readPosition() + (int32_t)f, config.speed);
         startJob(id, "move");
     } else {
@@ -556,7 +554,7 @@ void setup() {
         config = DEFAULTS;
         EEPROM.put(CONFIG_ADDR, config);
     }
-    if (config.closedPos < 300 || config.closedPos > 4000) {
+    if (config.closedPos == 0 || labs(config.closedPos) > 100000000L) {
         // stored before the limits could be taught
         config.closedPos = DESIGN_CLOSED;
         EEPROM.put(CONFIG_ADDR, config);
@@ -564,7 +562,7 @@ void setup() {
     int32_t p, check;
     EEPROM.get(POSITION_ADDR, p);
     EEPROM.get(POSITION_ADDR + 4, check);
-    bool known = check == ~p && p >= -2L * STROKE && p <= 2L * STROKE;
+    bool known = check == ~p && labs(p) <= 100000000L;
     position = target = known ? p : 0;
 
     timerStart();
@@ -585,8 +583,6 @@ void loop() {
             line[lineLength++] = c;
         }
     }
-    // a run nobody stops: over after RUN_MAX_MS, braked, nothing taught
-    if (running() && moving && millis() - runSince > RUN_MAX_MS) stopMove();
     rampUpdate();
     jobUpdate();
 }

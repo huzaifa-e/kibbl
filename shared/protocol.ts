@@ -97,7 +97,7 @@ export interface FeederState {
 // what the app may tune on a feeder while it is being set up (firmware/feeder-motor)
 export const FEEDER_SPEED = { min: 100, max: 4000 };
 export const FEEDER_ACCEL = { min: 200, max: 20000 };
-export const FEEDER_MOVE_MAX = 3584; // steps, either way: two strokes
+export const FEEDER_MOVE_MAX = 1000000; // steps, either way: no limit that matters
 
 // the feeding levels the app offers: portions, how far and how long the iris opens each time
 export interface FeedLevel {
