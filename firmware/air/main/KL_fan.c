@@ -15,12 +15,12 @@
 #define FAN_DUTY_MAX 255
 #define FAN_TICK_US  (1000 * 1000)
 
-/* Auto: the speed follows the CO2. Below yellow - FAN_AUTO_LEAD it is off: the sensor
- * measures by diffusion, the fan only hurries the room air past it, and a fan that hums
- * while the air is fresh is only noise. From there it starts at FAN_AUTO_MIN and rises in a
- * line to the set level at red. It moves at most FAN_AUTO_STEP a second, so it is not heard
+/* Auto: the speed follows the CO2. Below yellow - FAN_AUTO_LEAD it turns slowly at
+ * FAN_AUTO_MIN (or the set level, if lower): it keeps drawing room air past the sensor, so
+ * the readings follow the room, and it is quiet. From there it rises in a line to the set
+ * level at red. It moves at most FAN_AUTO_STEP a second, so it is not heard
  * jumping, and only by whole FAN_AUTO_GRAIN, so the noise of the sensor does not move it. */
-#define FAN_AUTO_MIN   20 // % where it starts, a speed it still turns at
+#define FAN_AUTO_MIN   25 // %: slow and quiet, still turning
 #define FAN_AUTO_LEAD  400 // ppm below yellow where it starts to rise
 #define FAN_AUTO_STEP  2 // % per second
 #define FAN_AUTO_GRAIN 5 // %
@@ -58,7 +58,7 @@ static uint8_t auto_target(void) {
     uint8_t top = level;
     uint8_t low = FAN_AUTO_MIN < top ? FAN_AUTO_MIN : top;
     if (co2 == 0) {
-        return 0; // no reading yet: quiet, as after every restart
+        return low; // no reading yet: slow, also after every restart
     }
     int start = (int)yellow - FAN_AUTO_LEAD;
     if (start < 0) {
@@ -68,7 +68,7 @@ static uint8_t auto_target(void) {
         return top;
     }
     if (co2 <= start) {
-        return 0;
+        return low;
     }
     int value = low + (top - low) * ((int)co2 - start) / ((int)red - start);
     value     = (value + FAN_AUTO_GRAIN / 2) / FAN_AUTO_GRAIN * FAN_AUTO_GRAIN;

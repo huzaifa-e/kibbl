@@ -45,7 +45,7 @@ const SENSITIVITY = [
     { label: 'Medium', rise: 150 },
     { label: 'Low', rise: 250 },
 ];
-const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂ (off while fresh)' };
+const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂ (slow while fresh)' };
 
 let devices: DeviceSummary[] = [];
 let device: DeviceSummary | undefined;
