@@ -4,7 +4,7 @@ import express from 'express';
 import multer from 'multer';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
-import { sendCommand } from '../core/devices';
+import { getLive, sendCommand } from '../core/devices';
 import { logger } from '../core/logger';
 
 const log = logger('ota');
@@ -59,6 +59,22 @@ async function expireDownloads() {
     }
 }
 
+// the image for one device behind a link of its own, and the command to fetch it
+async function startUpdate(deviceId: string, image: Buffer): Promise<{ ok: boolean; error?: string }> {
+    const token = crypto.randomBytes(16).toString('hex');
+    await mkdir(firmwareRoot(), { recursive: true });
+    const file = resolveInside(firmwareRoot(), `${token}.bin`);
+    await writeFile(file, image);
+    downloads.set(token, { file, deviceId, expires: Date.now() + LINK_LIFETIME_MS });
+    const resp = await sendCommand(deviceId, { cmd: 'ota', url: `${deviceBaseUrl()}/firmware/${token}.bin` });
+    if (!resp.ok) {
+        downloads.delete(token);
+        await rm(file, { force: true });
+        return { ok: false, error: resp.error };
+    }
+    return { ok: true };
+}
+
 export default function initFirmwareRoutes(app: express.Application) {
     setInterval(() => expireDownloads().catch(() => undefined), 60 * 1000);
 
@@ -81,22 +97,41 @@ export default function initFirmwareRoutes(app: express.Application) {
         if (expected && info.project !== expected) {
             return res.status(400).send(`This firmware is for another product (${info.project}); this device takes ${expected}.`);
         }
-        const version = info.version;
+        const started = await startUpdate(deviceId, image);
+        if (!started.ok) return res.status(502).send(`The device did not start the update: ${started.error}`);
+        log.info('update started', { device: deviceId, version: info.version, user: req.sessionInfo!.email });
+        res.json({ version: info.version });
+    });
 
-        const token = crypto.randomBytes(16).toString('hex');
-        await mkdir(firmwareRoot(), { recursive: true });
-        const file = resolveInside(firmwareRoot(), `${token}.bin`);
-        await writeFile(file, image);
-        downloads.set(token, { file, deviceId, expires: Date.now() + LINK_LIFETIME_MS });
-
-        const resp = await sendCommand(deviceId, { cmd: 'ota', url: `${deviceBaseUrl()}/firmware/${token}.bin` });
-        if (!resp.ok) {
-            downloads.delete(token);
-            await rm(file, { force: true });
-            return res.status(502).send(`The device did not start the update: ${resp.error}`);
+    /* One file to every device of its product the person owns: each online one starts, the
+     * others are listed. One already on this version is left as it is. */
+    app.post('/api/firmware/rollout', checkAuthMiddleware, upload.single('firmware'), async (req: RequestWithSessionInfo, res) => {
+        if (!deviceBaseUrl()) {
+            return res.status(500).send('DEVICE_BASE_URL is not set on the server.');
         }
-        log.info('update started', { device: deviceId, version, user: req.sessionInfo!.email });
-        res.json({ version });
+        const image = req.file?.buffer;
+        const info = image ? appInfo(image) : undefined;
+        const model = info ? Object.keys(PROJECTS).find((m) => PROJECTS[m] === info.project) : undefined;
+        if (!image || !info || !model) {
+            return res.status(400).send('This is no kibbl. firmware file.');
+        }
+        const docs = await Device.find({ ownerID: req.sessionInfo!.userID, status: 'approved', model, caps: 'ota' }).sort({ name: 1 }).lean();
+        const devices = await Promise.all(
+            docs.map(async (doc) => {
+                const base = { id: doc._id, name: doc.name };
+                if (doc.fw === info.version) return { ...base, result: 'current' as const };
+                if (!getLive(doc._id)) return { ...base, result: 'offline' as const };
+                const started = await startUpdate(doc._id, image);
+                return started.ok ? { ...base, result: 'started' as const } : { ...base, result: 'failed' as const, error: started.error };
+            }),
+        );
+        log.info('rollout', {
+            version: info.version,
+            started: devices.filter((d) => d.result === 'started').length,
+            of: devices.length,
+            user: req.sessionInfo!.email,
+        });
+        res.json({ version: info.version, devices });
     });
 
     app.get('/firmware/:token.bin', (req, res) => {

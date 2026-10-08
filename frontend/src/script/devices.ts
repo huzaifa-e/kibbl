@@ -125,7 +125,9 @@ function render() {
         </div>
         ${pending.length ? `<h3 class="mb-2">Waiting for approval</h3><div class="row row-cards mb-4">${pending.map(pendingCard).join('')}</div>` : ''}
         <div class="card mb-4">
-            <div class="card-header"><h3 class="card-title">Your devices</h3></div>
+            <div class="card-header"><h3 class="card-title">Your devices</h3>
+                ${devices.some((d) => d.caps.includes('ota') && d.status === 'approved') ? '<div class="card-actions"><button class="btn btn-sm" id="rollout"><i class="ti ti-upload me-1"></i> Update all</button></div>' : ''}
+            </div>
             ${
                 approved.length
                     ? `<div class="table-responsive"><table class="table table-vcenter card-table">
@@ -374,6 +376,42 @@ async function onAction(action: string, deviceId: string) {
     }
 }
 
+const ROLLOUT_WORDS: Record<string, string> = {
+    started: 'installing, restarts in about a minute',
+    current: 'already on it',
+    offline: 'offline, not updated',
+    failed: 'did not start',
+};
+
+/* One firmware file to every device of its product (all kibbl. airs, or all cameras): the
+ * server starts each one that is online and says what happened with the others. */
+function rollout() {
+    const input = byId<HTMLInputElement>('firmware-file');
+    input.value = '';
+    input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        result(`<div class="alert alert-info">Sending ${escapeHtml(file.name)} to every device it is for<span class="animated-dots"></span></div>`);
+        const form = new FormData();
+        form.append('firmware', file);
+        const response = await fetch('/api/firmware/rollout', { method: 'POST', body: form });
+        if (!response.ok) {
+            result(errorAlert(escapeHtml(await response.text())));
+            return;
+        }
+        const r = (await response.json()) as { version: string; devices: { name: string; result: string; error?: string }[] };
+        if (!r.devices.length) {
+            result(errorAlert(`No device of yours takes ${escapeHtml(r.version)}.`));
+            return;
+        }
+        const started = r.devices.filter((d) => d.result === 'started').length;
+        const list = r.devices.map((d) => `<li>${escapeHtml(d.name)}: ${ROLLOUT_WORDS[d.result]}${d.error ? ` (${escapeHtml(d.error)})` : ''}</li>`).join('');
+        const html = `<b>${escapeHtml(r.version)}</b>: ${started} of ${r.devices.length} updating.<ul class="mb-0 mt-1">${list}</ul>`;
+        result(`<div class="alert alert-${started ? 'success' : 'warning'}" role="alert">${html}</div>`);
+    };
+    input.click();
+}
+
 // the rooms of the home and the heating of tado: their cards below the devices
 function renderRoomsPanel() {
     const heatingSlot = document.getElementById('heating');
@@ -439,6 +477,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     byId('container').addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('#rollout')) {
+            rollout();
+            return;
+        }
         const el = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
         if (!el || el.classList.contains('disabled')) return;
         e.preventDefault();
