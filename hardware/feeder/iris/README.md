@@ -62,7 +62,7 @@ Every part can be PLA at 0.3 A (see Loads). PETG takes more heat, and is the usu
 | Hardware | Qty | |
 | --- | --- | --- |
 | NEMA 17 stepper, 5 mm D-shaft ≥ 20 mm (e.g. 17HS4401) | 1 | |
-| Closed-loop driver, BTT S42B v1.0 | 1 | on the back of the motor; current set to 0.3 A (see Loads) |
+| Closed-loop driver, BTT S42B v1.0 | 1 | on the back of the motor; Motor mA set to 600, the motor gets half: 0.3 A (see Loads) |
 | M3 × 8 socket head | 4 | motor, from the top through the counterbores |
 | M3 × 16 | 6 | funnel + lid into the base (self-tapping into 2.8 mm holes) |
 | M3 × 6 grub screw | 1 | pinion onto the shaft flat |
@@ -79,18 +79,18 @@ Every part can be PLA at 0.3 A (see Loads). PETG takes more heat, and is the usu
 
 ## Motion
 
-Seen from above the ring turns counter-clockwise to close, so the motor turns clockwise. The slot ends are the hard stops at fully open and fully closed.
+Seen from above the ring turns counter-clockwise to close, so the motor turns clockwise. The slot ends are the hard stops at fully open and fully closed. `firmware/feeder-motor` drives it from an Arduino Nano: 2400 steps/s, closed in 1.6 s and open in 1.1 s.
 
-| Motor microsteps from open (1/16) | Ring / blade swing | Opening |
-| ---: | ---: | ---: |
-| 0 | 0° | 42 mm |
-| 267 | 6° | 37 mm |
-| 533 | 12° | 30 mm |
-| 800 | 18° | 22 mm |
-| 1067 | 24° | 14 mm |
-| 1200 | 27° | 9 mm |
-| 1333 | 30° | 4 mm |
-| 1400 | 31.5° | 2 mm (closed stop) |
+| Microsteps from open (1/16, 3200 a turn) | S42B steps (Microstep 16: 4096 a turn) | Ring / blade swing | Opening |
+| ---: | ---: | ---: | ---: |
+| 0 | 0 | 0° | 42 mm |
+| 267 | 342 | 6° | 37 mm |
+| 533 | 682 | 12° | 30 mm |
+| 800 | 1024 | 18° | 22 mm |
+| 1067 | 1366 | 24° | 14 mm |
+| 1200 | 1536 | 27° | 9 mm |
+| 1333 | 1706 | 30° | 4 mm |
+| 1400 | 1792 | 31.5° | 2 mm (closed stop) |
 
 * **Homing**: the S42B closes the loop on its encoder and keeps pushing against a hard stop instead of stalling. Home at the set 0.3 A: step towards open past the stop by a few degrees, then take that as 0; a switch at the open position is the cleaner way.
 * **Portions**: open to a set opening (e.g. 22 mm, 800 microsteps) for a set time, then close. Grams per second depend on the kibble; weigh a few runs once and the feeder doses by time. Closing through falling kibble: if the closed position is not reached in time, reopen a little and close again, rather than raising the current.
@@ -104,14 +104,14 @@ The worst case is a kibble wedged under one blade while the motor pushes. The ri
 
 Weakest part over the stroke, one blade jammed, safety against PLA (PETG):
 
-| S42B current | Motor torque | Squeeze on a kibble | Drive pin | Pivot pin | Pivot hole | Teeth, D-bore |
+| Motor current (S42B Motor mA: twice this) | Motor torque | Squeeze on a kibble | Drive pin | Pivot pin | Pivot hole | Teeth, D-bore |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | **0.3 A** | 0.07 N·m | 13 N | 9 MPa, **2.7** (2.2) | 7 MPa, 3.5 (2.8) | 11 MPa, 5.3 (4.4) | ≥ 10 |
 | 0.4 A | 0.10 N·m | 18 N | 12 MPa, 2.0 (1.6) | 10 MPa, 2.6 (2.1) | 15 MPa, 3.9 (3.3) | ≥ 8 |
 | 1.0 A | 0.25 N·m | 45 N | 31 MPa, 0.8 (0.7) | 24 MPa, 1.0 (0.8) | 38 MPa, 1.6 (1.3) | ≥ 3 |
 | 1.7 A (rated) | 0.42 N·m | 76 N | 52 MPa, 0.5 (0.4) | 41 MPa, 0.6 (0.5) | 65 MPa, 0.9 (0.8) | ≥ 1.6 |
 
-* **Set the S42B to 0.3 A.** At 1.0 A and above a jammed kibble breaks a pin, in PLA and in PETG. `--check` holds the design to a safety of 2 at `DRIVER_A` in `MATERIAL` (0.3 A, PLA).
+* **Set the S42B to 0.3 A: Motor mA 600 in its menu**, the motor gets half of the value set (S42B manual). At 1.0 A and above a jammed kibble breaks a pin, in PLA and in PETG. `--check` holds the design to a safety of 2 at `DRIVER_A` in `MATERIAL` (0.3 A, PLA).
 * Without a jam the six pins share: at 0.3 A each sees 1.5 MPa. Moving the blades and kibble aside takes far less than the 13 N the blades squeeze with; check once that 0.3 A opens and closes reliably with a full hopper.
 * The S42B holds its force for as long as the position is not reached. A jam that is left pushing loads the pins for hours, and PLA creeps under a steady load: the firmware has to give up, reopen and retry after a short time, and stop after a few tries.
 * PLA softens from about 55 °C: keep the feeder out of direct sun and away from a radiator. PETG holds to about 70 °C.
