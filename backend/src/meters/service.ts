@@ -222,6 +222,32 @@ function batteryPercent(mv: number | null | undefined, battery: MeterDoc['batter
     return Math.max(0, Math.min(100, Math.round(((mv - battery.emptyMv) / (battery.fullMv - battery.emptyMv)) * 100)));
 }
 
+// the meter's value at a time, between the readings around it
+export function valueAt(at: number, before?: { at: number; value: number }, after?: { at: number; value: number }) {
+    if (before && after && after.at > before.at) return before.value + ((after.value - before.value) * (at - before.at)) / (after.at - before.at);
+    return (before ?? after)?.value ?? null;
+}
+
+/* What was used since midnight of today in the home's time zone (the server's): the latest
+ * reading less the meter's value at 00:00, between the readings around it. Not the source's
+ * last day, which is the day before until a reading of today arrived. */
+async function consumptionToday(meter: MeterDoc, latest: { at: Date; value?: number | null } | null) {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const date = `${midnight.getFullYear()}-${String(midnight.getMonth() + 1).padStart(2, '0')}-${String(midnight.getDate()).padStart(2, '0')}`;
+    if (!latest || typeof latest.value !== 'number') return null;
+    if (latest.at < midnight) return { date, consumption: 0 };
+    const near = (at: object, sort: 1 | -1) =>
+        MeterReading.findOne({ meterId: meter._id, value: { $ne: null }, at }, { at: 1, value: 1 })
+            .sort({ at: sort })
+            .lean();
+    const [before, after] = await Promise.all([near({ $lt: midnight }, -1), near({ $gte: midnight }, 1)]);
+    const point = (r: typeof before) => (r && typeof r.value === 'number' ? { at: r.at.getTime(), value: r.value } : undefined);
+    const opening = valueAt(midnight.getTime(), point(before), point(after));
+    if (opening === null) return null;
+    return { date, consumption: Math.max(0, Math.round((latest.value - opening) * 1000) / 1000) };
+}
+
 /* The latest state of a meter: its reading, the power between the last two readings,
  * today's consumption, and the battery with its drain in the current cycle. */
 export async function meterState(meter: MeterDoc) {
@@ -243,7 +269,7 @@ export async function meterState(meter: MeterDoc) {
     const lastBattery = await MeterReading.findOne({ meterId: meter._id, batteryMv: { $ne: null } }, { batteryMv: 1, at: 1 })
         .sort({ at: -1 })
         .lean();
-    const today = await MeterPeriod.findOne({ meterId: meter._id, period: 'day' }).sort({ key: -1 }).lean();
+    const today = await consumptionToday(meter, latest);
     const count = await MeterReading.countDocuments({ meterId: meter._id });
     const first = await MeterReading.findOne({ meterId: meter._id }, { at: 1 }).sort({ at: 1 }).lean();
 
@@ -268,7 +294,7 @@ export async function meterState(meter: MeterDoc) {
         unit: meter.unit,
         latest: latest ? { at: latest.at.getTime(), value: latest.value, rssi: latest.rssi } : null,
         powerKw,
-        today: today ? { date: today.key, consumption: today.consumption } : null,
+        today,
         battery: lastBattery
             ? {
                   mv: lastBattery.batteryMv,
