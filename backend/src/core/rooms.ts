@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { HomeRoom } from '../../../shared/heating';
+import { roomKind, type RoomKind } from '../../../shared/roomKind';
 import { Device, Room, TadoLink } from './db';
 
 /*
@@ -11,15 +12,35 @@ import { Device, Room, TadoLink } from './db';
 
 export const ROOM_NAME_MAX = 40;
 
+// the kind of every room, for the summary of a device in it (read on start, kept on changes)
+const kinds = new Map<string, RoomKind | undefined>();
+
+export async function initRooms() {
+    for (const r of await Room.find({}, { name: 1, kind: 1 }).lean()) kinds.set(r._id, roomKind(r));
+}
+
+export function roomKindOf(roomId: string | undefined) {
+    return roomId ? kinds.get(roomId) : undefined;
+}
+
 export async function listRooms(ownerID: string): Promise<HomeRoom[]> {
-    const rooms = await Room.find({ ownerID }, { name: 1 }).sort({ name: 1 }).lean();
-    return rooms.map((r) => ({ _id: r._id, name: r.name }));
+    const rooms = await Room.find({ ownerID }, { name: 1, kind: 1 }).sort({ name: 1 }).lean();
+    return rooms.map((r) => ({ _id: r._id, name: r.name, kind: roomKind(r) }));
 }
 
 export async function createRoom(ownerID: string, name: string) {
     const doc = { _id: crypto.randomUUID(), ownerID, name: name.trim().slice(0, ROOM_NAME_MAX), createdAt: Date.now() };
     await Room.create(doc);
-    return { _id: doc._id, name: doc.name };
+    kinds.set(doc._id, roomKind(doc));
+    return { _id: doc._id, name: doc.name, kind: roomKind(doc) };
+}
+
+// what the room is used for; null: guessed from its name again
+export async function setRoomKind(ownerID: string, roomId: string, kind: RoomKind | null) {
+    const res = await Room.updateOne({ _id: roomId, ownerID }, kind ? { kind } : { $unset: { kind: 1 } });
+    const doc = await Room.findById(roomId, { name: 1, kind: 1 }).lean();
+    if (doc) kinds.set(roomId, roomKind(doc));
+    return res.matchedCount > 0;
 }
 
 // the room of this name (any case), made when there is none: for the rooms tado brings
@@ -30,6 +51,8 @@ export async function roomByName(ownerID: string, name: string) {
 
 export async function renameRoom(ownerID: string, roomId: string, name: string) {
     const res = await Room.updateOne({ _id: roomId, ownerID }, { name: name.trim().slice(0, ROOM_NAME_MAX) });
+    const doc = await Room.findById(roomId, { name: 1, kind: 1 }).lean();
+    if (doc) kinds.set(roomId, roomKind(doc));
     return res.matchedCount > 0;
 }
 
@@ -37,6 +60,7 @@ export async function renameRoom(ownerID: string, roomId: string, name: string) 
 export async function deleteRoom(ownerID: string, roomId: string) {
     const res = await Room.deleteOne({ _id: roomId, ownerID });
     if (!res.deletedCount) return false;
+    kinds.delete(roomId);
     await Device.updateMany({ ownerID, roomId }, { $unset: { roomId: 1 } });
     await TadoLink.updateOne({ _id: ownerID }, { $unset: { 'rooms.$[r].roomId': 1 } }, { arrayFilters: [{ 'r.roomId': roomId }] });
     return true;

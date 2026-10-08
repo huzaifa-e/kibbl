@@ -1,6 +1,14 @@
 import './main';
 import type ApexCharts from 'apexcharts';
-import { framesizes, productName, type ActivityBucket, type CameraSettings, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
+import {
+    framesizes,
+    productName,
+    type ActivityBucket,
+    type CameraSettings,
+    type DeviceSummary,
+    type DeviceTelemetry,
+    type MotionEvent,
+} from '../../../shared/protocol';
 import { heatmapChart } from './activityCharts';
 import { bindControls, controlsHtml } from './controls';
 import { bindEventViewer, eventCardHtml } from './events';
@@ -80,7 +88,9 @@ function layout(d: DeviceSummary) {
 
     byId('btn-pause').addEventListener('click', () => {
         paused = !paused;
-        byId('btn-pause').innerHTML = paused ? '<i class="ti ti-player-play me-1"></i> <span>Play</span>' : '<i class="ti ti-player-pause me-1"></i> <span>Pause</span>';
+        byId('btn-pause').innerHTML = paused
+            ? '<i class="ti ti-player-play me-1"></i> <span>Play</span>'
+            : '<i class="ti ti-player-pause me-1"></i> <span>Pause</span>';
         updateStream();
     });
     byId('btn-fullscreen').addEventListener('click', () => {
@@ -136,7 +146,8 @@ function renderStatus() {
     const d = device!;
     const t: DeviceTelemetry | undefined = d.telemetry;
     const signal = signalQuality(t?.rssi);
-    const row = (label: string, value: string) => `<div class="datagrid-item"><div class="datagrid-title">${label}</div><div class="datagrid-content">${value}</div></div>`;
+    const row = (label: string, value: string) =>
+        `<div class="datagrid-item"><div class="datagrid-title">${label}</div><div class="datagrid-content">${value}</div></div>`;
     byId('status').innerHTML = `<div class="datagrid">
         ${row('State', d.online ? '<span class="status status-green"><span class="status-dot status-dot-animated"></span> online</span>' : '<span class="status status-secondary">offline</span>')}
         ${row('Wi-Fi', t?.rssi !== undefined ? `<span class="text-${signal.color}"><i class="ti ti-${signal.icon}"></i> ${signal.label}</span> <span class="text-secondary">(${t.rssi} dBm)</span>` : '–')}
@@ -159,7 +170,8 @@ function renderControls() {
 
 function renderMotion() {
     const m = device!.motion;
-    const hours = (selected: number) => Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === selected ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('');
+    const hours = (selected: number) =>
+        Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === selected ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('');
     byId('motion').innerHTML = `
         <label class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" id="motion-enabled" ${m.enabled ? 'checked' : ''} />
@@ -184,7 +196,9 @@ function renderMotion() {
             <div class="btn-group w-100" role="group">
                 ${(['low', 'medium', 'high'] as const)
                     .map(
-                        (s) => `<input type="radio" class="btn-check" name="motion-sensitivity" id="sens-${s}" value="${s}" ${m.sensitivity === s ? 'checked' : ''} />
+                        (
+                            s,
+                        ) => `<input type="radio" class="btn-check" name="motion-sensitivity" id="sens-${s}" value="${s}" ${m.sensitivity === s ? 'checked' : ''} />
                     <label for="sens-${s}" class="btn">${s}</label>`,
                     )
                     .join('')}

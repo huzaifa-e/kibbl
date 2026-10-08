@@ -8,7 +8,8 @@ import { applyMotionSettings, runDeviceCommand } from '../core/control';
 import { Device, User } from '../core/db';
 import { publishDevice } from '../core/devices';
 import { logger } from '../core/logger';
-import { createRoom, listRooms, moveDevice, renameRoom } from '../core/rooms';
+import { createRoom, listRooms, moveDevice, renameRoom, setRoomKind } from '../core/rooms';
+import { ROOM_KINDS, type RoomKind } from '../../../shared/roomKind';
 import { forgetHome, searchPlaces } from '../core/weather';
 import { command as heatingCommand, placeTadoRoom, publishPaired, status as heatingStatus } from '../tado/service';
 
@@ -254,18 +255,23 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
         {
             title: 'Rooms of the home',
             description:
-                'Makes a room, renames one, or moves a device (kibbl. air, camera) or a tado room into a room. A kibbl. air in the same room as a tado room shows the temperature of tado and ' +
-                'humidity and switches its heating off while a window is open. room "" with move takes it out of every room.',
+                'Makes a room, renames one, sets what it is used for (kind), or moves a device (kibbl. air, camera) or a tado room into a room. A kibbl. air in the same room as a tado room shows the temperature of tado and ' +
+                'humidity and switches its heating off while a window is open. room "" with move takes it out of every room. The kind sets the advice on the air of the room: ' +
+                'a bathroom says when to air after a shower, a bedroom when to air before the night (and shows the last night), a kitchen when to turn on the hood.',
             inputSchema: {
-                action: z.enum(['create', 'rename', 'move']),
+                action: z.enum(['create', 'rename', 'set_kind', 'move']),
                 room: z.string().describe('the room (for create: its name)'),
                 new_name: z.string().max(40).optional().describe('for rename'),
+                kind: z
+                    .enum(Object.keys(ROOM_KINDS) as [RoomKind, ...RoomKind[]])
+                    .optional()
+                    .describe('for set_kind: what the room is used for'),
                 device: z.string().optional().describe('for move: a device by name or id'),
                 tado_room: z.string().optional().describe('for move: a tado room by name'),
             },
             annotations: writes,
         },
-        async ({ action, room, new_name, device, tado_room }) => {
+        async ({ action, room, new_name, kind, device, tado_room }) => {
             if (action === 'create') {
                 if (!room.trim() || room.trim().length > 40) return fail('A name of 1 to 40 characters.');
                 const made = await createRoom(session.userID, room);
@@ -280,6 +286,13 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 await publishPaired(session.userID);
                 log.info('room renamed', { from: target.name, to: new_name.trim(), user: who, via: VIA });
                 return json({ ok: true, room: new_name.trim() });
+            }
+            if (action === 'set_kind') {
+                if (!target || !kind) return fail('set_kind needs the room and a kind.');
+                await setRoomKind(session.userID, target._id, kind);
+                await publishPaired(session.userID);
+                log.info('room kind set', { room: target.name, kind, user: who, via: VIA });
+                return json({ ok: true, room: target.name, kind });
             }
             if (device) {
                 const docs = await Device.find({ ownerID: session.userID, status: 'approved' }).lean();

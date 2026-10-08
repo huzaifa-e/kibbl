@@ -65,6 +65,7 @@ declare global {
         _id: string;
         ownerID: string;
         name: string;
+        kind?: string; // RoomKind, chosen in the app; none: guessed from the name
         createdAt: number;
     }
 

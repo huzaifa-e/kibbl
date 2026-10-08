@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { absoluteHumidity, climateHints, dewPoint, wallSurface } from '../../../shared/climate';
+import { absoluteHumidity, climateHints, dewPoint, wallSurface, roomHints } from '../../../shared/climate';
+import { roomKind } from '../../../shared/roomKind';
 
 const ids = (hints: { id: string; level: string }[]) => hints.map((h) => `${h.id}:${h.level}`);
 
@@ -36,4 +37,41 @@ test('cold, hot, dry and stale air are named, the worst first', () => {
 
 test('warm and humid is muggy', () => {
     assert.ok(climateHints({ temperature: 28, humidity: 65 }).some((h) => h.id === 'muggy'));
+});
+
+test('a room is a bathroom or bedroom by its name until another kind is chosen', () => {
+    assert.equal(roomKind({ name: 'Bathroom' }), 'bathroom');
+    assert.equal(roomKind({ name: 'Badezimmer' }), 'bathroom');
+    assert.equal(roomKind({ name: 'Schlafzimmer' }), 'bedroom');
+    assert.equal(roomKind({ name: 'Living Room' }), 'living');
+    assert.equal(roomKind({ name: 'Hallway' }), 'other');
+    assert.equal(roomKind({ name: 'Bathroom', kind: 'kitchen' }), 'kitchen');
+});
+
+test('a quick rise of the humidity in a bathroom is a shower: open the window', () => {
+    const now = Date.now();
+    const recent = [
+        { at: now - 15 * 60_000, humidity: 52 },
+        { at: now - 5 * 60_000, humidity: 58 },
+        { at: now, humidity: 64 },
+    ];
+    const day = { hour: 8, night: false };
+    const { hints, replaces } = roomHints('bathroom', { humidity: 64, temperature: 22 }, recent, day, now);
+    assert.equal(hints[0].id, 'shower');
+    assert.ok(replaces.includes('humid'));
+    // the same humidity without a rise and below the damp line: nothing to do
+    assert.equal(roomHints('bathroom', { humidity: 58 }, [{ at: now, humidity: 58 }], day, now).hints[0].id, 'bathroom-dry');
+    // in a living room the shower rule does not apply
+    assert.equal(roomHints('living', { humidity: 64 }, recent, day, now).hints.length, 0);
+});
+
+test('a bedroom asks to air in the evening and warns of stuffy air at night', () => {
+    const evening = roomHints('bedroom', { co2: 950, temperature: 21 }, [], { hour: 21, night: false });
+    assert.equal(evening.hints[0].id, 'bedtime');
+    const night = roomHints('bedroom', { co2: 1300, temperature: 19 }, [], { hour: 2, night: true });
+    assert.deepEqual(
+        night.hints.map((h) => h.id),
+        ['sleep-co2'],
+    );
+    assert.equal(roomHints('bedroom', { co2: 600, temperature: 18 }, [], { hour: 21, night: false }).hints.length, 0);
 });

@@ -320,6 +320,7 @@ async function init() {
             _id: { type: String, required: true },
             ownerID: { type: String, required: true, index: true },
             name: { type: String, required: true },
+            kind: { type: String },
             createdAt: { type: Number, required: true },
         },
         { versionKey: false },

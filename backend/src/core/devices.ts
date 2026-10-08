@@ -14,6 +14,7 @@ import {
     type MotionSettings,
 } from '../../../shared/protocol';
 import { pairedRoom } from '../tado/service';
+import { roomKindOf } from './rooms';
 import { nightSchedule, parseAirState } from './airState';
 import db, { Device } from './db';
 import { hub } from './hub';
@@ -79,6 +80,7 @@ function airSummary(doc: DeviceDoc, dev: LiveDevice | undefined): AirDevice | un
         sensorError: airSensorError(state, typeof info.sensorError === 'string' ? info.sensorError : undefined),
         schedule: nightSchedule(doc),
         room: pairedRoom(doc.ownerID, doc.roomId),
+        roomKind: roomKindOf(doc.roomId),
     };
 }
 

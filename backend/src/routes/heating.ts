@@ -4,7 +4,8 @@ import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
 import { getSummaries } from '../core/devices';
 import { logger } from '../core/logger';
-import { ROOM_NAME_MAX, createRoom, deleteRoom, listRooms, moveDevice, ownRoom, renameRoom } from '../core/rooms';
+import { ROOM_NAME_MAX, createRoom, deleteRoom, listRooms, moveDevice, ownRoom, renameRoom, setRoomKind } from '../core/rooms';
+import { ROOM_KINDS, isRoomKind } from '../../../shared/roomKind';
 import { TadoError } from '../tado/client';
 import { command, connect, disconnect, placeTadoRoom, publishPaired, readings, status } from '../tado/service';
 
@@ -119,12 +120,23 @@ export default function initHeatingRoutes(app: express.Application) {
         res.json(await createRoom(user(req), req.body.name));
     });
 
+    // { name } renames, { kind } sets what the room is used for (null: guessed from the name)
     app.patch('/api/rooms/:id', auth, async (req: RequestWithSessionInfo, res) => {
-        if (!isRoomName(req.body?.name)) {
-            res.status(400).send(`a name of 1 to ${ROOM_NAME_MAX} characters`);
+        const { name, kind } = req.body ?? {};
+        if (
+            (name === undefined && kind === undefined) ||
+            (name !== undefined && !isRoomName(name)) ||
+            (kind !== undefined && kind !== null && !isRoomKind(kind))
+        ) {
+            res.status(400).send(`a name of 1 to ${ROOM_NAME_MAX} characters, or a kind: ${Object.keys(ROOM_KINDS).join(', ')} or null`);
             return;
         }
-        res.json({ ok: await renameRoom(user(req), req.params.id, req.body.name) });
+        let ok = true;
+        if (name !== undefined) ok = await renameRoom(user(req), req.params.id, name);
+        if (ok && kind !== undefined) ok = await setRoomKind(user(req), req.params.id, kind);
+        // the devices in it show the advice of its kind
+        await publishPaired(user(req));
+        res.json({ ok });
     });
 
     app.delete('/api/rooms/:id', auth, async (req: RequestWithSessionInfo, res) => {

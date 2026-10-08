@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { productName } from '../../../shared/protocol';
+import { productName, roomClimate } from '../../../shared/protocol';
 import { version } from '../../../shared/version';
 import { Device, HealthLink, Meter, MotionEventModel } from '../core/db';
 import { getLive, summarize } from '../core/devices';
@@ -14,8 +14,8 @@ import { configured } from '../health/google';
 import { INTRADAY_TYPES, intraday, summary, syncStatus, trackers } from '../health/service';
 import { storageStats } from '../health/store';
 import { meterPeriods, meterReadings, meterState } from '../meters/service';
-import { climateHints } from '../../../shared/climate';
-import { airEvents, airReadings, smokeDays } from '../core/air';
+import { allRoomHints } from '../../../shared/climate';
+import { airEvents, airReadings, lastNight, recentAirOf, smokeDays } from '../core/air';
 import { weatherForUser } from '../core/weather';
 import { listRooms } from '../core/rooms';
 import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
@@ -459,7 +459,8 @@ export function createMcpServer(session: SessionInfo) {
             title: 'Air now',
             description:
                 'A kibbl. air (CO2 traffic light) now: CO2, temperature (corrected for the device warmth), humidity, the traffic light level, ' +
-                'window open, night mode, fire alarm, the weather outside, and the health hints of the room climate (cold, heat, dry, humid, mould on outer walls, stale air).',
+                'window open, night mode, fire alarm, the weather outside, what its room is used for, and the advice for the room: the health hints of its climate (cold, heat, dry, humid, ' +
+                'mould on outer walls) and those of its kind (a bathroom after a shower, a bedroom before and during the night, a kitchen while cooking). In a bedroom also the air of the last night.',
             inputSchema: { device: z.string().default('').describe('the kibbl. air, by name or id; the first one if left empty') },
             annotations: readOnly,
         },
@@ -469,14 +470,27 @@ export function createMcpServer(session: SessionInfo) {
             const s = summarize(doc);
             const state = s.air?.state;
             const weather = await weatherForUser(session.userID);
+            const kind = s.air?.roomKind;
+            const climate = roomClimate(s.air);
+            const night = kind === 'bedroom' && s.air ? await lastNight(doc._id, s.air.schedule) : undefined;
             return json({
                 device: doc.name,
                 online: s.online,
+                room_kind: kind ?? null,
                 state: state ?? null,
                 settings: s.air?.settings ?? null,
                 night_schedule: s.air?.schedule,
                 outside: weather ? { temperature: weather.temperature, humidity: weather.humidity, at: localTime(weather.at) } : null,
-                climate: state ? climateHints(state, weather).map((h) => ({ level: h.level, title: h.title, text: h.text })) : [],
+                climate: state
+                    ? allRoomHints(kind, { ...state, ...climate }, weather, recentAirOf(doc._id), { hour: new Date().getHours(), night: state.night }).map(
+                          (h) => ({
+                              level: h.level,
+                              title: h.title,
+                              text: h.text,
+                          }),
+                      )
+                    : [],
+                last_night: night ? { ...night, from: localTime(night.from), to: localTime(night.to) } : null,
             });
         },
     );

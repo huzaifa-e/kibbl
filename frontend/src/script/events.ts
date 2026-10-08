@@ -59,7 +59,11 @@ function ensureModal() {
 
 /* Clicks on any [data-open-event] inside root open the event in a dialog; deleting it
  * there removes its tile and calls onDeleted. */
-export function bindEventViewer(root: HTMLElement, lookup: (id: string) => { event: MotionEvent; device?: DeviceSummary } | undefined, onDeleted?: (id: string) => void) {
+export function bindEventViewer(
+    root: HTMLElement,
+    lookup: (id: string) => { event: MotionEvent; device?: DeviceSummary } | undefined,
+    onDeleted?: (id: string) => void,
+) {
     root.addEventListener('click', (ev) => {
         const target = (ev.target as HTMLElement).closest<HTMLElement>('[data-open-event]');
         if (!target) return;

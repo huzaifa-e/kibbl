@@ -1,3 +1,5 @@
+import type { RoomKind } from './roomKind';
+
 /*
  * The indoor climate of a kibbl. air and what it means for health, as the app shows it
  * and the server warns about it. General guidance, no medical advice:
@@ -41,6 +43,8 @@ export interface ClimateHint {
     title: string;
     text: string;
     notify?: boolean; // worth a message when it lasts
+    afterMinutes?: number; // how long it lasts before the message, 30 when left out
+    repeatMinutes?: number; // the same message again at the earliest after, 12 hours when left out
 }
 
 export interface IndoorAir {
@@ -254,4 +258,147 @@ export function climateHints(air: IndoorAir, outdoor?: Weather | null): ClimateH
 
     const order: Record<HintLevel, number> = { alert: 0, warn: 1, info: 2, good: 3 };
     return hints.sort((a, b) => order[a.level] - order[b.level]);
+}
+
+/* ----------------------------------------------------------------------- */
+
+// a reading of the last minutes, for what changes quickly: a shower, cooking
+export interface RecentAir {
+    at: number;
+    humidity?: number;
+    co2?: number;
+}
+
+export interface RoomMoment {
+    hour: number; // 0-23, the home's clock
+    night: boolean; // the device's night mode
+}
+
+const SHOWER_RH = 70; // %: the air of a bathroom after a shower
+const SHOWER_RISE = 8; // percentage points within the window: a shower started
+const DRY_RH = 60; // below it the bathroom is dry enough again
+const DAMP_RH = 65; // above it for long: mould
+const RECENT_MS = 20 * 60_000;
+const BEDTIME_CO2 = 800; // ppm: aired well enough for the night
+const SLEEP_CO2 = 1000; // ppm: above it sleep gets shallower (studies of bedrooms, e.g. Strøm-Tejsen 2016)
+const SLEEP_WARM = 20; // °C: 16-19 is best for sleep
+const COOKING_CO2_RISE = 400; // ppm within the window: a gas stove or many people cooking
+
+/* The rise of a value over the last minutes: the newest reading less the lowest of them, all
+ * of the device's own sensor (the value now may be tado's); value when there are none. */
+function riseOf(recent: RecentAir[], key: 'humidity' | 'co2', now: number, value: number | undefined) {
+    const values = recent.filter((r) => now - r.at <= RECENT_MS && r[key] !== undefined).map((r) => r[key] as number);
+    if (!values.length || value === undefined) return 0;
+    return values[values.length - 1] - Math.min(...values);
+}
+
+/* The advice of a room of its kind, on top of climateHints: a bathroom after a shower, a
+ * bedroom before and during the night, a kitchen while cooking. replaces: the ids of the
+ * general hints the room's own say better (the humidity of a bathroom is meant to rise). */
+export function roomHints(kind: RoomKind | undefined, air: IndoorAir, recent: RecentAir[], moment: RoomMoment, now = Date.now()) {
+    const hints: ClimateHint[] = [];
+    const replaces: string[] = [];
+    const t = air.temperature;
+    const rh = air.humidity;
+    const co2 = air.co2;
+
+    if (kind === 'bathroom' && rh !== undefined) {
+        replaces.push('humid', 'humidity');
+        const rise = riseOf(recent, 'humidity', now, rh);
+        // after a shower the walls are wet for a while: the shower and the damp advice say what to do about it
+        if (rh > DAMP_RH || rise >= SHOWER_RISE) replaces.push('mould');
+        if (rh >= SHOWER_RH || (rise >= SHOWER_RISE && rh >= DRY_RH)) {
+            hints.push({
+                id: 'shower',
+                level: 'warn',
+                icon: 'bath',
+                title: 'Humid after a shower: open the window',
+                text: `${Math.round(rh)} %: open the window wide for 5 to 10 minutes (the door, if it is cold outside) until it is below ${DRY_RH} %, and wipe the tiles and the shower dry. Damp that stays grows mould.`,
+                notify: true,
+                afterMinutes: 3,
+                repeatMinutes: 60,
+            });
+        } else if (rh > DAMP_RH) {
+            hints.push({
+                id: 'damp',
+                level: 'warn',
+                icon: 'droplets',
+                title: 'Still damp',
+                text: `${Math.round(rh)} %: the moisture soaks into the joints and walls. Air again and leave the door open until it is below ${DRY_RH} %.`,
+                notify: true,
+                afterMinutes: 45,
+                repeatMinutes: 6 * 60,
+            });
+        } else if (rh < DRY_RH) {
+            hints.push({
+                id: 'bathroom-dry',
+                level: 'good',
+                icon: 'bath',
+                title: 'Dry enough',
+                text: `${Math.round(rh)} %: no damp left from the last shower.`,
+            });
+        }
+    }
+
+    if (kind === 'bedroom') {
+        const evening = !moment.night && moment.hour >= 20 && moment.hour <= 23;
+        const asleep = moment.night || moment.hour >= 23 || moment.hour < 6;
+        if (evening && ((co2 !== undefined && co2 > BEDTIME_CO2) || (t !== undefined && t > SLEEP_WARM))) {
+            const why = [co2 !== undefined && co2 > BEDTIME_CO2 ? `${co2} ppm CO2` : '', t !== undefined && t > SLEEP_WARM ? `${round1(t)} °C` : '']
+                .filter(Boolean)
+                .join(', ');
+            hints.push({
+                id: 'bedtime',
+                level: 'info',
+                icon: 'bed',
+                title: 'Air before you sleep',
+                text: `${why}: air the bedroom for 5 to 10 minutes before bed. With the door shut the CO2 rises all night; below ${BEDTIME_CO2} ppm and at 16 to 19 °C sleep is deeper.`,
+                notify: true,
+                afterMinutes: 10,
+                repeatMinutes: 20 * 60,
+            });
+        }
+        if (asleep && co2 !== undefined && co2 > SLEEP_CO2) {
+            hints.push({
+                id: 'sleep-co2',
+                level: 'warn',
+                icon: 'zzz',
+                title: 'Stuffy for sleeping',
+                text: `${co2} ppm: above ${SLEEP_CO2} ppm sleep gets shallower and you wake up tired. Leave the door or a window ajar tonight.`,
+            });
+        }
+        if (asleep && t !== undefined && t > SLEEP_WARM + 1) {
+            hints.push({
+                id: 'sleep-warm',
+                level: 'info',
+                icon: 'temperature-plus',
+                title: 'Warm for sleeping',
+                text: `${round1(t)} °C: 16 to 19 °C is best for sleep; turn the heating down in the bedroom.`,
+            });
+        }
+    }
+
+    if (kind === 'kitchen') {
+        const rise = riseOf(recent, 'co2', now, co2);
+        const steam = riseOf(recent, 'humidity', now, rh);
+        if (rise >= COOKING_CO2_RISE || steam >= SHOWER_RISE) {
+            hints.push({
+                id: 'cooking',
+                level: 'info',
+                icon: 'tools-kitchen-2',
+                title: 'Cooking: turn on the hood',
+                text: `The ${rise >= COOKING_CO2_RISE ? `CO2 rose ${Math.round(rise)} ppm` : `humidity rose ${Math.round(steam)} %`} in the last minutes. Turn on the extractor hood or open a window while you cook.`,
+            });
+        }
+    }
+    return { hints, replaces };
+}
+
+// all hints of a room: the general ones and those of its kind, the most pressing first
+export function allRoomHints(kind: RoomKind | undefined, air: IndoorAir, outdoor: Weather | null | undefined, recent: RecentAir[], moment: RoomMoment) {
+    const own = roomHints(kind, air, recent, moment);
+    const order: HintLevel[] = ['alert', 'warn', 'info', 'good'];
+    return [...own.hints, ...climateHints(air, outdoor).filter((h) => !own.replaces.includes(h.id))].sort(
+        (a, b) => order.indexOf(a.level) - order.indexOf(b.level),
+    );
 }

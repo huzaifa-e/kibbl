@@ -14,6 +14,7 @@ import { assignUnowned } from './core/owners';
 
 const log = logger('server');
 import { initAir } from './core/air';
+import { initRooms } from './core/rooms';
 import { publishDevice } from './core/devices';
 import { hub } from './core/hub';
 import { initTado } from './tado/service';
@@ -46,6 +47,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 async function main() {
     await db.init();
+    await initRooms();
     await ensureAdminUser();
     await assignUnowned();
     initStorageCleanup();

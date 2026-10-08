@@ -1,3 +1,5 @@
+import type { RoomKind } from './roomKind';
+
 /*
  * Heating through tado: the rooms of the account's tado home as the app shows them, and
  * what the app can ask for. tado's REST API allows 100 requests a day without Auto-Assist:
@@ -41,6 +43,7 @@ export interface HeatingStatus {
 export interface HomeRoom {
     _id: string;
     name: string;
+    kind?: RoomKind; // chosen, or guessed from the name (shared/roomKind.ts)
 }
 
 // a room of the home with what stands in it, for the rooms section of the app

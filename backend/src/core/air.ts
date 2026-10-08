@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { AirEvent, AirReading, AirState, DeviceSummary, NightSchedule, SmokeDay } from '../../../shared/protocol';
+import type { AirEvent, AirNight, AirReading, AirState, DeviceSummary, NightSchedule, SmokeDay } from '../../../shared/protocol';
 import { AirEventModel, AirReading as AirReadingModel, Device } from './db';
 import { sendCommand } from './devices';
 import { hub } from './hub';
@@ -8,7 +8,8 @@ import { notifyOwner } from './notify';
 import { deviceOwner } from './owners';
 import { weatherForUser } from './weather';
 import { pairedRoom } from '../tado/service';
-import { climateHints } from '../../../shared/climate';
+import { roomKindOf } from './rooms';
+import { allRoomHints, type RecentAir } from '../../../shared/climate';
 
 /*
  * kibbl. air (the Conny CO2 traffic light): its measurements as a minute each, the events
@@ -213,6 +214,31 @@ export async function airReadings(deviceId: string, from: Date, to: Date): Promi
     return out;
 }
 
+/* The last night that is over: the hours of the night schedule (22 to 7 while it is off),
+ * ending at the latest "to" hour that has passed. Undefined with less than an hour measured. */
+export async function lastNight(deviceId: string, schedule: NightSchedule): Promise<AirNight | undefined> {
+    const fromHour = schedule.enabled ? schedule.from : 22;
+    const toHour = schedule.enabled ? schedule.to : 7;
+    const end = new Date();
+    if (end.getHours() < toHour) end.setDate(end.getDate() - 1);
+    end.setHours(toHour, 0, 0, 0);
+    const hours = (toHour - fromHour + 24) % 24 || 24;
+    const start = new Date(end.getTime() - hours * 3600_000);
+    const docs = await AirReadingModel.find({ deviceId, at: { $gte: start, $lt: end } }, { _id: 0, co2: 1, temperature: 1, humidity: 1 }).lean();
+    if (docs.length < 60) return undefined;
+    const mean = (k: 'co2' | 'humidity') => docs.reduce((s, d) => s + d[k], 0) / docs.length;
+    return {
+        from: start.getTime(),
+        to: end.getTime(),
+        co2Mean: Math.round(mean('co2')),
+        co2Max: Math.max(...docs.map((d) => d.co2)),
+        minutesAbove1000: docs.filter((d) => d.co2 > 1000).length, // a document a minute
+        temperatureMin: Math.min(...docs.map((d) => d.temperature)),
+        temperatureMax: Math.max(...docs.map((d) => d.temperature)),
+        humidityMean: Math.round(mean('humidity')),
+    };
+}
+
 export async function airEvents(deviceId: string, from: number, limit = 200) {
     const docs = await AirEventModel.find({ deviceId, at: { $gte: from } })
         .sort({ at: -1 })
@@ -257,13 +283,27 @@ export async function removeAirData(deviceId: string) {
 
 /* ----------------------------------------------------------------------- */
 
-/* A health hint of the climate (too cold, too hot, very dry, very humid, mould) that lasts
- * CLIMATE_LASTS_MS is sent to the owner, the same one at most every CLIMATE_REPEAT_MS, and
+/* A health hint of the climate (too cold, too hot, very dry, very humid, mould) and of the
+ * kind of the room (a shower in a bathroom, airing a bedroom before the night) that lasts
+ * its afterMinutes is sent to the owner, the same one at most every repeatMinutes, and
  * never in night mode: it can wait for the morning. */
-const CLIMATE_LASTS_MS = 30 * 60_000;
-const CLIMATE_REPEAT_MS = 12 * 3600_000;
+const CLIMATE_LASTS_MIN = 30;
+const CLIMATE_REPEAT_MIN = 12 * 60;
+const RECENT_KEEP_MS = 25 * 60_000;
 const climateSince = new Map<string, number>(); // device|hint id: since when it is shown
 const climateSent = new Map<string, number>();
+const recentAir = new Map<string, RecentAir[]>(); // the readings of the last minutes: a shower, cooking
+
+export function recentAirOf(deviceId: string) {
+    return recentAir.get(deviceId) ?? [];
+}
+
+function remember(deviceId: string, state: AirState) {
+    const now = Date.now();
+    const list = (recentAir.get(deviceId) ?? []).filter((r) => now - r.at <= RECENT_KEEP_MS);
+    list.push({ at: now, humidity: state.humidity, co2: state.co2 });
+    recentAir.set(deviceId, list);
+}
 
 async function checkClimate(deviceId: string, state: AirState) {
     const owner = await deviceOwner(deviceId);
@@ -272,7 +312,12 @@ async function checkClimate(deviceId: string, state: AirState) {
     const doc = owner ? await Device.findById(deviceId, { roomId: 1 }).lean() : null;
     const room = pairedRoom(owner ?? undefined, doc?.roomId);
     const air = room ? { ...state, temperature: room.temperature ?? state.temperature, humidity: room.humidity ?? state.humidity } : state;
-    const hints = climateHints(air, weather).filter((h) => h.notify && h.level !== 'good' && h.level !== 'info');
+    // the shower and the evening airing are worth a message although only 'warn' and 'info'
+    const own = new Set(['shower', 'damp', 'bedtime']);
+    const hints = allRoomHints(roomKindOf(doc?.roomId), air, weather, recentAir.get(deviceId) ?? [], {
+        hour: new Date().getHours(),
+        night: state.night,
+    }).filter((h) => h.notify && (own.has(h.id) || h.level === 'warn' || h.level === 'alert'));
     const now = Date.now();
     const shown = new Set(hints.map((h) => `${deviceId}|${h.id}`));
     for (const key of climateSince.keys()) {
@@ -282,7 +327,9 @@ async function checkClimate(deviceId: string, state: AirState) {
         const key = `${deviceId}|${hint.id}`;
         const since = climateSince.get(key) ?? now;
         climateSince.set(key, since);
-        if (state.night || now - since < CLIMATE_LASTS_MS || now - (climateSent.get(key) ?? 0) < CLIMATE_REPEAT_MS) continue;
+        const lasts = (hint.afterMinutes ?? CLIMATE_LASTS_MIN) * 60_000;
+        const repeat = (hint.repeatMinutes ?? CLIMATE_REPEAT_MIN) * 60_000;
+        if (state.night || now - since < lasts || now - (climateSent.get(key) ?? 0) < repeat) continue;
         climateSent.set(key, now);
         Device.findById(deviceId, { name: 1 })
             .lean()
@@ -308,6 +355,7 @@ export function initAir() {
         // a pending device shows nothing to anybody and keeps nothing
         if (!telemetry.air || !schedules.get(deviceId)?.approved) return;
         recordState(deviceId, telemetry.air);
+        remember(deviceId, telemetry.air);
         reconcileNight(deviceId, telemetry.air);
         checkClimate(deviceId, telemetry.air).catch((err) => log.warn('climate not checked', { device: deviceId }, err));
     });

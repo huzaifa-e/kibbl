@@ -12,7 +12,7 @@ import {
     type SmokeDay,
     roomClimate,
 } from '../../../shared/protocol';
-import { climateHints, type HintLevel, type Weather } from '../../../shared/climate';
+import { allRoomHints, type HintLevel, type RecentAir, type Weather } from '../../../shared/climate';
 import { baseOptions } from './activityCharts';
 import { loadRooms, roomSelectHtml } from './roomsPanel';
 import { windowText } from './airCard';
@@ -241,6 +241,9 @@ function renderTiles() {
     renderClimate();
 }
 
+// the minutes of the last readings: a shower or cooking shows as a quick rise
+let recentAir: RecentAir[] = [];
+
 const HINT_COLORS: Record<HintLevel, string> = { alert: 'var(--tblr-red)', warn: 'var(--tblr-orange)', info: 'var(--tblr-azure)', good: 'var(--tblr-green)' };
 
 function renderClimate() {
@@ -248,7 +251,10 @@ function renderClimate() {
     byId('climate-outdoor').innerHTML = weather
         ? `<i class="ti ti-${weather.icon ?? 'cloud'}"></i> outside ${weather.temperature.toFixed(1)} °C · ${Math.round(weather.humidity)} %${weather.description ? ` · ${escapeHtml(weather.description)}` : ''}${weather.source === 'openweather' ? ' · <span title="Weather data © OpenWeather">© OpenWeather</span>' : ''}`
         : '<a href="/settings">set the home location</a> for the weather outside';
-    const hints = s ? climateHints({ ...s, ...roomClimate(device!.air) }, weather) : [];
+    const recent = s ? [...recentAir, { at: Date.now(), humidity: s.humidity, co2: s.co2 }] : [];
+    const hints = s
+        ? allRoomHints(device!.air?.roomKind, { ...s, ...roomClimate(device!.air) }, weather, recent, { hour: new Date().getHours(), night: s.night })
+        : [];
     byId('climate-hints').innerHTML = hints.length
         ? hints
               .map(
@@ -271,6 +277,7 @@ async function loadReadings(r: Range) {
     range = r;
     document.querySelectorAll('[data-range]').forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.range === r));
     const readings = (await getJson(`/api/air/${device!._id}/readings?hours=${r}`)) as AirReading[];
+    recentAir = readings.filter((x) => Date.now() - x.at <= 25 * 60_000).map((x) => ({ at: x.at, humidity: x.humidity, co2: x.co2 }));
     const co2El = byId('co2-chart');
     const climateEl = byId('climate-chart');
     if (!readings.length) {

@@ -1,5 +1,5 @@
-import type { Weather } from '../../../shared/climate';
-import { roomClimate, type AirEvent, type AirReading, type AirState, type DeviceSummary } from '../../../shared/protocol';
+import { allRoomHints, type ClimateHint, type RecentAir, type Weather } from '../../../shared/climate';
+import { roomClimate, type AirEvent, type AirNight, type AirReading, type AirState, type DeviceSummary } from '../../../shared/protocol';
 import { escapeHtml, timeAgo } from './utils';
 
 /* The home card of a kibbl. air, in the look of the heating cards and in the colour of its
@@ -65,10 +65,33 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 const HISTORY_HOURS = 6;
 const history = new Map<string, AirReading[]>();
 
-// the CO2 of the last hours of a kibbl. air, for the line of its card
-export async function loadAirHistory(deviceId: string) {
-    const res = await fetch(`/api/air/${deviceId}/readings?hours=${HISTORY_HOURS}`, { headers: { Accept: 'application/json' } }).catch(() => undefined);
+const nights = new Map<string, AirNight | null>();
+
+/* The CO2 of the last hours of a kibbl. air, for the line of its card (and the humidity of
+ * the last minutes, for a shower); in a bedroom also the air of its last night. */
+export async function loadAirHistory(deviceId: string, bedroom = false) {
+    const get = (url: string) => fetch(url, { headers: { Accept: 'application/json' } }).catch(() => undefined);
+    const [res, night] = await Promise.all([
+        get(`/api/air/${deviceId}/readings?hours=${HISTORY_HOURS}`),
+        bedroom ? get(`/api/air/${deviceId}/night`) : undefined,
+    ]);
     if (res?.ok) history.set(deviceId, (await res.json()) as AirReading[]);
+    if (night?.ok) nights.set(deviceId, (await night.json()) as AirNight | null);
+}
+
+// the most pressing advice for the room: one chip, none while all is well
+function adviceChip(hint: ClimateHint | undefined) {
+    if (!hint || hint.level === 'good') return '';
+    return `<div class="room-advice room-advice-${hint.level}" title="${escapeHtml(hint.text)}"><i class="ti ti-${hint.icon}"></i><span>${escapeHtml(hint.title)}</span></div>`;
+}
+
+const duration = (minutes: number) => (minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60 ? `${minutes % 60} min` : ''}`.trim() : `${minutes} min`);
+
+// a bedroom: how its air was over the last night
+function nightLine(n: AirNight | null | undefined) {
+    if (!n) return '';
+    const above = n.minutesAbove1000 ? `${duration(n.minutesAbove1000)} above 1000 ppm` : 'never above 1000 ppm';
+    return `<div class="room-night"><i class="ti ti-moon"></i><span><b>Last night</b> · CO₂ ${n.co2Mean} ppm on average, ${above} · ${n.temperatureMin.toFixed(1)}–${n.temperatureMax.toFixed(1)} °C</span></div>`;
 }
 
 // how the room feels: humidity 20-80 % left to right, temperature 16-28 °C bottom to top; the comfort zone in the middle
@@ -126,6 +149,14 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
     const outside = weather
         ? `<span class="room-outside" title="${escapeHtml(weather.description ?? '')}"><i class="ti ti-${weather.icon ?? 'cloud'}"></i> ${Math.round(weather.temperature)}° outside</span>`
         : '';
+    const kind = d.air?.roomKind;
+    const recent: RecentAir[] = (history.get(d._id) ?? [])
+        .filter((r) => Date.now() - r.at <= 25 * 60_000)
+        .map((r) => ({ at: r.at, humidity: r.humidity, co2: r.co2 }));
+    if (s) recent.push({ at: Date.now(), humidity: s.humidity, co2: s.co2 });
+    const advice = s
+        ? allRoomHints(kind, { temperature: t, humidity: rh, co2: s.co2 }, weather, recent, { hour: new Date().getHours(), night: s.night })[0]
+        : undefined;
     const points = [...(history.get(d._id) ?? [])];
     if (s?.co2 !== undefined) points.push({ at: Date.now(), co2: s.co2, temperature: 0, humidity: 0 });
     // OpenWeather asks to be named where its data is shown
@@ -142,6 +173,8 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
             ${tile('leaf', s?.co2 !== undefined ? `Air · ${s.co2} ppm` : 'Air', f.word)}
         </div>
         ${points.length > 1 ? `<div class="room-line-box"><div class="room-line-caption">CO₂, last ${HISTORY_HOURS} h</div>${co2Line(points)}</div>` : ''}
+        ${adviceChip(advice)}
+        ${kind === 'bedroom' ? nightLine(nights.get(d._id)) : ''}
         ${windowChip(s, lastOpen)}
         ${notes ? `<div class="room-note">${notes}</div>` : ''}
     </a>`;

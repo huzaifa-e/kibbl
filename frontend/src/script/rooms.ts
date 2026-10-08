@@ -2,6 +2,7 @@ import './main';
 import type { Weather } from '../../../shared/climate';
 import type { HeatingRoom, RoomOverview } from '../../../shared/heating';
 import { productName, roomClimate, type AirEvent, type DeviceSummary, type DeviceTelemetry } from '../../../shared/protocol';
+import { roomKindSelectHtml } from './roomsPanel';
 import { airCardHtml, loadAirHistory, windowText, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { socket } from './socket';
@@ -126,7 +127,8 @@ function renderRoom(r: Room) {
     byId('page-pretitle').textContent = 'Room';
     byId('page-title').textContent = r.room!.name;
     byId('page-actions').innerHTML = `<a href="/rooms" class="btn btn-sm"><i class="ti ti-arrow-left me-1"></i> All rooms</a>
-        <button class="btn btn-sm" id="room-rename"><i class="ti ti-pencil me-1"></i> Rename</button>`;
+        <button class="btn btn-sm" id="room-rename"><i class="ti ti-pencil me-1"></i> Rename</button>
+        ${roomKindSelectHtml(r.room!)}`;
     byId('room-rename').addEventListener('click', async () => {
         const name = prompt('New name', r.room!.name)?.trim();
         if (name && (await send(`/api/rooms/${r.room!._id}`, 'PATCH', { name }))) await load();
@@ -214,7 +216,10 @@ async function load() {
             .flatMap((r) => r.devices)
             .filter((d) => d.caps.includes('air'))
             .map(async (d) => {
-                const [events] = await Promise.all([getJson<AirEvent[]>(`/api/air/${d._id}/events?days=1`).then((e) => e ?? []), loadAirHistory(d._id)]);
+                const [events] = await Promise.all([
+                    getJson<AirEvent[]>(`/api/air/${d._id}/events?days=1`).then((e) => e ?? []),
+                    loadAirHistory(d._id, d.air?.roomKind === 'bedroom'),
+                ]);
                 windows.set(d._id, {
                     open: events.find((e) => e.kind === 'window' && e.state === 'open'),
                     closed: events.find((e) => e.kind === 'window' && e.state === 'closed'),
@@ -226,6 +231,11 @@ async function load() {
 
 document.addEventListener('DOMContentLoaded', () => {
     // moving a device or a room of tado: in another room, the page is read again
+    // what the room is used for, in the page's header
+    document.addEventListener('change', async (e) => {
+        const el = e.target as HTMLSelectElement;
+        if (el.dataset.roomKind && (await send(`/api/rooms/${el.dataset.roomKind}`, 'PATCH', { kind: el.value }))) await load();
+    });
     byId('container').addEventListener('change', async (e) => {
         const el = e.target as HTMLSelectElement;
         const target = el.value || null;

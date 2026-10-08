@@ -1,5 +1,6 @@
 import express from 'express';
-import { airEvents, airReadings, smokeDays } from '../core/air';
+import { airEvents, airReadings, lastNight, smokeDays } from '../core/air';
+import { nightSchedule } from '../core/airState';
 import { checkAuthMiddleware } from '../core/auth';
 import { Device } from '../core/db';
 import { summarize } from '../core/devices';
@@ -37,6 +38,16 @@ export default function initAirRoutes(app: express.Application) {
         const hours = Math.min(Math.max(Number(req.query.hours) || 24, 1), 366 * 24);
         const to = new Date();
         res.json(await airReadings(req.params.id, new Date(to.getTime() - hours * HOUR_MS), to));
+    });
+
+    // the air of the last night that is over, for a bedroom: null with too little measured
+    app.get('/api/air/:id/night', auth, async (req: RequestWithSessionInfo, res) => {
+        const doc = await ownAir(req);
+        if (!doc) {
+            res.sendStatus(404);
+            return;
+        }
+        res.json((await lastNight(doc._id, nightSchedule(doc))) ?? null);
     });
 
     // cigarettes, windows and fire alerts of the last days (?days=7), newest first

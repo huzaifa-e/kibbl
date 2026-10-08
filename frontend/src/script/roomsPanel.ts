@@ -1,4 +1,5 @@
 import type { HeatingStatus, HomeRoom } from '../../../shared/heating';
+import { ROOM_KINDS } from '../../../shared/roomKind';
 import { errorAlert, escapeHtml, successAlert, timeAgo } from './utils';
 
 /* The rooms of the home and heating through tado, on the devices page. A device and one of
@@ -22,6 +23,15 @@ export async function loadHeating() {
     heating = (await json<HeatingStatus>('/api/heating')).data;
 }
 
+// what a room is used for: the advice on its air follows it
+export function roomKindSelectHtml(room: HomeRoom, attrs = '') {
+    return `<select class="form-select form-select-sm w-auto" data-room-kind="${room._id}" title="What the room is used for: the advice on its air follows it" ${attrs}>
+        ${Object.entries(ROOM_KINDS)
+            .map(([k, label]) => `<option value="${k}" ${room.kind === k ? 'selected' : ''}>${label}</option>`)
+            .join('')}
+    </select>`;
+}
+
 // a select of the rooms: "No room" first; attrs carry what it moves
 export function roomSelectHtml(selected: string | undefined, attrs: string) {
     return `<select class="form-select form-select-sm" ${attrs}>
@@ -37,6 +47,7 @@ export function roomsCardHtml() {
         .map(
             (r) => `<div class="list-group-item d-flex align-items-center gap-2">
                 <i class="ti ti-door"></i><span class="flex-fill">${escapeHtml(r.name)}</span>
+                ${roomKindSelectHtml(r)}
                 <button class="btn btn-sm btn-ghost-secondary" data-room-rename="${r._id}" data-name="${escapeHtml(r.name)}" title="Rename"><i class="ti ti-pencil"></i></button>
                 <button class="btn btn-sm btn-ghost-danger" data-room-delete="${r._id}" data-name="${escapeHtml(r.name)}" title="Remove"><i class="ti ti-trash"></i></button>
             </div>`,
@@ -44,7 +55,7 @@ export function roomsCardHtml() {
         .join('');
     return `<div class="card mb-4">
         <div class="card-header"><h3 class="card-title">Rooms</h3></div>
-        <div class="card-body text-secondary small pb-0">A kibbl. air in the same room as a room of tado shows tado's temperature and humidity and switches the heating off while a window is open; in a room of its own it measures them itself. Move a device by choosing its room in the list above.</div>
+        <div class="card-body text-secondary small pb-0">A kibbl. air in the same room as a room of tado shows tado's temperature and humidity and switches the heating off while a window is open; in a room of its own it measures them itself. Move a device by choosing its room in the list above. What a room is used for sets the advice on its air: a bathroom says when to air after a shower, a bedroom when to air before the night and how the last night was.</div>
         <div class="list-group list-group-flush mt-2">${rows || '<div class="list-group-item text-secondary">No rooms yet.</div>'}</div>
         <div class="card-body">
             <form class="d-flex gap-2" id="room-add"><input class="form-control" id="room-name" placeholder="New room, e.g. Bedroom" maxlength="40" required /><button class="btn" type="submit"><i class="ti ti-plus me-1"></i> Add</button></form>
@@ -142,7 +153,9 @@ export function bindRoomsPanel(root: HTMLElement, refresh: () => Promise<void>) 
     root.addEventListener('change', async (e) => {
         const el = e.target as HTMLSelectElement;
         const roomId = el.value || null;
-        if (el.dataset.tadoPlace) {
+        if (el.dataset.roomKind) {
+            await json(`/api/rooms/${el.dataset.roomKind}`, { method: 'PATCH', body: JSON.stringify({ kind: el.value }) });
+        } else if (el.dataset.tadoPlace) {
             await json(`/api/heating/rooms/${el.dataset.tadoPlace}/place`, { method: 'PUT', body: JSON.stringify({ roomId }) });
         } else if (el.dataset.deviceRoom) {
             const res = await json(`/api/devices/${el.dataset.deviceRoom}/room`, { method: 'PUT', body: JSON.stringify({ roomId }) });

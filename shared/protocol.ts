@@ -161,6 +161,7 @@ export interface NightSchedule {
 }
 
 import type { PairedRoom } from './heating';
+import type { RoomKind } from './roomKind';
 
 export interface AirDevice {
     state?: AirState; // while online
@@ -170,6 +171,7 @@ export interface AirDevice {
     sensorError?: string;
     schedule: NightSchedule;
     room?: PairedRoom; // a tado room in the same room: its temperature and humidity count, the CO2 is the device's
+    roomKind?: RoomKind; // what the room it stands in is used for: the advice follows it
 }
 
 // a minute of measurements
@@ -178,6 +180,18 @@ export interface AirReading {
     co2: number;
     temperature: number;
     humidity: number;
+}
+
+// the air of a bedroom over the last night, for how well it was slept in
+export interface AirNight {
+    from: number;
+    to: number;
+    co2Mean: number;
+    co2Max: number;
+    minutesAbove1000: number;
+    temperatureMin: number;
+    temperatureMax: number;
+    humidityMean: number;
 }
 
 export interface AirEvent {

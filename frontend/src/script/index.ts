@@ -156,7 +156,7 @@ async function loadAirExtras() {
                 get(`/api/air/${d._id}/events?days=1`)
                     .catch(() => null)
                     .then((e) => (e as AirEvent[] | null) ?? []),
-                loadAirHistory(d._id),
+                loadAirHistory(d._id, d.air?.roomKind === 'bedroom'),
             ]);
             const open = events.find((e) => e.kind === 'window' && e.state === 'open');
             const closed = events.find((e) => e.kind === 'window' && e.state === 'closed');

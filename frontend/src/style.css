@@ -517,6 +517,29 @@ html[data-bs-theme='dark'] .theme-label-dark {
     background: rgba(255, 255, 255, 0.09);
     font-size: 0.85rem;
 }
+.room-advice,
+.room-night {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.8rem;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.09);
+}
+.room-advice {
+    font-weight: 600;
+}
+.room-advice-info {
+    background: rgba(120, 180, 240, 0.3);
+}
+.room-advice-warn {
+    background: rgba(240, 160, 60, 0.4);
+}
+.room-advice-alert {
+    background: rgba(230, 70, 50, 0.5);
+}
 .room-window-open {
     background: rgba(120, 180, 240, 0.35);
 }
