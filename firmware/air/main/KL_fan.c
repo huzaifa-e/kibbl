@@ -6,11 +6,11 @@
 #include "KL_hw.h"
 #include "KL_serial.h"
 
-/* Slow pwm: the Conny's fan is a plain 2-wire fan behind a transistor, made to run at the
- * speed R15 sets. Switched at 25 kHz its own commutation electronics restart thousands of
- * times a second and it screeches at part speed; switched 25 times a second it runs slower
- * on the energy it gets, as 2-wire fans on pc boards were driven. */
-#define FAN_FREQ_HZ  25
+/* The pwm frequency is a setting (config_fan_freq, 25 Hz unless set): the Conny's fan is a
+ * plain 2-wire fan behind a transistor, made to run at the speed R15 sets. Switched at
+ * 25 kHz its own commutation electronics restart thousands of times a second and it
+ * screeches at part speed; which frequency it is quiet at depends on the fan. */
+#define FAN_FREQ_HZ  25 // until the setting is applied (air_start)
 #define FAN_DUTY_RES LEDC_TIMER_8_BIT
 #define FAN_DUTY_MAX 255
 #define FAN_TICK_US  (1000 * 1000)
@@ -177,4 +177,17 @@ uint8_t fan_level_now(void) {
 
 void fan_set_quiet(uint8_t percent) {
     quiet = percent;
+}
+
+bool fan_set_freq(uint32_t hz) {
+    if (!available) {
+        return false;
+    }
+    esp_err_t err = ledc_set_freq(LEDC_LOW_SPEED_MODE, FAN_TIMER, hz);
+    if (err != ESP_OK) {
+        DEBUG_F_ERROR("fan: %lu Hz not possible (%s)\n", (unsigned long)hz, esp_err_to_name(err));
+        return false;
+    }
+    DEBUG_F("fan: pwm at %lu Hz\n", (unsigned long)hz);
+    return true;
 }

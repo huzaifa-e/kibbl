@@ -22,6 +22,9 @@ void fan_set_air(air_level_t level, uint16_t co2);
 // night mode: the fan runs at most at cap % (0: off); 100 lifts it
 void fan_set_cap(uint8_t cap);
 
+// the pwm frequency (config_fan_freq), while the fan runs; false when the timer cannot make it
+bool fan_set_freq(uint32_t hz);
+
 // the quiet speed (config_fan_quiet): the lowest auto runs at
 void fan_set_quiet(uint8_t percent);
 

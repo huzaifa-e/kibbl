@@ -262,10 +262,14 @@ export function parseFeederState(v: unknown): FeederState | undefined {
     if (typeof v !== 'object' || v === null) return undefined;
     const f = v as Record<string, unknown>;
     if (typeof f.opening !== 'number' || !Number.isFinite(f.opening) || typeof f.busy !== 'boolean') return undefined;
+    const whole = (x: unknown, max: number) => (typeof x === 'number' && Number.isInteger(x) && Math.abs(x) <= max ? x : undefined);
     return {
         opening: Math.round(Math.min(Math.max(f.opening, 0), 50) * 10) / 10,
         busy: f.busy,
         job: typeof f.job === 'string' && /^[a-z]{1,16}$/.test(f.job) ? f.job : undefined,
+        position: whole(f.position, 100000),
+        speed: whole(f.speed, 100000),
+        accel: whole(f.accel, 1000000),
     };
 }
 
@@ -363,7 +367,7 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
             { _id: deviceId },
             { air: resp.air as AirSettings, fanSettings: resp.fanSettings as FanSettings, lamp: resp.lamp as LampSettings },
         );
-    } else if ((cmd === 'feed' || cmd === 'iris') && dev && parseFeederState(resp.feeder)) {
+    } else if ((cmd === 'feed' || cmd === 'iris' || cmd.startsWith('feeder_')) && dev && parseFeederState(resp.feeder)) {
         dev.info.feeder = resp.feeder;
     } else if (cmd === 'night' && typeof resp.night === 'boolean' && dev) {
         // shown at once, not only with the next telemetry

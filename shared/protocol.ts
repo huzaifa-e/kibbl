@@ -16,7 +16,7 @@ export const capabilityCommands: Record<string, string[]> = {
     ota: [],
     // for the devices that are still to come: relay outputs, a pet feeder, a heating valve
     switch: ['switch'],
-    feeder: ['feed', 'iris'],
+    feeder: ['feed', 'iris', 'feeder_config', 'feeder_move', 'feeder_home'],
     thermostat: ['thermostat'],
     // kibbl. air (the Conny CO2 traffic light)
     air: ['air_config'],
@@ -88,7 +88,15 @@ export interface FeederState {
     opening: number; // mm
     busy: boolean; // moving or feeding now
     job?: string; // what it is doing: feed, open, close
+    position?: number; // motor steps from fully open
+    speed?: number; // steps/s
+    accel?: number; // steps/s²
 }
+
+// what the app may tune on a feeder while it is being set up (firmware/feeder-motor)
+export const FEEDER_SPEED = { min: 100, max: 4000 };
+export const FEEDER_ACCEL = { min: 200, max: 20000 };
+export const FEEDER_MOVE_MAX = 3584; // steps, either way: two strokes
 
 // the feeding levels the app offers: portions, how far and how long the iris opens each time
 export interface FeedLevel {
@@ -186,6 +194,7 @@ export interface FanSettings {
     onSeconds: number;
     offSeconds: number;
     quietLevel?: number; // % the lowest it runs at: in fresh air with the CO2, always in a bedroom (firmware 1.2.5 on)
+    freqHz?: number; // the pwm frequency, which one the fan is quiet at depends on it (firmware 1.2.6 on)
 }
 
 export interface LampSettings {

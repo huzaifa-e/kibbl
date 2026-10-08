@@ -1,4 +1,4 @@
-import { FEEDER_MAX_MM, FEEDER_MIN_MM, fanModes, framesizes, lampColors, lampModes, type MotionSettings } from '../../../shared/protocol';
+import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_MOVE_MAX, FEEDER_SPEED, fanModes, framesizes, lampColors, lampModes, type MotionSettings } from '../../../shared/protocol';
 import { setNightOverride } from './air';
 import { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
@@ -77,6 +77,23 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
             }
             return out;
         }
+        // tuning a feeder: its speed and acceleration, steps by hand, the zero
+        case 'feeder_config': {
+            const out: Record<string, unknown> = { cmd };
+            if (command.speed !== undefined) {
+                if (!int(command.speed, FEEDER_SPEED.min, FEEDER_SPEED.max)) return undefined;
+                out.speed = command.speed;
+            }
+            if (command.accel !== undefined) {
+                if (!int(command.accel, FEEDER_ACCEL.min, FEEDER_ACCEL.max)) return undefined;
+                out.accel = command.accel;
+            }
+            return Object.keys(out).length > 1 ? out : undefined;
+        }
+        case 'feeder_move':
+            return int(command.steps, -FEEDER_MOVE_MAX, FEEDER_MOVE_MAX) && command.steps !== 0 ? { cmd, steps: command.steps } : undefined;
+        case 'feeder_home':
+            return { cmd };
         // the iris of a feeder to an opening, the closed one included
         case 'iris':
             return mm(command.opening, FEEDER_MIN_MM, FEEDER_MAX_MM) ? { cmd, opening: Math.round((command.opening as number) * 10) / 10 } : undefined;
@@ -135,7 +152,13 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
                 if (!fanModes.includes(command.mode as never)) return undefined;
                 out.mode = command.mode;
             }
-            const ranges: Record<string, [number, number]> = { level: [1, 100], onSeconds: [1, 3600], offSeconds: [1, 3600], quietLevel: [10, 60] };
+            const ranges: Record<string, [number, number]> = {
+                level: [1, 100],
+                onSeconds: [1, 3600],
+                offSeconds: [1, 3600],
+                quietLevel: [10, 60],
+                freqHz: [10, 30000],
+            };
             for (const [key, [min, max]] of Object.entries(ranges)) {
                 if (command[key] === undefined) continue;
                 if (!int(command[key], min, max)) return undefined;

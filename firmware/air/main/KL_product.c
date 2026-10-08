@@ -101,6 +101,18 @@ static const char *cmd_settings(const cJSON *req, cJSON *resp, settings_from_jso
     if ((remind.minutes != config_air_remind().minutes || remind.level != config_air_remind().level) && !config_set_air_remind(remind)) {
         return "reminder not stored";
     }
+    uint32_t freq = config_fan_freq();
+    if (!config_fan_freq_from_json(req, &freq)) {
+        return "invalid setting";
+    }
+    if (freq != config_fan_freq()) {
+        if (!fan_set_freq(freq)) {
+            return "fan frequency not taken";
+        }
+        if (!config_set_fan_freq(freq)) {
+            return "fan frequency not stored";
+        }
+    }
     uint8_t quiet = config_fan_quiet();
     if (!config_fan_quiet_from_json(req, &quiet)) {
         return "invalid setting";

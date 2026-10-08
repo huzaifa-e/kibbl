@@ -45,6 +45,9 @@ const SENSITIVITY = [
     { label: 'Medium', rise: 150 },
     { label: 'Low', rise: 250 },
 ];
+// the pwm frequencies to try: which one a 2-wire fan is quiet at part speed depends on the fan
+const FAN_FREQS = [15, 25, 50, 100, 200, 500, 1000, 5000, 25000];
+
 const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂ (slow while fresh)' };
 
 let devices: DeviceSummary[] = [];
@@ -520,6 +523,15 @@ function renderSettings() {
                 <input type="range" class="form-range mb-2" min="10" max="60" step="5" id="fan-quiet" value="${fan.quietLevel}" ${off} />`
                         : ''
                 }
+                ${
+                    fan?.freqHz !== undefined
+                        ? `<label class="form-label">Switching frequency</label>
+                <select class="form-select form-select-sm mb-2" id="fan-freq" ${off}>${[...new Set([...FAN_FREQS, fan.freqHz])]
+                    .sort((a, b) => a - b)
+                    .map((f) => `<option value="${f}" ${f === fan.freqHz ? 'selected' : ''}>${f >= 1000 ? `${f / 1000} kHz` : `${f} Hz`}</option>`)
+                    .join('')}</select>`
+                        : ''
+                }
                 <div class="row g-2 ${fan?.mode === 'pulse' ? '' : 'd-none'}" id="fan-pulse">
                     <div class="col-6"><label class="form-label">On</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="fan-on" min="1" max="3600" value="${fan?.onSeconds ?? 60}" ${off} /><span class="input-group-text">s</span></div></div>
                     <div class="col-6"><label class="form-label">Off</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="fan-off" min="1" max="3600" value="${fan?.offSeconds ?? 240}" ${off} /><span class="input-group-text">s</span></div></div>
@@ -702,6 +714,8 @@ function bindSettings() {
             await command({ cmd: 'fan', mode: el.value });
         } else if (el.id === 'fan-level') {
             await command({ cmd: 'fan', level: Number(el.value) });
+        } else if (el.id === 'fan-freq') {
+            await command({ cmd: 'fan', freqHz: Number(el.value) });
         } else if (el.id === 'fan-quiet') {
             await command({ cmd: 'fan', quietLevel: Number(el.value) });
         } else if (el.id === 'fan-on' || el.id === 'fan-off') {

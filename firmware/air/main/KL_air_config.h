@@ -88,6 +88,16 @@ bool config_set_fan_quiet(uint8_t percent);
 // "quietLevel" FAN_QUIET_MIN..FAN_QUIET_MAX; true and *percent kept when left out
 bool config_fan_quiet_from_json(const cJSON *json, uint8_t *percent);
 
+/* The pwm frequency of the fan in Hz: which one a plain 2-wire fan runs quietly at part speed
+ * depends on the fan, so it is a setting too. Its own key. */
+#define FAN_FREQ_MIN     10
+#define FAN_FREQ_MAX     30000
+#define FAN_FREQ_DEFAULT 25
+uint32_t config_fan_freq(void);
+bool config_set_fan_freq(uint32_t hz);
+// "freqHz" FAN_FREQ_MIN..FAN_FREQ_MAX; true and *hz kept when left out
+bool config_fan_freq_from_json(const cJSON *json, uint32_t *hz);
+
 /* What the room the device stands in is used for, set by the server from the room's kind:
  * a bathroom beeps after a shower until the humidity is back, a bedroom keeps the light off
  * and beeps only for a risk to health. Its own key. */

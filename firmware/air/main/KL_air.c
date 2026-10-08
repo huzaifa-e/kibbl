@@ -446,6 +446,7 @@ void air_start(void) {
     lamp_set_mode((lamp_mode_t)settings.lamp_mode, settings.lamp_colors, settings.lamp_fade);
     fan_configure(&settings);
     fan_set_quiet(config_fan_quiet());
+    fan_set_freq(config_fan_freq());
     room_apply();
     air_fresh_t fresh = config_air_fresh();
     window_set_fresh(fresh.min, fresh.max);
