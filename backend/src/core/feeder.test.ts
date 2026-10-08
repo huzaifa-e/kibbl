@@ -35,6 +35,7 @@ test('the feeder state is kept only as the device should send it', () => {
         position: undefined,
         speed: undefined,
         accel: undefined,
+        closedPos: undefined,
     });
     const state = parseFeederState({ opening: 2.3, busy: true, job: 'feed', position: 1782, speed: 800, accel: 3000 });
     assert.equal(state?.job, 'feed');
@@ -60,4 +61,8 @@ test('tuning a feeder: speed, acceleration, steps, the zero', () => {
     assert.deepEqual(cleanCommand({ cmd: 'feeder_home', extra: true }), { cmd: 'feeder_home' });
     assert.deepEqual(cleanCommand({ cmd: 'feeder_release' }), { cmd: 'feeder_release', ms: 10000 });
     assert.equal(cleanCommand({ cmd: 'feeder_release', ms: 60000 }), undefined);
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_run', direction: 'close' }), { cmd: 'feeder_run', direction: 'close' });
+    assert.equal(cleanCommand({ cmd: 'feeder_run', direction: 'sideways' }), undefined);
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_stop' }), { cmd: 'feeder_stop' });
+    assert.equal(parseFeederState({ opening: 2.3, busy: false, closedPos: 2100 })?.closedPos, 2100);
 });

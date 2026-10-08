@@ -270,6 +270,7 @@ export function parseFeederState(v: unknown): FeederState | undefined {
         position: whole(f.position, 100000),
         speed: whole(f.speed, 100000),
         accel: whole(f.accel, 1000000),
+        closedPos: whole(f.closedPos, 100000),
     };
 }
 

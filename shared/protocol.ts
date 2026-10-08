@@ -16,7 +16,7 @@ export const capabilityCommands: Record<string, string[]> = {
     ota: [],
     // for the devices that are still to come: relay outputs, a pet feeder, a heating valve
     switch: ['switch'],
-    feeder: ['feed', 'iris', 'feeder_config', 'feeder_move', 'feeder_home', 'feeder_release'],
+    feeder: ['feed', 'iris', 'feeder_config', 'feeder_move', 'feeder_home', 'feeder_release', 'feeder_run', 'feeder_stop'],
     thermostat: ['thermostat'],
     // kibbl. air (the Conny CO2 traffic light)
     air: ['air_config'],
@@ -91,6 +91,7 @@ export interface FeederState {
     position?: number; // motor steps from fully open
     speed?: number; // steps/s
     accel?: number; // steps/s²
+    closedPos?: number; // the closed limit taught under load, steps from the open one (0)
 }
 
 // what the app may tune on a feeder while it is being set up (firmware/feeder-motor)

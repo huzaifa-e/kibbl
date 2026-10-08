@@ -38,6 +38,7 @@ interface Feeder {
     position?: number;
     speed?: number;
     accel?: number;
+    closedPos?: number;
 }
 
 let feeder: Feeder = { opening: 0, busy: false };
@@ -91,6 +92,7 @@ function stateFrom(msg: Json): Feeder | undefined {
         position: num(msg.position),
         speed: num(config.speed),
         accel: num(config.accel),
+        closedPos: num(config.closedPos),
     };
 }
 
@@ -196,6 +198,10 @@ async function run(msg: Json): Promise<Json> {
         cmd = { cmd: 'move', steps: msg.steps };
     } else if (msg.cmd === 'feeder_home') {
         cmd = { cmd: 'home' };
+    } else if (msg.cmd === 'feeder_run') {
+        cmd = { cmd: 'run', dir: msg.direction };
+    } else if (msg.cmd === 'feeder_stop') {
+        cmd = { cmd: 'stop' };
     } else if (msg.cmd === 'feeder_release') {
         cmd = { cmd: 'release', ms: msg.ms };
     } else if (msg.cmd === 'info') {

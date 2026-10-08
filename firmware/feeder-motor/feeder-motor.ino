@@ -14,11 +14,13 @@
  *
  * Serial 115200, one command per line, json as in docs/protocol.md or plain words:
  *   {"cmd":"feed","portions":2,"id":1}   feed 2      portions 1-10; this feed only: "opening" 4-42 mm, "openMs" 100-20000
- *   {"cmd":"open","mm":30}               open 30     opening 2-42 mm; fully (42, or without mm) also finds the zero again
+ *   {"cmd":"open","mm":30}               open 30     opening 2-42 mm (42 without mm), between the taught limits
  *   {"cmd":"close"}                      close
  *   {"cmd":"home"}                       home        a whole stroke towards open and into the stop: the zero from anywhere
  *   {"cmd":"zero"}                       zero        the iris is open by hand: here is 0
  *   {"cmd":"release","ms":5000}          release 5000  the motor off (EN high) for 100-30000 ms: turns by hand
+ *   {"cmd":"run","dir":"close"}          run close   turns until stop; that stop is taught as the closed limit
+ *   {"cmd":"run","dir":"open"}           run open    the same towards open: that stop becomes 0, the open limit
  *   {"cmd":"move","steps":-50}           move -50    relative, no limits, at the set speed, for setting up
  *   {"cmd":"stop"}                       stop
  *   {"cmd":"info"}                       info
@@ -39,7 +41,11 @@
 #define STROKE (STEPS_PER_TURN * 1575 / 3600)  // 157.5 deg of motor (iris.py): 1792 steps
 #define AT(steps) ((steps) * STROKE / 1400)  // a step count of the 1400 step stroke in iris.py, here
 static const int OPENING_TABLE[15] = {420, 410, 387, 363, 338, 312, 284, 255, 224, 192, 158, 123, 87, 51, 20};
-#define CLOSED_POS (STROKE - AT(8L))  // short of the stop, the blades already overlap there
+#define DESIGN_CLOSED (STROKE - AT(8L))  // short of the stop, the blades already overlap there
+// The limits are taught under load (run, stop): 0 is where the open run stopped, closedPos where
+// the closed one did. The opening table of the design stretches over them.
+#define CLOSED_POS ((int32_t)config.closedPos)
+#define TEACH_SPEED 800  // steps/s at most while teaching: a stop lands where it is meant
 // Finding the zero: past the open stop, the S42B pushes against it; EN off for a moment and the
 // S42B takes the angle its encoder reads as its target (its PID_Cal_value_init), stops pushing and
 // holds there: that is 0. A slipped pinion or a skipped tooth (273 steps) is taken up this way.
@@ -57,13 +63,14 @@ struct Config {
     uint16_t speed;    // steps/s
     uint16_t accel;    // steps/s^2
     uint8_t invert;    // DIR level for closing
+    int16_t closedPos; // taught closed limit, steps from the open one (0)
 };
 #define CONFIG_MAGIC 0x4B46
 #define CONFIG_ADDR 0
 #define POSITION_ADDR 32  // int32 + its inverse, so a half written value is seen
 
 static Config config;
-static const Config DEFAULTS = {CONFIG_MAGIC, 220, 1000, 2400, 8000, 0};  // 2400 steps/s: closed in 1.6 s, open in 1.1 s
+static const Config DEFAULTS = {CONFIG_MAGIC, 220, 1000, 2400, 8000, 0, (int16_t)DESIGN_CLOSED};  // 2400 steps/s: closed in 1.6 s, open in 1.1 s
 
 // ─────────────────────────── stepping (Timer1) ───────────────────────────
 static volatile int32_t position = 0;
@@ -169,7 +176,11 @@ static void stopMove() {
     interrupts();
 }
 
-static int16_t openingAt(int32_t steps) {
+// the design's step (its closed limit at DESIGN_CLOSED) for a real one, and back
+static int32_t toDesign(int32_t steps) { return steps * DESIGN_CLOSED / CLOSED_POS; }
+
+static int16_t openingAt(int32_t real) {
+    int32_t steps = toDesign(real);
     if (steps <= 0) return OPENING_TABLE[0];
     if (steps >= STROKE) return OPENING_TABLE[14];
     int32_t scaled = steps * 14;
@@ -183,7 +194,8 @@ static int32_t stepsFor(int16_t opening) {
     for (int k = 0; k < 14; k++) {
         if (opening >= OPENING_TABLE[k + 1]) {
             int32_t span = OPENING_TABLE[k] - OPENING_TABLE[k + 1];
-            return (STROKE * k + STROKE * (int32_t)(OPENING_TABLE[k] - opening) / span) / 14;
+            int32_t design = (STROKE * k + STROKE * (int32_t)(OPENING_TABLE[k] - opening) / span) / 14;
+            return min(design * CLOSED_POS / DESIGN_CLOSED, CLOSED_POS);
         }
     }
     return CLOSED_POS;
@@ -240,6 +252,7 @@ static void jobUpdate() {
         }
     }
     if (jobAt >= jobLength && !moving && !waiting) {
+        if (!strcmp(jobName, "teach")) teachLimit();
         if (jobPortions) {
             Serial.print(F("{\"type\":\"event\",\"event\":\"fed\",\"portions\":"));
             Serial.print(jobPortions);
@@ -306,6 +319,7 @@ static void sendInfo(long id) {
     Serial.print(F(",\"speed\":")); Serial.print(config.speed);
     Serial.print(F(",\"accel\":")); Serial.print(config.accel);
     Serial.print(F(",\"invert\":")); Serial.print(config.invert ? F("true") : F("false"));
+    Serial.print(F(",\"closedPos\":")); Serial.print(config.closedPos);
     Serial.println(F("}}"));
 }
 
@@ -316,6 +330,32 @@ static void findZero(int32_t beyond) {
     add(RELEASE, RELEASE_MS);
     add(ZERO, 0);
     add(WAIT, 50);
+}
+
+// the stop of a run: closing teaches the closed limit, opening makes where it stands 0
+static int8_t teachDir = 0;
+
+static void teachLimit() {
+    int32_t p = readPosition();
+    if (teachDir > 0) {
+        if (p >= 300 && p <= 4000) {
+            config.closedPos = (int16_t)p;
+            EEPROM.put(CONFIG_ADDR, config);
+        }
+    } else if (teachDir < 0) {
+        // the stroke stays: the closed limit moves with the new 0
+        int32_t closed = CLOSED_POS - p;
+        noInterrupts();
+        position -= p;
+        target = position;
+        interrupts();
+        savePosition();
+        if (closed >= 300 && closed <= 4000) {
+            config.closedPos = (int16_t)closed;
+            EEPROM.put(CONFIG_ADDR, config);
+        }
+    }
+    teachDir = 0;
 }
 
 static void closeWithNudge() {
@@ -330,6 +370,7 @@ static void command(char *text) {
     if (!*text) return;
     bool json = *text == '{';
     char cmd[16] = "";
+    const char *args = "";  // plain words: what follows the command
     float value = 0;
     bool hasValue = false;
     long id = -1;
@@ -350,6 +391,7 @@ static void command(char *text) {
         strncpy(cmd, text, sizeof(cmd) - 1);
         if (rest) {
             while (*rest == ' ') rest++;
+            args = rest;
             if (!strcmp(cmd, "config")) {
                 // rewrite as json so both forms share the parsing below
                 static char rewritten[64];
@@ -369,10 +411,17 @@ static void command(char *text) {
 
     if (!strcmp(cmd, "info")) { sendInfo(id); return; }
     if (!strcmp(cmd, "stop")) {
+        bool run = !strcmp(jobName, "run");
         jobLength = jobAt = jobPortions = jobRepeats = 0;
         jobName = "";
         waiting = false;
         if (moving) stopMove();
+        if (run) {
+            // where it comes to rest is the limit: taught in jobUpdate once it stands
+            jobName = "teach";
+            jobId = id;
+            return;
+        }
         respond(id, true);
         return;
     }
@@ -425,7 +474,6 @@ static void command(char *text) {
         if (mm < 2 || mm > 42) { respond(id, false, "mm must be 2 to 42"); return; }
         int32_t to = stepsFor((int16_t)(mm * 10 + 0.5f));
         add(GO, to, config.speed);
-        if (to == 0) findZero(-HOME_OVERTRAVEL);
         startJob(id, "open");
     } else if (!strcmp(cmd, "close")) {
         closeWithNudge();
@@ -434,6 +482,20 @@ static void command(char *text) {
         // from wherever it really is: a whole stroke and the overtravel towards open
         findZero(readPosition() - STROKE - HOME_OVERTRAVEL);
         startJob(id, "home");
+    } else if (!strcmp(cmd, "run")) {
+        // json: "dir":"close"; words: run close
+        const char *d = json ? field(text, "dir") : args;
+        if (d && *d == '"') d++;
+        bool close = d && !strncmp(d, "close", 5);
+        bool open = d && !strncmp(d, "open", 4);
+        if (!close && !open) { respond(id, false, "dir must be open or close"); return; }
+        teachDir = close ? 1 : -1;
+        // far enough for any load, short of running away: two strokes
+        add(GO, readPosition() + teachDir * 2 * STROKE, min(config.speed, (uint16_t)TEACH_SPEED));
+        startJob(id, "run");
+        sendInfo(id);  // answered now, running: the stop answers with the limit it taught
+        jobId = -1;
+        return;
     } else if (!strcmp(cmd, "release")) {
         // the S42B holds the angle it is left at as its target once enabled again: the count here
         // stays, so an iris turned by hand meanwhile needs zero or home afterwards
@@ -473,6 +535,11 @@ void setup() {
     EEPROM.get(CONFIG_ADDR, config);
     if (config.magic != CONFIG_MAGIC) {
         config = DEFAULTS;
+        EEPROM.put(CONFIG_ADDR, config);
+    }
+    if (config.closedPos < 300 || config.closedPos > 4000) {
+        // stored before the limits could be taught
+        config.closedPos = DESIGN_CLOSED;
         EEPROM.put(CONFIG_ADDR, config);
     }
     int32_t p, check;

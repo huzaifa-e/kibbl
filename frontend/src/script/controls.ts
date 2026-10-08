@@ -62,6 +62,12 @@ function feederTuningHtml(d: DeviceSummary, disabled: string, busy: string) {
             <div class="small text-secondary mt-2 mb-1">Steps by hand (+ closes; the stroke is 1792)</div>
             <div class="btn-group w-100">${[-200, -50, 50, 200].map(jog).join('')}</div>
             <button class="btn btn-sm w-100 mt-2" data-control="feeder-home" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-target me-1"></i> Find the zero (fully open, into the stop)</button>
+            <div class="small text-secondary mt-3 mb-1">Teach the loaded limits: run, then stop where it should end. Limits now: open 0 · closed ${f?.closedPos ?? '–'} steps</div>
+            <div class="btn-group w-100">
+                <button class="btn btn-sm" data-control="feeder-run" data-direction="close" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-player-play me-1"></i> Run closing</button>
+                <button class="btn btn-sm" data-control="feeder-run" data-direction="open" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-player-play me-1"></i> Run opening</button>
+            </div>
+            <button class="btn btn-sm btn-danger w-100 mt-2" data-control="feeder-stop" data-device="${d._id}" ${disabled}><i class="ti ti-player-stop me-1"></i> Stop${f?.job === 'run' ? ' and keep as the limit' : ''}</button>
             <button class="btn btn-sm w-100 mt-2" data-control="feeder-release" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-hand-stop me-1"></i> Motor off for 10 s (turns by hand)</button>
         </div>
     </details>`;
@@ -233,6 +239,10 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'feeder_move', steps: Number(el.dataset.steps) });
         } else if (el.dataset.control === 'feeder-home') {
             send(deviceId, { cmd: 'feeder_home' });
+        } else if (el.dataset.control === 'feeder-run') {
+            send(deviceId, { cmd: 'feeder_run', direction: el.dataset.direction });
+        } else if (el.dataset.control === 'feeder-stop') {
+            send(deviceId, { cmd: 'feeder_stop' });
         } else if (el.dataset.control === 'feeder-release') {
             send(deviceId, { cmd: 'feeder_release', ms: 10000 });
         } else if (el.dataset.control === 'lamp') {

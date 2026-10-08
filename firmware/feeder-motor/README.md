@@ -78,7 +78,7 @@ Fixed in the sketch:
 | --- | ---: | --- |
 | Fully open | 0 | the open end of the ring slots; set with `zero` |
 | Stroke | 1792 | 157.5° of motor at 4096 a turn (5:1 to the ring, 31.5° of the ring) |
-| Closed | 1782 | 10 short of the closed stop: 2.3 mm left |
+| Closed | 1782 at first, then **taught** | where a closing run was stopped under load (`closedPos`, kept in EEPROM) |
 | Nudge | 76 | after closing: open this far and close again, frees kibble caught between the blades |
 | Home overtravel | 410 | how far a full open drives past 0 into the open stop (a tooth of the pinion is 273) |
 
@@ -86,7 +86,18 @@ The opening at each step comes from `iris.py` (`OPENING_TABLE`, 15 points over t
 
 The position is saved in EEPROM after every move, so it survives a reset. The S42B tells nothing back (no position, no stall), and under load the pinion can slip on the shaft or skip a tooth: the count then no longer matches the iris and it stops short of open.
 
-So every **full open** finds the zero again: it drives 410 steps past 0 into the open stop at 800 steps/s, where the S42B pushes against the stop; then EN goes high for 0.12 s. The S42B takes the angle its encoder reads as its new target when it is disabled (`PID_Cal_value_init` in its firmware), stops pushing and holds there once enabled: that is 0. `home` does the same from anywhere, with a whole stroke towards open. `zero` is still there for setting up by hand.
+### Teaching the limits under load
+
+With kibble in the hopper the iris does not reach the empty stops. In the app (feeder card → Tuning → Teach the loaded limits), or over serial:
+
+1. **Run closing** (`run close`): the motor turns towards closed at up to 800 steps/s until **Stop** (`stop`). Where it comes to rest is the closed limit, if it is at least 300 steps from 0.
+2. **Run opening** (`run open`) and **Stop**: where it rests becomes 0, the open limit; the closed limit keeps its place.
+
+`close`, `open`, the slider and the feeding levels then work between the two: the opening table of the design is stretched over them. Teach again when the load or the mechanics change.
+
+### Finding the zero with EN
+
+`home` (Find the zero in the app) drives a whole stroke towards open and 410 steps past it into the open stop at 800 steps/s, where the S42B pushes against the stop; then EN goes high for 0.12 s. The S42B takes the angle its encoder reads as its new target when it is disabled (`PID_Cal_value_init` in its firmware), stops pushing and holds there once enabled: that is 0. This needs the EN wire (D10); "Motor off for 10 s" shows whether it is there. `zero` is still there for setting up by hand.
 
 ## Commands
 
@@ -95,7 +106,9 @@ USB serial, 115200 baud, one line each, json as in `docs/protocol.md` or plain w
 | Json | Words | |
 | --- | --- | --- |
 | `{"cmd":"feed","portions":2,"id":1}` | `feed 2` | open to `opening`, wait `openMs`, close with the nudge; 1-10 portions; `opening` and `openMs` in the json for this feed only; ends with `{"type":"event","event":"fed"}` |
-| `{"cmd":"open","mm":30}` | `open 30` | to an opening of 2-42 mm; `open` alone (or 42) fully, and finds the zero again |
+| `{"cmd":"open","mm":30}` | `open 30` | to an opening of 2-42 mm between the taught limits, `open` alone fully |
+| `{"cmd":"run","dir":"close"}` | `run close` | turns until `stop`; that stop is taught as the closed limit (`run open`: as 0) |
+| `{"cmd":"release","ms":5000}` | `release 5000` | the motor off for a while (EN high): it turns by hand |
 | `{"cmd":"close"}` | `close` | |
 | `{"cmd":"move","steps":-50}` | `move -50` | relative, no limits: for setting up |
 | `{"cmd":"zero"}` | `zero` | here is fully open |

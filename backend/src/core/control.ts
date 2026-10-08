@@ -94,6 +94,11 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
             return int(command.steps, -FEEDER_MOVE_MAX, FEEDER_MOVE_MAX) && command.steps !== 0 ? { cmd, steps: command.steps } : undefined;
         case 'feeder_home':
             return { cmd };
+        // teaching the limits under load: turning until stopped, the stop is the limit
+        case 'feeder_run':
+            return command.direction === 'open' || command.direction === 'close' ? { cmd, direction: command.direction } : undefined;
+        case 'feeder_stop':
+            return { cmd };
         // the motor off for a while: the iris turns by hand
         case 'feeder_release':
             return int(command.ms ?? 10000, 100, 30000) ? { cmd, ms: command.ms ?? 10000 } : undefined;
