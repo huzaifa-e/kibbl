@@ -409,7 +409,8 @@ export async function publishPaired(userID: string) {
  * most WINDOW_OFF_MIN, in case the closing is missed), back to its schedule when it closes.
  * Nothing is sent when the room does not heat: no request spent. */
 async function onAirEvent(event: AirEvent) {
-    if (event.kind !== 'window' || Date.now() - event.at > 10 * 60_000) return;
+    // found open right after a restart (firmware before 1.2.1): not seen opening, the heating stays
+    if (event.kind !== 'window' || event.atStart || Date.now() - event.at > 10 * 60_000) return;
     const device = await Device.findById(event.deviceId, { ownerID: 1, roomId: 1 }).lean();
     if (!device?.ownerID) return;
     const room = tadoRoomIn(device.ownerID, device.roomId);

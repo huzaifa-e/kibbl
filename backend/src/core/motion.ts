@@ -12,6 +12,10 @@ import { deleteSnapshot, saveSnapshot } from './storage';
 
 const EVENT_GAP_MS = 10_000; // calm this long ends an event
 const EVENT_MAX_MS = 10 * 60_000; // a longer visit is split into several events on the timeline
+/* frames with movement before it is an event (at 2 frames a second: 1.5 s): a cloud before the
+ * sun, a flicker of the light or a screen moves one or two frames and is gone */
+const EVENT_MIN_FRAMES = 3;
+const UNCONFIRMED_GAP_MS = 3_000; // calm this long drops a movement that is no event yet
 const SNAPSHOT_MIN_GAP_MS = 2000; // the event picture is replaced by a better one at most this often
 const SETTINGS_TTL_MS = 5000; // motion settings are read from the database at most this often
 
@@ -27,6 +31,8 @@ interface CurrentEvent {
     lastMotion: number;
     bestScore: number;
     lastSnapshot: number;
+    confirmed: boolean; // EVENT_MIN_FRAMES seen: stored and shown; before, it is dropped when it ends
+    firstFrame?: Buffer; // the frame it started with, for its picture once it is confirmed
 }
 
 interface DeviceMotion {
@@ -98,6 +104,7 @@ async function closeEvent(deviceId: string, s: DeviceMotion) {
         return;
     }
     s.current = undefined;
+    if (!current.confirmed) return; // too short to be anybody: never stored
     current.doc.end = current.lastMotion;
     await MotionEventModel.updateOne({ _id: current.doc._id }, { end: current.doc.end, peakScore: current.doc.peakScore, frames: current.doc.frames });
     hub.emit('motionEvent', toMotionEvent(current.doc));
@@ -126,15 +133,30 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
         }
         if (!current) {
             const doc: MotionEventDoc = { _id: crypto.randomUUID(), deviceId, start: time, peakScore: result.score, frames: 0 };
+            current = {
+                doc,
+                lastMotion: time,
+                bestScore: result.score,
+                lastSnapshot: time,
+                confirmed: false,
+                firstFrame: settings.keepPictures ? jpeg : undefined,
+            };
+            s.current = current;
+        }
+        current.lastMotion = time;
+        current.doc.frames++;
+        current.doc.peakScore = Math.max(current.doc.peakScore, result.score);
+        if (!current.confirmed && current.doc.frames >= EVENT_MIN_FRAMES) {
+            const doc = current.doc;
+            current.confirmed = true;
             /* A picture only when the camera's settings keep pictures: otherwise the movement
              * is logged as activity (when, how long, how much moved) and the frame is never
              * written anywhere. Settings stored before the option existed keep none, as new ones. */
-            if (settings.keepPictures) {
-                doc.snapshot = await saveSnapshot(deviceId, doc._id, time, jpeg);
+            if (settings.keepPictures && current.firstFrame) {
+                doc.snapshot = await saveSnapshot(deviceId, doc._id, doc.start, current.firstFrame);
             }
+            current.firstFrame = undefined;
             await MotionEventModel.create(doc);
-            current = { doc, lastMotion: time, bestScore: result.score, lastSnapshot: time };
-            s.current = current;
             // settings stored before the option existed have no blink: they blink, as new ones do
             if ((settings.blink ?? true) && s.canBlink) {
                 s.lastBlink = time;
@@ -144,11 +166,9 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
                 });
             }
             hub.emit('motionEvent', toMotionEvent(doc));
-            log.info('movement', { device: deviceId, moved: `${(result.score * 100).toFixed(1)}%`, picture: settings.keepPictures ? 'kept' : 'none' });
+            log.info('movement', { device: deviceId, moved: `${(doc.peakScore * 100).toFixed(1)}%`, picture: settings.keepPictures ? 'kept' : 'none' });
         }
-        current.lastMotion = time;
-        current.doc.frames++;
-        current.doc.peakScore = Math.max(current.doc.peakScore, result.score);
+        if (!current.confirmed) return;
 
         // the picture with the most change shows the visitor best; an event without one takes the next
         const better = !current.doc.snapshot || result.score > current.bestScore * 1.2;
@@ -163,7 +183,7 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
                 await deleteSnapshot(old);
             }
         }
-    } else if (s.current && time - s.current.lastMotion > EVENT_GAP_MS) {
+    } else if (s.current && time - s.current.lastMotion > (s.current.confirmed ? EVENT_GAP_MS : UNCONFIRMED_GAP_MS)) {
         await closeEvent(deviceId, s);
     }
 }
