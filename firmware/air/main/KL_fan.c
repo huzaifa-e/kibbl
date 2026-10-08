@@ -6,7 +6,11 @@
 #include "KL_hw.h"
 #include "KL_serial.h"
 
-#define FAN_FREQ_HZ  25000 // above hearing, as for pc fans
+/* Slow pwm: the Conny's fan is a plain 2-wire fan behind a transistor, made to run at the
+ * speed R15 sets. Switched at 25 kHz its own commutation electronics restart thousands of
+ * times a second and it screeches at part speed; switched 25 times a second it runs slower
+ * on the energy it gets, as 2-wire fans on pc boards were driven. */
+#define FAN_FREQ_HZ  25
 #define FAN_DUTY_RES LEDC_TIMER_8_BIT
 #define FAN_DUTY_MAX 255
 #define FAN_TICK_US  (1000 * 1000)
