@@ -46,7 +46,7 @@ const SENSITIVITY = [
     { label: 'Low', rise: 250 },
 ];
 // the pwm frequencies to try: which one a 2-wire fan is quiet at part speed depends on the fan
-const FAN_FREQS = [15, 25, 50, 100, 200, 500, 1000, 5000, 25000];
+const FAN_FREQS = [5, 10, 15, 25, 50, 100, 200, 500, 1000, 5000, 25000];
 
 const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂ (slow while fresh)' };
 

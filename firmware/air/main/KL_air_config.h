@@ -90,7 +90,7 @@ bool config_fan_quiet_from_json(const cJSON *json, uint8_t *percent);
 
 /* The pwm frequency of the fan in Hz: which one a plain 2-wire fan runs quietly at part speed
  * depends on the fan, so it is a setting too. Its own key. */
-#define FAN_FREQ_MIN     10
+#define FAN_FREQ_MIN     5 // the timer reaches 4.8 Hz with 14 bits
 #define FAN_FREQ_MAX     30000
 #define FAN_FREQ_DEFAULT 25
 uint32_t config_fan_freq(void);

@@ -106,7 +106,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 fan_freq_hz: z
                     .number()
                     .int()
-                    .min(10)
+                    .min(5)
                     .max(30000)
                     .optional()
                     .describe('the pwm frequency of the fan, Hz: the one it is quietest at depends on the fan'),

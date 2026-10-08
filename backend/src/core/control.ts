@@ -160,7 +160,7 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
                 onSeconds: [1, 3600],
                 offSeconds: [1, 3600],
                 quietLevel: [10, 60],
-                freqHz: [10, 30000],
+                freqHz: [5, 30000],
             };
             for (const [key, [min, max]] of Object.entries(ranges)) {
                 if (command[key] === undefined) continue;
