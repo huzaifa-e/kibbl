@@ -11,8 +11,13 @@
  * 25 kHz its own commutation electronics restart thousands of times a second and it
  * screeches at part speed; which frequency it is quiet at depends on the fan. */
 #define FAN_FREQ_HZ  25 // until the setting is applied (air_start)
-#define FAN_DUTY_RES LEDC_TIMER_8_BIT
-#define FAN_DUTY_MAX 255
+/* The timer runs from the 80 MHz APB clock through a divider of at most 1023: a low frequency
+ * needs a finer duty resolution (more steps a period), a high one a coarser. resolution_for
+ * picks the bits that fit, at least 8. */
+#define FAN_CLOCK_HZ   80000000UL
+#define FAN_DIV_MAX    1023
+#define FAN_RES_MIN    8
+#define FAN_RES_MAX    14
 #define FAN_TICK_US  (1000 * 1000)
 
 /* Auto: the speed follows the CO2. Below yellow - FAN_AUTO_LEAD it turns at the quiet speed
@@ -25,6 +30,7 @@
 #define FAN_AUTO_GRAIN 5 // %
 
 static bool available = false;
+static uint32_t duty_max = 255; // (1 << resolution) - 1 of the frequency now
 
 static volatile uint8_t mode       = FAN_MODE_ON;
 static volatile uint8_t level      = 100;
@@ -46,7 +52,7 @@ static void write_level(uint8_t value) {
         return;
     }
     // full on without pwm: the fan gets a clean supply
-    uint32_t duty = value >= 100 ? FAN_DUTY_MAX + 1 : (uint32_t)FAN_DUTY_MAX * value / 100;
+    uint32_t duty = value >= 100 ? duty_max + 1 : duty_max * value / 100;
     ledc_set_duty(LEDC_LOW_SPEED_MODE, FAN_CHANNEL, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, FAN_CHANNEL);
     level_now = value;
@@ -112,14 +118,33 @@ static void tick_cb(void *arg) {
     update(true);
 }
 
-bool fan_setup(void) {
+// the duty resolution in bits the divider can reach this frequency with
+static ledc_timer_bit_t resolution_for(uint32_t hz) {
+    int bits = FAN_RES_MIN;
+    while (bits < FAN_RES_MAX && FAN_CLOCK_HZ / ((uint64_t)hz << bits) > FAN_DIV_MAX) {
+        bits++;
+    }
+    return (ledc_timer_bit_t)bits;
+}
+
+static esp_err_t config_timer(uint32_t hz) {
+    ledc_timer_bit_t bits     = resolution_for(hz);
     ledc_timer_config_t timer = {
         .speed_mode      = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = FAN_DUTY_RES,
+        .duty_resolution = bits,
         .timer_num       = FAN_TIMER,
-        .freq_hz         = FAN_FREQ_HZ,
-        .clk_cfg         = LEDC_AUTO_CLK,
+        .freq_hz         = hz,
+        .clk_cfg         = LEDC_USE_APB_CLK,
     };
+    esp_err_t err = ledc_timer_config(&timer);
+    if (err == ESP_OK) {
+        duty_max = (1UL << bits) - 1;
+    }
+    return err;
+}
+
+bool fan_setup(void) {
+    esp_err_t timer_err = config_timer(FAN_FREQ_HZ);
     ledc_channel_config_t channel = {
         .gpio_num   = FAN_PIN,
         .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -128,7 +153,7 @@ bool fan_setup(void) {
         .duty       = 0,
         .hpoint     = 0,
     };
-    if (ledc_timer_config(&timer) != ESP_OK || ledc_channel_config(&channel) != ESP_OK) {
+    if (timer_err != ESP_OK || ledc_channel_config(&channel) != ESP_OK) {
         DEBUG_F_ERROR("fan pwm not set up\n");
         return false;
     }
@@ -183,11 +208,15 @@ bool fan_set_freq(uint32_t hz) {
     if (!available) {
         return false;
     }
-    esp_err_t err = ledc_set_freq(LEDC_LOW_SPEED_MODE, FAN_TIMER, hz);
+    // a new resolution changes what a duty means: the speed is written again in its steps
+    esp_err_t err = config_timer(hz);
     if (err != ESP_OK) {
         DEBUG_F_ERROR("fan: %lu Hz not possible (%s)\n", (unsigned long)hz, esp_err_to_name(err));
         return false;
     }
-    DEBUG_F("fan: pwm at %lu Hz\n", (unsigned long)hz);
+    uint8_t now = level_now;
+    level_now   = 255; // not a speed: write_level writes it
+    write_level(now);
+    DEBUG_F("fan: pwm at %lu Hz, %d bits\n", (unsigned long)hz, __builtin_ctz(duty_max + 1));
     return true;
 }
