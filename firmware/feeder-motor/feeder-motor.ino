@@ -24,7 +24,7 @@
  *   {"cmd":"move","steps":-50}           move -50    relative, no limits, at the set speed, for setting up
  *   {"cmd":"stop"}                       stop
  *   {"cmd":"info"}                       info
- *   {"cmd":"feeder_config", ...}         config ...  any of opening (mm), openMs, speed, accel, invert
+ *   {"cmd":"feeder_config", ...}         config ...  any of opening (mm), openMs, speed, accel, invert, closedPos
  * Every command gets {"type":"response","id":..,"ok":..}; a finished feed sends {"type":"event","event":"fed"}.
  */
 #include <EEPROM.h>
@@ -459,6 +459,11 @@ static void command(char *text) {
         if (number(text, "accel", f)) {
             if (f < 200 || f > 20000) { respond(id, false, "accel must be 200 to 20000 steps/s2"); return; }
             config.accel = (uint16_t)f;
+        }
+        // the closed limit by hand, in steps from 0 (else taught with run close and stop)
+        if (number(text, "closedPos", f) || number(text, "closedpos", f)) {
+            if ((int32_t)f == 0) { respond(id, false, "closedPos must not be 0"); return; }
+            config.closedPos = (int32_t)f;
         }
         const char *inv = field(text, "invert");
         if (inv) config.invert = (*inv == 't' || *inv == '1');

@@ -193,13 +193,15 @@ async function run(msg: Json): Promise<Json> {
         const mm = Number(msg.opening);
         cmd = mm <= MIN_MM ? { cmd: 'close' } : { cmd: 'open', mm };
     } else if (msg.cmd === 'feeder_config') {
-        cmd = { cmd: 'feeder_config', speed: msg.speed, accel: msg.accel };
+        cmd = { cmd: 'feeder_config', speed: msg.speed, accel: msg.accel, closedPos: msg.closedPos };
     } else if (msg.cmd === 'feeder_move') {
         cmd = { cmd: 'move', steps: msg.steps };
     } else if (msg.cmd === 'feeder_home') {
         cmd = { cmd: 'home' };
     } else if (msg.cmd === 'feeder_run') {
         cmd = { cmd: 'run', dir: msg.direction };
+    } else if (msg.cmd === 'feeder_zero') {
+        cmd = { cmd: 'zero' };
     } else if (msg.cmd === 'feeder_stop') {
         cmd = { cmd: 'stop' };
     } else if (msg.cmd === 'feeder_release') {

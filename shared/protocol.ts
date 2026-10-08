@@ -16,7 +16,7 @@ export const capabilityCommands: Record<string, string[]> = {
     ota: [],
     // for the devices that are still to come: relay outputs, a pet feeder, a heating valve
     switch: ['switch'],
-    feeder: ['feed', 'iris', 'feeder_config', 'feeder_move', 'feeder_home', 'feeder_release', 'feeder_run', 'feeder_stop'],
+    feeder: ['feed', 'iris', 'feeder_config', 'feeder_move', 'feeder_home', 'feeder_release', 'feeder_run', 'feeder_stop', 'feeder_zero'],
     thermostat: ['thermostat'],
     // kibbl. air (the Conny CO2 traffic light)
     air: ['air_config'],

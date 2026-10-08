@@ -64,5 +64,8 @@ test('tuning a feeder: speed, acceleration, steps, the zero', () => {
     assert.deepEqual(cleanCommand({ cmd: 'feeder_run', direction: 'close' }), { cmd: 'feeder_run', direction: 'close' });
     assert.equal(cleanCommand({ cmd: 'feeder_run', direction: 'sideways' }), undefined);
     assert.deepEqual(cleanCommand({ cmd: 'feeder_stop' }), { cmd: 'feeder_stop' });
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_zero' }), { cmd: 'feeder_zero' });
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_config', closedPos: 1782 }), { cmd: 'feeder_config', closedPos: 1782 });
+    assert.equal(cleanCommand({ cmd: 'feeder_config', closedPos: 0 }), undefined);
     assert.equal(parseFeederState({ opening: 2.3, busy: false, closedPos: 2100 })?.closedPos, 2100);
 });

@@ -88,6 +88,11 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
                 if (!int(command.accel, FEEDER_ACCEL.min, FEEDER_ACCEL.max)) return undefined;
                 out.accel = command.accel;
             }
+            // the closed limit in steps from the open one (0), set by hand
+            if (command.closedPos !== undefined) {
+                if (!int(command.closedPos, -FEEDER_MOVE_MAX, FEEDER_MOVE_MAX) || command.closedPos === 0) return undefined;
+                out.closedPos = command.closedPos;
+            }
             return Object.keys(out).length > 1 ? out : undefined;
         }
         case 'feeder_move':
@@ -98,6 +103,7 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
         case 'feeder_run':
             return command.direction === 'open' || command.direction === 'close' ? { cmd, direction: command.direction } : undefined;
         case 'feeder_stop':
+        case 'feeder_zero': // where the iris stands now is open (0)
             return { cmd };
         // the motor off for a while: the iris turns by hand
         case 'feeder_release':

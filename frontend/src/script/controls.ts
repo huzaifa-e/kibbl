@@ -62,7 +62,15 @@ function feederTuningHtml(d: DeviceSummary, disabled: string, busy: string) {
             <div class="small text-secondary mt-2 mb-1">Steps by hand (+ closes; the stroke is 1792)</div>
             <div class="btn-group w-100">${[-200, -50, 50, 200].map(jog).join('')}</div>
             <button class="btn btn-sm w-100 mt-2" data-control="feeder-home" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-target me-1"></i> Find the zero (fully open, into the stop)</button>
-            <div class="small text-secondary mt-3 mb-1">Teach the loaded limits: run, then stop where it should end. Limits now: open 0 · closed ${f?.closedPos ?? '–'} steps</div>
+            <div class="small text-secondary mt-3 mb-1">Limits in steps: open is 0, the iris stands at ${f?.position ?? '–'}</div>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">Closed at</span>
+                <input type="number" class="form-control" step="1" value="${f?.closedPos ?? ''}" data-feeder-closed="${d._id}" ${disabled} ${busy} />
+                <span class="input-group-text">steps</span>
+                <button class="btn" data-control="feeder-closed" data-device="${d._id}" ${disabled} ${busy}>Save</button>
+            </div>
+            <button class="btn btn-sm w-100 mt-2" data-control="feeder-zero" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-map-pin me-1"></i> Set zero here (this is fully open)</button>
+            <div class="small text-secondary mt-3 mb-1">Or teach them under load: run, then stop where it should end</div>
             <div class="btn-group w-100">
                 <button class="btn btn-sm" data-control="feeder-run" data-direction="close" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-player-play me-1"></i> Run closing</button>
                 <button class="btn btn-sm" data-control="feeder-run" data-direction="open" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-player-play me-1"></i> Run opening</button>
@@ -241,6 +249,12 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'feeder_home' });
         } else if (el.dataset.control === 'feeder-run') {
             send(deviceId, { cmd: 'feeder_run', direction: el.dataset.direction });
+        } else if (el.dataset.control === 'feeder-closed') {
+            const input = root.querySelector<HTMLInputElement>(`[data-feeder-closed="${deviceId}"]`);
+            const steps = Math.round(Number(input?.value));
+            if (steps) send(deviceId, { cmd: 'feeder_config', closedPos: steps });
+        } else if (el.dataset.control === 'feeder-zero') {
+            send(deviceId, { cmd: 'feeder_zero' });
         } else if (el.dataset.control === 'feeder-stop') {
             send(deviceId, { cmd: 'feeder_stop' });
         } else if (el.dataset.control === 'feeder-release') {
