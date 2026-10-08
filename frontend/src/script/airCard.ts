@@ -1,19 +1,19 @@
 import type { Weather } from '../../../shared/climate';
-import { roomClimate, type AirEvent, type AirState, type DeviceSummary } from '../../../shared/protocol';
+import { roomClimate, type AirEvent, type AirReading, type AirState, type DeviceSummary } from '../../../shared/protocol';
 import { escapeHtml, timeAgo } from './utils';
 
-/* The home card of a kibbl. air: the freshness of the indoor air as a house in its colour,
- * with the weather outside and when a window was last open, and below it the comfort of the
- * room, a small dial of temperature and humidity with their values. */
+/* The home card of a kibbl. air, in the look of the heating cards: the freshness of the air
+ * as a gauge of its CO2, how the room feels in three tiles, the CO2 of the last hours as a
+ * line and the windows below it. */
 
-type Freshness = { word: string; color: string; ink: string };
+type Freshness = { word: string; color: string };
 
 // by CO2: under 800 ppm fresh, up to 1200 fair, above stale (German Environment Agency: 1000-2000 conspicuous)
 function freshness(co2: number | undefined): Freshness {
-    if (co2 === undefined) return { word: '…', color: '#8a7d70', ink: '#fff' };
-    if (co2 < 800) return { word: 'Fresh', color: '#4d9a83', ink: '#fff' };
-    if (co2 <= 1200) return { word: 'Fair', color: '#e8c24a', ink: '#3a2a0a' };
-    return { word: 'Stale', color: '#d9622b', ink: '#fff' };
+    if (co2 === undefined) return { word: 'Measuring', color: '#8a8f94' };
+    if (co2 < 800) return { word: 'Fresh', color: '#5cb894' };
+    if (co2 <= 1200) return { word: 'Fair', color: '#e8c24a' };
+    return { word: 'Stale', color: '#ec8a55' };
 }
 
 // what a person feels: cold and too warm first, then dry and humid
@@ -60,70 +60,99 @@ function windowLine(state: AirState | undefined, w: WindowEvents | undefined) {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-function scene(f: Freshness, state: AirState | undefined, lastOpen: WindowEvents | undefined) {
-    return `<svg viewBox="0 0 320 200" class="air-scene" role="img" aria-label="Indoor air ${f.word}">
-        <path d="M0 150 Q60 110 120 145 T240 140 T320 135 V200 H0 Z" class="air-hill" />
-        <g class="air-tree">
-            <circle cx="38" cy="132" r="22" /><circle cx="56" cy="148" r="17" /><rect x="35" y="148" width="6" height="52" class="air-trunk" />
-            <polygon points="70,92 52,170 88,170" /><rect x="67" y="168" width="6" height="32" class="air-trunk" />
-            <polygon points="276,108 256,176 296,176" /><rect x="273" y="174" width="6" height="26" class="air-trunk" />
-        </g>
-        <polygon points="160,38 236,92 236,200 84,200 84,92" fill="${f.color}" />
-        <polygon points="160,30 246,92 238,98 160,42 82,98 74,92" fill="${f.color}" style="filter:brightness(.85)" />
-        <rect x="108" y="54" width="12" height="24" fill="${f.color}" style="filter:brightness(.85)" />
-        <foreignObject x="88" y="96" width="144" height="104">
-            <div class="air-house-text" style="color:${f.ink}">
-                <i class="ti ti-leaf"></i>
-                <div class="air-house-label">Indoor air</div>
-                <div class="air-house-word">${f.word}</div>
-                <div class="air-house-note">${escapeHtml(windowLine(state, lastOpen))}</div>
-            </div>
-        </foreignObject>
+/* ----------------------------------------------------------------------- */
+
+const HISTORY_HOURS = 6;
+const history = new Map<string, AirReading[]>();
+
+// the CO2 of the last hours of a kibbl. air, for the line of its card
+export async function loadAirHistory(deviceId: string) {
+    const res = await fetch(`/api/air/${deviceId}/readings?hours=${HISTORY_HOURS}`, { headers: { Accept: 'application/json' } }).catch(() => undefined);
+    if (res?.ok) history.set(deviceId, (await res.json()) as AirReading[]);
+}
+
+// the gauge: an arc of 240 degrees over 400-2000 ppm, green, yellow and orange, the CO2 a dot on it
+const GAUGE_MIN = 400;
+const GAUGE_MAX = 2000;
+function gauge(co2: number | undefined, f: Freshness) {
+    const r = 64;
+    const point = (ppm: number) => {
+        const a = ((-210 + ((clamp(ppm, GAUGE_MIN, GAUGE_MAX) - GAUGE_MIN) / (GAUGE_MAX - GAUGE_MIN)) * 240) * Math.PI) / 180;
+        return [80 + r * Math.cos(a), 80 + r * Math.sin(a)];
+    };
+    const arc = (from: number, to: number, colour: string, width: number) => {
+        const [x1, y1] = point(from);
+        const [x2, y2] = point(to);
+        const large = ((to - from) / (GAUGE_MAX - GAUGE_MIN)) * 240 > 180 ? 1 : 0;
+        return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A${r} ${r} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" stroke="${colour}" stroke-width="${width}" fill="none" stroke-linecap="round" />`;
+    };
+    const [dx, dy] = point(co2 ?? GAUGE_MIN);
+    return `<svg viewBox="0 0 160 140" class="room-gauge" role="img" aria-label="Air ${f.word}">
+        ${arc(GAUGE_MIN, GAUGE_MAX, 'rgba(255,255,255,0.08)', 12)}
+        ${arc(GAUGE_MIN, 790, '#5cb894', 6)}${arc(810, 1190, '#e8c24a', 6)}${arc(1210, GAUGE_MAX, '#ec8a55', 6)}
+        ${co2 === undefined ? '' : `<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="8" fill="${f.color}" stroke="#26292d" stroke-width="3" />`}
+        <text x="80" y="78" text-anchor="middle" class="room-gauge-word" fill="${f.color}">${f.word}</text>
+        <text x="80" y="98" text-anchor="middle" class="room-gauge-ppm">${co2 === undefined ? '' : `${co2} ppm CO₂`}</text>
     </svg>`;
 }
 
-function dial(t: number | undefined, rh: number | undefined) {
-    // humidity 20-80 % left to right, temperature 16-28 °C bottom to top; the comfort zone 40-60 %, 19-24 °C
-    const x = rh === undefined ? 100 : 100 + clamp((rh - 50) / 30, -1, 1) * 62;
-    const y = t === undefined ? 100 : 100 - clamp((t - 21.5) / 6, -1, 1) * 62;
-    return `<svg viewBox="-34 0 268 200" class="air-dial" role="img" aria-label="Room comfort">
-        <circle cx="100" cy="100" r="74" class="air-dial-ring" />
-        <circle cx="100" cy="100" r="24" class="air-dial-zone" />
-        ${t === undefined || rh === undefined ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" class="air-dial-dot" />`}
-        <text x="100" y="16" class="air-dial-label" text-anchor="middle">TOO WARM</text>
-        <text x="100" y="194" class="air-dial-label" text-anchor="middle">COLD</text>
-        <text x="20" y="104" class="air-dial-label" text-anchor="end">DRY</text>
-        <text x="180" y="104" class="air-dial-label" text-anchor="start">HUMID</text>
+// the CO2 of the last hours, the newest reading at the end; the lines of 800 and 1200 ppm behind it
+function co2Line(points: { at: number; co2: number }[]) {
+    if (points.length < 2) return '';
+    const w = 300;
+    const h = 56;
+    const from = points[0].at;
+    const span = Math.max(1, points[points.length - 1].at - from);
+    const top = Math.max(1300, ...points.map((p) => p.co2)) + 50;
+    const bottom = Math.min(400, ...points.map((p) => p.co2));
+    const y = (v: number) => h - ((v - bottom) / (top - bottom)) * h;
+    const xy = points.map((p) => `${(((p.at - from) / span) * w).toFixed(1)},${y(p.co2).toFixed(1)}`);
+    const last = points[points.length - 1];
+    return `<svg viewBox="0 -4 ${w} ${h + 8}" class="room-line" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="room-line-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${freshness(last.co2).color}" stop-opacity="0.35"/><stop offset="1" stop-color="${freshness(last.co2).color}" stop-opacity="0"/></linearGradient></defs>
+        <line x1="0" x2="${w}" y1="${y(800).toFixed(1)}" y2="${y(800).toFixed(1)}" class="room-line-mark" />
+        <line x1="0" x2="${w}" y1="${y(1200).toFixed(1)}" y2="${y(1200).toFixed(1)}" class="room-line-mark" />
+        <polygon points="0,${h} ${xy.join(' ')} ${w},${h}" fill="url(#room-line-fill)" />
+        <polyline points="${xy.join(' ')}" fill="none" stroke="${freshness(last.co2).color}" stroke-width="2" vector-effect="non-scaling-stroke" />
     </svg>`;
 }
 
-// the card: how fresh the indoor air is, the weather outside, the last airing, how the room feels
+function windowChip(state: AirState | undefined, w: WindowEvents | undefined) {
+    const open = state?.window === 'open';
+    return `<div class="room-window ${open ? 'room-window-open' : ''}"><i class="ti ti-window"></i><span>${escapeHtml(windowLine(state, w))}</span></div>`;
+}
+
+const tile = (icon: string, caption: string, value: string) =>
+    `<div class="room-tile"><i class="ti ti-${icon}"></i><div class="room-tile-value">${value}</div><div class="room-tile-caption">${caption}</div></div>`;
+
+// the card: how fresh the air is, how the room feels, the CO2 of the last hours, the windows
 export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen: WindowEvents | undefined) {
     const s = d.online ? d.air?.state : undefined;
     // tado's temperature and humidity when it is in the same room
     const climate = d.online ? roomClimate(d.air) : undefined;
     const t = climate?.temperature;
     const rh = climate?.humidity;
+    const f = freshness(s?.co2);
     const outside = weather
-        ? `<span class="air-outside" title="${escapeHtml(weather.description ?? '')}"><i class="ti ti-${weather.icon ?? 'cloud'}"></i> ${Math.round(weather.temperature)}° outside</span>`
+        ? `<span class="room-outside" title="${escapeHtml(weather.description ?? '')}"><i class="ti ti-${weather.icon ?? 'cloud'}"></i> ${Math.round(weather.temperature)}° outside</span>`
         : '';
-    const offline = d.online ? '' : `<div class="air-offline">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`;
+    const points = [...(history.get(d._id) ?? [])];
+    if (s?.co2 !== undefined) points.push({ at: Date.now(), co2: s.co2, temperature: 0, humidity: 0 });
     // OpenWeather asks to be named where its data is shown
     const notes = [climate?.fromTado ? 'temperature and humidity from tado' : '', weather?.source === 'openweather' ? 'weather © OpenWeather' : '']
         .filter(Boolean)
         .join(' · ');
-    return `<a href="/air/${d._id}" class="card air-card air-freshness text-reset text-decoration-none" data-air-card="${d._id}" title="${s?.co2 !== undefined ? `${s.co2} ppm CO₂` : ''}">
-        <div class="air-freshness-head"><span class="air-comfort-name">${escapeHtml(d.name)}</span>${outside}</div>
-        ${offline}
-        ${scene(freshness(s?.co2), s, lastOpen)}
-        <div class="air-comfort">
-            ${dial(t, rh)}
-            <div class="air-comfort-values">
-                <div><div class="air-comfort-caption">Temperature</div><div class="air-comfort-value">${t === undefined ? '–' : `${t.toFixed(1)}°`}</div></div>
-                <div><div class="air-comfort-caption">Humidity</div><div class="air-comfort-value">${rh === undefined ? '–' : `${Math.round(rh)}%`}</div></div>
-                <div><div class="air-comfort-caption">Feels</div><div class="air-comfort-value">${comfort(t, rh)}</div></div>
-            </div>
+    return `<a href="/air/${d._id}" class="card room-card text-reset text-decoration-none h-100" data-air-card="${d._id}">
+        <div class="room-head"><span class="room-name">${escapeHtml(d.name)}</span>${outside}</div>
+        ${d.online ? '' : `<div class="room-offline">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`}
+        ${gauge(s?.co2, f)}
+        <div class="room-tiles">
+            ${tile('temperature', 'Temperature', t === undefined ? '–' : `${t.toFixed(1)}°`)}
+            ${tile('droplet', 'Humidity', rh === undefined ? '–' : `${Math.round(rh)}%`)}
+            ${tile('mood-smile', 'Feels', comfort(t, rh))}
         </div>
-        ${notes ? `<div class="air-source">${notes}</div>` : ''}
+        ${points.length > 1 ? `<div class="room-line-box"><div class="room-line-caption">CO₂, last ${HISTORY_HOURS} h</div>${co2Line(points)}</div>` : ''}
+        ${windowChip(s, lastOpen)}
+        ${notes ? `<div class="room-note">${notes}</div>` : ''}
     </a>`;
 }

@@ -3,7 +3,7 @@ import type ApexCharts from 'apexcharts';
 import type { Weather } from '../../../shared/climate';
 import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary, type DeviceTelemetry, type MotionEvent } from '../../../shared/protocol';
 import { hourlyChart } from './activityCharts';
-import { airCardHtml, type WindowEvents } from './airCard';
+import { airCardHtml, loadAirHistory, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
@@ -152,7 +152,12 @@ async function loadAirExtras() {
     weather = (await get('/api/weather').catch(() => null)) as Weather | null;
     await Promise.all(
         air.map(async (d) => {
-            const events = ((await get(`/api/air/${d._id}/events?days=1`).catch(() => null)) as AirEvent[] | null) ?? [];
+            const [events] = await Promise.all([
+                get(`/api/air/${d._id}/events?days=1`)
+                    .catch(() => null)
+                    .then((e) => (e as AirEvent[] | null) ?? []),
+                loadAirHistory(d._id),
+            ]);
             const open = events.find((e) => e.kind === 'window' && e.state === 'open');
             const closed = events.find((e) => e.kind === 'window' && e.state === 'closed');
             if (open || closed) lastOpen.set(d._id, { open, closed });
@@ -265,10 +270,10 @@ window.setInterval(() => {
     if (!document.hidden && rendered) void renderHomeCards(byId('camera-grid'));
 }, 2 * 60_000);
 
-// the weather outside, every 15 minutes
+// the weather outside and the CO2 line of the air cards, every 5 minutes
 window.setInterval(() => {
     if (!document.hidden && rendered) void loadAirExtras();
-}, 15 * 60_000);
+}, 5 * 60_000);
 
 document.addEventListener('DOMContentLoaded', () => {
     byId('container').addEventListener('click', (e) => {

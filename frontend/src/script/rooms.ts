@@ -2,7 +2,7 @@ import './main';
 import type { Weather } from '../../../shared/climate';
 import type { HeatingRoom, RoomOverview } from '../../../shared/heating';
 import { productName, roomClimate, type AirEvent, type DeviceSummary, type DeviceTelemetry } from '../../../shared/protocol';
-import { airCardHtml, windowText, type WindowEvents } from './airCard';
+import { airCardHtml, loadAirHistory, windowText, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { socket } from './socket';
 import { byId, emptyState, errorAlert, escapeHtml } from './utils';
@@ -214,7 +214,7 @@ async function load() {
             .flatMap((r) => r.devices)
             .filter((d) => d.caps.includes('air'))
             .map(async (d) => {
-                const events = (await getJson<AirEvent[]>(`/api/air/${d._id}/events?days=1`)) ?? [];
+                const [events] = await Promise.all([getJson<AirEvent[]>(`/api/air/${d._id}/events?days=1`).then((e) => e ?? []), loadAirHistory(d._id)]);
                 windows.set(d._id, {
                     open: events.find((e) => e.kind === 'window' && e.state === 'open'),
                     closed: events.find((e) => e.kind === 'window' && e.state === 'closed'),
