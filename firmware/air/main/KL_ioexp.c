@@ -21,10 +21,11 @@
 typedef enum {
     EXP_NONE = 0,
     EXP_PCF8574A,
-    EXP_PCA9554,
+    EXP_PCA9554, // also the PCA9554A, the same chip at 0x38 like the PCF8574A
 } expander_t;
 
 static expander_t expander = EXP_NONE;
+static uint8_t pca_addr    = PCA9554_ADDR;
 static bool power_on       = false;
 
 static SemaphoreHandle_t out_mutex;
@@ -38,7 +39,7 @@ static bool write_outputs(uint8_t state) {
         // quasi-bidirectional: a 1 is a weak pull-up, enough for the led driver transistors
         return i2c_bus_write(PCF8574A_ADDR, &state, 1);
     case EXP_PCA9554:
-        return i2c_bus_write_reg(PCA9554_ADDR, PCA9554_REG_OUTPUT, state);
+        return i2c_bus_write_reg(pca_addr, PCA9554_REG_OUTPUT, state);
     default:
         return false;
     }
@@ -53,22 +54,35 @@ static void update_outputs(uint8_t mask, uint8_t value) {
     xSemaphoreGive(out_mutex);
 }
 
+static void setup_pca9554(uint8_t addr) {
+    uint8_t config = 0;
+    expander       = EXP_PCA9554;
+    pca_addr       = addr;
+    // all pins inputs after power up; this firmware makes them outputs
+    power_on = i2c_bus_read_reg(addr, PCA9554_REG_CONFIG, &config) && config == 0xff;
+    if (!write_outputs(out_state) || !i2c_bus_write_reg(addr, PCA9554_REG_CONFIG, 0x00)) {
+        DEBUG_F_ERROR("PCA9554 not configured\n");
+    }
+}
+
 bool ioexp_setup(void) {
     out_mutex = xSemaphoreCreateMutex();
 
     if (i2c_bus_probe(PCF8574A_ADDR)) {
+        /* 0x38 is a PCF8574A or a PCA9554A. The PCF8574A takes the byte of the outputs alone;
+         * the PCA9554A reads it as a register and refuses one above 3, as the outputs with the
+         * watchdog pin high are. Before the read: it gives the power up state of the pins. */
         uint8_t pins = 0;
+        bool read    = i2c_bus_read(PCF8574A_ADDR, &pins, 1);
         expander     = EXP_PCF8574A;
-        // all pins high after power up; this firmware drives the boot flag low
-        power_on = i2c_bus_read(PCF8574A_ADDR, &pins, 1) && (pins & (1 << EXP_POWER_ON_PIN));
-    } else if (i2c_bus_probe(PCA9554_ADDR)) {
-        uint8_t config = 0;
-        expander       = EXP_PCA9554;
-        // all pins inputs after power up; this firmware makes them outputs
-        power_on = i2c_bus_read_reg(PCA9554_ADDR, PCA9554_REG_CONFIG, &config) && config == 0xff;
-        if (!write_outputs(out_state) || !i2c_bus_write_reg(PCA9554_ADDR, PCA9554_REG_CONFIG, 0x00)) {
-            DEBUG_F_ERROR("PCA9554 not configured\n");
+        if (write_outputs(out_state)) {
+            // all pins high after power up; this firmware drives the boot flag low
+            power_on = read && (pins & (1 << EXP_POWER_ON_PIN));
+        } else {
+            setup_pca9554(PCF8574A_ADDR);
         }
+    } else if (i2c_bus_probe(PCA9554_ADDR)) {
+        setup_pca9554(PCA9554_ADDR);
     } else {
         DEBUG_F_ERROR("no io expander on the bus: no leds, no watchdog feed\n");
         return false;
@@ -84,7 +98,7 @@ const char *ioexp_name(void) {
     case EXP_PCF8574A:
         return "PCF8574A";
     case EXP_PCA9554:
-        return "PCA9554";
+        return pca_addr == PCA9554_ADDR ? "PCA9554" : "PCA9554A";
     default:
         return "none";
     }

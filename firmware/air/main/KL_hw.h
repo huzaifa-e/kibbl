@@ -41,7 +41,7 @@ extern "C" {
 
 #define SCD30_ADDR    0x61
 #define SCD4X_ADDR    0x62 // the SCD41 of other Conny builds, not supported yet
-#define PCF8574A_ADDR 0x38 // io expander of the BOM variants 13a-e, A0-A2 to gnd
+#define PCF8574A_ADDR 0x38 // io expander of the BOM variants 13a-e, A0-A2 to gnd; or a PCA9554A there
 #define PCA9554_ADDR  0x20 // io expander of the EDB variant
 
 /*
