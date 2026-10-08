@@ -553,15 +553,108 @@ html[data-bs-theme='dark'] .theme-label-dark {
     margin-top: 0.4rem;
 }
 
-/* the heating card of the home page: one block per room of tado */
-.heat-room + .heat-room {
-    border-top: 1px solid var(--tblr-border-color);
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+/* the heating cards of the home page, one per room of tado, as tado's own app shows a room */
+.heat-card {
+    align-items: center;
+    padding: 1rem 1rem 0.75rem;
+    background: #26292d;
+    color: #f2f2f2;
+    text-align: center;
 }
-.heat-value {
-    min-width: 3.6rem;
-    opacity: 1 !important;
+.heat-name {
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+.heat-now {
+    display: flex;
+    gap: 1.4rem;
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.heat-now b {
+    font-size: 1.05rem;
+    letter-spacing: 0;
+}
+.heat-target {
+    font-size: 2.8rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-top: 0.3rem;
+}
+.heat-flame {
+    font-size: 1.3rem;
+    color: #f5a623;
+    vertical-align: middle;
+}
+.heat-state {
+    font-size: 0.9rem;
+    min-height: 1.3rem;
+}
+.heat-pill {
+    position: relative;
+    width: 110px;
+    height: 230px;
+    margin: 1rem 0;
+    border-radius: 2.4rem;
+    background: linear-gradient(#4b4e52, #46494d);
+    overflow: hidden;
+    cursor: ns-resize;
+    touch-action: none;
+    user-select: none;
+}
+.heat-pill:focus-visible {
+    outline: 2px solid #f2f2f2;
+    outline-offset: 3px;
+}
+.heat-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 100%;
+    transition:
+        height 0.12s,
+        background 0.2s;
+}
+.heat-fill span {
+    position: absolute;
+    top: 1.1rem;
+    left: 50%;
+    width: 2.6rem;
+    height: 0.3rem;
+    margin-left: -1.3rem;
+    border-radius: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+}
+.heat-resume {
+    border-radius: 2rem;
+    padding: 0.45rem 1.4rem;
+    background: #44474b;
+    color: #f2f2f2;
+    border: 0;
+}
+.heat-resume:hover {
+    background: #55585c;
+    color: #fff;
+}
+.heat-until {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+    font-size: 0.9rem;
+}
+.heat-edit {
+    border-radius: 50%;
+    background: #44474b;
+    color: #f2f2f2;
+    border: 0;
+}
+.heat-result:not(:empty) {
+    margin-top: 0.6rem;
+    text-align: left;
 }
 
 /* the rooms section: a room's latest camera picture on top of its card */
