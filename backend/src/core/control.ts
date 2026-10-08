@@ -135,7 +135,7 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
                 if (!fanModes.includes(command.mode as never)) return undefined;
                 out.mode = command.mode;
             }
-            const ranges: Record<string, [number, number]> = { level: [1, 100], onSeconds: [1, 3600], offSeconds: [1, 3600] };
+            const ranges: Record<string, [number, number]> = { level: [1, 100], onSeconds: [1, 3600], offSeconds: [1, 3600], quietLevel: [10, 60] };
             for (const [key, [min, max]] of Object.entries(ranges)) {
                 if (command[key] === undefined) continue;
                 if (!int(command[key], min, max)) return undefined;

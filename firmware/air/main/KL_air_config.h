@@ -78,6 +78,16 @@ bool config_set_air_remind(air_remind_t remind);
 // "remindMinutes" 0..60, "remindFrom" "yellow" or "red"; true and *remind kept for keys left out
 bool config_air_remind_from_json(const cJSON *json, air_remind_t *remind);
 
+/* The quiet speed of the fan in %: the lowest it runs at, while the air is fresh in auto and
+ * all the time in a bedroom. Which speed is silent depends on the fan, so it is a setting.
+ * Its own key. */
+#define FAN_QUIET_MIN 10
+#define FAN_QUIET_MAX 60
+uint8_t config_fan_quiet(void);
+bool config_set_fan_quiet(uint8_t percent);
+// "quietLevel" FAN_QUIET_MIN..FAN_QUIET_MAX; true and *percent kept when left out
+bool config_fan_quiet_from_json(const cJSON *json, uint8_t *percent);
+
 /* What the room the device stands in is used for, set by the server from the room's kind:
  * a bathroom beeps after a shower until the humidity is back, a bedroom keeps the light off
  * and beeps only for a risk to health. Its own key. */

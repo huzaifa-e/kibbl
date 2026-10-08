@@ -103,6 +103,13 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 night: z.boolean().optional().describe('night mode now; the night schedule switches it again later (kibbl_air_night_schedule)'),
                 fan_mode: z.enum(fanModes).optional(),
                 fan_level: z.number().int().min(1).max(100).optional(),
+                fan_quiet: z
+                    .number()
+                    .int()
+                    .min(10)
+                    .max(60)
+                    .optional()
+                    .describe('% the fan runs at least, in fresh air with the CO2 and in a bedroom; the speed that is not heard'),
                 fan_on_seconds: z.number().int().min(1).max(3600).optional(),
                 fan_off_seconds: z.number().int().min(1).max(3600).optional(),
                 yellow: z.number().int().min(400).max(5000).optional(),
@@ -132,6 +139,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             const fan: Record<string, unknown> = { cmd: 'fan' };
             if (args.fan_mode) fan.mode = args.fan_mode;
             if (args.fan_level !== undefined) fan.level = args.fan_level;
+            if (args.fan_quiet !== undefined) fan.quietLevel = args.fan_quiet;
             if (args.fan_on_seconds !== undefined) fan.onSeconds = args.fan_on_seconds;
             if (args.fan_off_seconds !== undefined) fan.offSeconds = args.fan_off_seconds;
             if (Object.keys(fan).length > 1) cmds.push(fan);

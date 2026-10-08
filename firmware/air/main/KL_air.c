@@ -71,9 +71,9 @@ static const char *room_name(air_room_t r) {
     return r == AIR_ROOM_BATHROOM ? "bathroom" : r == AIR_ROOM_BEDROOM ? "bedroom" : "normal";
 }
 
-// the fan at most: off in a bedroom (quiet), the night setting at night, else as set
+// the fan at most: the quiet speed in a bedroom, the night setting at night, else as set
 static void apply_fan_cap(void) {
-    fan_set_cap(room == AIR_ROOM_BEDROOM ? 0 : night ? settings.night_fan : 100);
+    fan_set_cap(room == AIR_ROOM_BEDROOM ? config_fan_quiet() : night ? settings.night_fan : 100);
 }
 
 static void room_apply(void) {
@@ -445,6 +445,7 @@ void air_start(void) {
 
     lamp_set_mode((lamp_mode_t)settings.lamp_mode, settings.lamp_colors, settings.lamp_fade);
     fan_configure(&settings);
+    fan_set_quiet(config_fan_quiet());
     room_apply();
     air_fresh_t fresh = config_air_fresh();
     window_set_fresh(fresh.min, fresh.max);

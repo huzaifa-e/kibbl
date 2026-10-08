@@ -250,7 +250,7 @@ function roomNote() {
     const text =
         wanted === 'bathroom'
             ? 'In a bathroom: after a shower it beeps every 2 minutes until the humidity is back to where it was before the shower.'
-            : 'In a bedroom: the light and the fan stay off and it beeps only for a risk to health (below 15 °C, above 30 °C, above 80 % humidity, 2000 ppm CO₂), also at night. The fire alarm sounds as everywhere.';
+            : 'In a bedroom: the light stays off, the fan at its quiet speed, and it beeps only for a risk to health (below 15 °C, above 30 °C, above 80 % humidity, 2000 ppm CO₂), also at night. The fire alarm sounds as everywhere.';
     const old = !device!.air?.settings?.room;
     return `<div class="alert alert-info py-2 small mb-3"><i class="ti ti-${wanted === 'bathroom' ? 'bath' : 'bed'} me-1"></i> ${text}${old ? ' <b>Needs the firmware 1.2.0 or later on the device.</b>' : ''}</div>`;
 }
@@ -514,11 +514,17 @@ function renderSettings() {
                 <select class="form-select mb-3" id="fan-mode" ${off}>${fanModes.map((m) => `<option value="${m}" ${fan?.mode === m ? 'selected' : ''}>${FAN_LABELS[m]}</option>`).join('')}</select>
                 <label class="form-label d-flex"><span class="flex-fill">Speed</span><span class="text-secondary" id="fan-level-value">${fan?.level ?? 100} %</span></label>
                 <input type="range" class="form-range mb-2" min="10" max="100" step="10" id="fan-level" value="${fan?.level ?? 100}" ${off} />
+                ${
+                    fan?.quietLevel !== undefined
+                        ? `<label class="form-label d-flex"><span class="flex-fill">Quiet speed</span><span class="text-secondary" id="fan-quiet-value">${fan.quietLevel} %</span></label>
+                <input type="range" class="form-range mb-2" min="10" max="60" step="5" id="fan-quiet" value="${fan.quietLevel}" ${off} />`
+                        : ''
+                }
                 <div class="row g-2 ${fan?.mode === 'pulse' ? '' : 'd-none'}" id="fan-pulse">
                     <div class="col-6"><label class="form-label">On</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="fan-on" min="1" max="3600" value="${fan?.onSeconds ?? 60}" ${off} /><span class="input-group-text">s</span></div></div>
                     <div class="col-6"><label class="form-label">Off</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="fan-off" min="1" max="3600" value="${fan?.offSeconds ?? 240}" ${off} /><span class="input-group-text">s</span></div></div>
                 </div>
-                <div class="text-secondary small mt-2">The fan draws room air past the sensor and keeps the device cool, the measurement is best with it on. With the CO₂ it runs slowly in fresh air and speeds up as the CO₂ climbs, up to the speed above at red.</div>
+                <div class="text-secondary small mt-2">The fan draws room air past the sensor and keeps the device cool, the measurement is best with it on. With the CO₂ it runs at the quiet speed in fresh air and speeds up as the CO₂ climbs, up to the speed above at red; in a bedroom it stays at the quiet speed. Set the quiet speed as low as you do not hear it any more.</div>
             </div>
         </div>
         <div class="card mb-3">
@@ -663,6 +669,7 @@ function bindSettings() {
         if (el.id === 'night-fan') byId('night-fan-value').textContent = `${el.value} %`;
         if (el.id === 'heat-target') byId('heat-value').textContent = `${Number(el.value).toFixed(1)} °C`;
         if (el.id === 'fan-level') byId('fan-level-value').textContent = `${el.value} %`;
+        if (el.id === 'fan-quiet') byId('fan-quiet-value').textContent = `${el.value} %`;
     });
 
     root.addEventListener('change', async (e) => {
@@ -695,6 +702,8 @@ function bindSettings() {
             await command({ cmd: 'fan', mode: el.value });
         } else if (el.id === 'fan-level') {
             await command({ cmd: 'fan', level: Number(el.value) });
+        } else if (el.id === 'fan-quiet') {
+            await command({ cmd: 'fan', quietLevel: Number(el.value) });
         } else if (el.id === 'fan-on' || el.id === 'fan-off') {
             await command({
                 cmd: 'fan',

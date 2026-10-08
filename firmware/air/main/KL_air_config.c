@@ -14,6 +14,7 @@
 #define NVS_HUM_FACTOR  "HUM_FACT" // thousandths
 #define NVS_REMIND      "REMIND"   // minutes | level << 8
 #define NVS_ROOM        "ROOM"     // air_room_t
+#define NVS_FAN_QUIET   "FANQUIET" // %
 #define NVS_FRESH       "FRESH"    // min | max << 16, ppm
 #define REMIND_YELLOW   2          // AIR_LEVEL_YELLOW
 #define REMIND_RED      3          // AIR_LEVEL_RED
@@ -26,6 +27,7 @@ static uint16_t humidity_factor = 1000;
 // every 5 minutes from red ("air now"), after a request of the user
 static air_remind_t remind = {.minutes = 5, .level = REMIND_RED};
 static air_room_t room       = AIR_ROOM_NORMAL;
+static uint8_t fan_quiet     = 25;
 static const char *room_names[] = {"normal", "bathroom", "bedroom"};
 // outside air before a calibration recorded the home's own: about 420 ppm
 static air_fresh_t fresh = {.min = 400, .max = 460};
@@ -81,6 +83,11 @@ void config_air_load(void) {
         }
     }
 
+    uint32_t stored_quiet = 0;
+    if (nvs_queue_job(NVS_FAN_QUIET, &stored_quiet, 0, UINT32_T, READ) && stored_quiet >= FAN_QUIET_MIN && stored_quiet <= FAN_QUIET_MAX) {
+        fan_quiet = (uint8_t)stored_quiet;
+    }
+
     uint32_t stored_room = 0;
     if (nvs_queue_job(NVS_ROOM, &stored_room, 0, UINT32_T, READ) && stored_room <= AIR_ROOM_BEDROOM) {
         room = (air_room_t)stored_room;
@@ -105,6 +112,7 @@ void config_air_reset(void) {
     nvs_remove_key(NVS_HUM_FACTOR);
     nvs_remove_key(NVS_REMIND);
     nvs_remove_key(NVS_ROOM);
+    nvs_remove_key(NVS_FAN_QUIET);
     nvs_remove_key(NVS_FRESH);
 }
 
@@ -183,6 +191,28 @@ bool config_set_air_remind(air_remind_t value) {
     remind          = value;
     uint32_t stored = value.minutes | ((uint32_t)value.level << 8);
     return nvs_queue_job(NVS_REMIND, &stored, 0, UINT32_T, WRITE);
+}
+
+uint8_t config_fan_quiet(void) {
+    return fan_quiet;
+}
+
+bool config_set_fan_quiet(uint8_t percent) {
+    if (percent < FAN_QUIET_MIN || percent > FAN_QUIET_MAX) {
+        return false;
+    }
+    fan_quiet       = percent;
+    uint32_t stored = percent;
+    return nvs_queue_job(NVS_FAN_QUIET, &stored, 0, UINT32_T, WRITE);
+}
+
+bool config_fan_quiet_from_json(const cJSON *json, uint8_t *percent) {
+    int value = *percent;
+    if (!json_int_in_range(json, "quietLevel", FAN_QUIET_MIN, FAN_QUIET_MAX, &value)) {
+        return false;
+    }
+    *percent = (uint8_t)value;
+    return true;
 }
 
 air_room_t config_air_room(void) {
@@ -377,6 +407,7 @@ void config_fan_to_json(const air_settings_t *settings, cJSON *json) {
     cJSON_AddNumberToObject(json, "level", settings->fan_level);
     cJSON_AddNumberToObject(json, "onSeconds", settings->fan_on_s);
     cJSON_AddNumberToObject(json, "offSeconds", settings->fan_off_s);
+    cJSON_AddNumberToObject(json, "quietLevel", fan_quiet);
 }
 
 void config_lamp_to_json(const air_settings_t *settings, cJSON *json) {

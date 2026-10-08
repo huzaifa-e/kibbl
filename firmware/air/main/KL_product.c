@@ -101,6 +101,17 @@ static const char *cmd_settings(const cJSON *req, cJSON *resp, settings_from_jso
     if ((remind.minutes != config_air_remind().minutes || remind.level != config_air_remind().level) && !config_set_air_remind(remind)) {
         return "reminder not stored";
     }
+    uint8_t quiet = config_fan_quiet();
+    if (!config_fan_quiet_from_json(req, &quiet)) {
+        return "invalid setting";
+    }
+    if (quiet != config_fan_quiet()) {
+        if (!config_set_fan_quiet(quiet)) {
+            return "quiet speed not stored";
+        }
+        fan_set_quiet(quiet);
+        air_room_changed(); // a bedroom runs at it
+    }
     air_room_t room = config_air_room();
     if (!config_air_room_from_json(req, &room)) {
         return "invalid setting";

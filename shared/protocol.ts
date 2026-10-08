@@ -185,6 +185,7 @@ export interface FanSettings {
     level: number;
     onSeconds: number;
     offSeconds: number;
+    quietLevel?: number; // % the lowest it runs at: in fresh air with the CO2, always in a bedroom (firmware 1.2.5 on)
 }
 
 export interface LampSettings {

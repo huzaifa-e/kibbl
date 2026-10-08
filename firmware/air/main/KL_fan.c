@@ -15,12 +15,11 @@
 #define FAN_DUTY_MAX 255
 #define FAN_TICK_US  (1000 * 1000)
 
-/* Auto: the speed follows the CO2. Below yellow - FAN_AUTO_LEAD it turns slowly at
- * FAN_AUTO_MIN (or the set level, if lower): it keeps drawing room air past the sensor, so
- * the readings follow the room, and it is quiet. From there it rises in a line to the set
- * level at red. It moves at most FAN_AUTO_STEP a second, so it is not heard
+/* Auto: the speed follows the CO2. Below yellow - FAN_AUTO_LEAD it turns at the quiet speed
+ * (config_fan_quiet, or the set level, if lower): it keeps drawing room air past the sensor,
+ * so the readings follow the room, and it is not heard. From there it rises in a line to the
+ * set level at red. It moves at most FAN_AUTO_STEP a second, so it is not heard
  * jumping, and only by whole FAN_AUTO_GRAIN, so the noise of the sensor does not move it. */
-#define FAN_AUTO_MIN   25 // %: slow and quiet, still turning
 #define FAN_AUTO_LEAD  400 // ppm below yellow where it starts to rise
 #define FAN_AUTO_STEP  2 // % per second
 #define FAN_AUTO_GRAIN 5 // %
@@ -37,6 +36,7 @@ static volatile uint16_t yellow    = 1000;
 static volatile uint16_t red       = 2000;
 static volatile uint8_t level_now  = 0;
 static volatile uint8_t cap        = 100;
+static volatile uint8_t quiet      = 25; // config_fan_quiet
 
 static esp_timer_handle_t tick_timer = NULL;
 static uint32_t pulse_s = 0; // seconds into the current pulse cycle
@@ -56,7 +56,7 @@ static void write_level(uint8_t value) {
 // the speed auto wants for the CO2 now, before the night cap
 static uint8_t auto_target(void) {
     uint8_t top = level;
-    uint8_t low = FAN_AUTO_MIN < top ? FAN_AUTO_MIN : top;
+    uint8_t low = quiet < top ? quiet : top;
     if (co2 == 0) {
         return low; // no reading yet: slow, also after every restart
     }
@@ -173,4 +173,8 @@ void fan_set_cap(uint8_t new_cap) {
 
 uint8_t fan_level_now(void) {
     return level_now;
+}
+
+void fan_set_quiet(uint8_t percent) {
+    quiet = percent;
 }
