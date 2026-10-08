@@ -6,7 +6,6 @@ import '@fontsource/press-start-2p/400.css';
 import '@fontsource-variable/rubik';
 import '../style.css';
 import '../theme.css';
-import { version } from '../../../shared/version';
 
 declare const __APP_BUILD__: string; // vite.config.ts: the commit and time of the deploy, 'dev' locally
 import './orb';
@@ -71,9 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const year = document.getElementById('year');
     if (year) year.textContent = String(new Date().getFullYear());
-    // the one place the version is shown: with the commit and time of the deploy
+    // the one place the version is shown: the commit and time of the deploy, new with each one
     const versionTxt = document.getElementById('versionTxt');
-    if (versionTxt) versionTxt.textContent = `${version} · ${__APP_BUILD__}`;
+    if (versionTxt) versionTxt.textContent = __APP_BUILD__ === 'dev' ? 'dev build' : `build ${__APP_BUILD__}`;
 
     document.getElementById('theme-toggle')?.addEventListener('click', (e) => {
         e.preventDefault();
