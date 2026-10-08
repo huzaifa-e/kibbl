@@ -16,7 +16,9 @@ SSH=(ssh -p "$SSH_PORT" -o ConnectTimeout=20)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # the build shown at the bottom of every page: the commit and the time of this deploy
-BUILD="$(git -C "$ROOT" rev-parse --short=7 HEAD) $(date '+%Y-%m-%d %H:%M')"
+# (Apple's git when the one first on the PATH does not run, as an Intel build on an arm Mac)
+COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || /usr/bin/git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+BUILD="$COMMIT $(date '+%Y-%m-%d %H:%M')"
 
 echo "Copying to $HOST:$REMOTE_DIR"
 rsync -az --delete -e "${SSH[*]}" \
