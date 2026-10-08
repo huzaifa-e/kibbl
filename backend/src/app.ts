@@ -6,7 +6,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import http from 'node:http';
 import sirv from 'sirv';
-import { version } from '../package.json';
+import { version } from '../../shared/version';
 import db from './core/db';
 import { ensureAdminUser } from './core/auth';
 import { logger } from './core/logger';
@@ -81,7 +81,7 @@ async function main() {
 
     const httpServer = http.createServer(app);
 
-    // which version runs, without a login: to check a deployment
+    // which version runs, without a login: to check a deployment (deploy/deploy.sh raises it)
     app.get('/api/version', (_req, res) => res.json({ version }));
     initRoutes(app);
     initBrowserSocket(httpServer);
