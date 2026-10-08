@@ -28,10 +28,34 @@ test('the iris goes from closed to fully open, nothing beyond', () => {
 });
 
 test('the feeder state is kept only as the device should send it', () => {
-    assert.deepEqual(parseFeederState({ opening: 30.06, busy: false }), { opening: 30.1, busy: false, job: undefined });
-    assert.deepEqual(parseFeederState({ opening: 2.3, busy: true, job: 'feed' }), { opening: 2.3, busy: true, job: 'feed' });
+    assert.deepEqual(parseFeederState({ opening: 30.06, busy: false }), {
+        opening: 30.1,
+        busy: false,
+        job: undefined,
+        position: undefined,
+        speed: undefined,
+        accel: undefined,
+    });
+    const state = parseFeederState({ opening: 2.3, busy: true, job: 'feed', position: 1782, speed: 800, accel: 3000 });
+    assert.equal(state?.job, 'feed');
+    assert.equal(state?.position, 1782);
+    assert.equal(state?.speed, 800);
+    assert.equal(parseFeederState({ opening: 2.3, busy: false, position: 1.5 })?.position, undefined);
     assert.equal(parseFeederState({ opening: '3', busy: false }), undefined);
     assert.equal(parseFeederState({ opening: 3 }), undefined);
     assert.equal(parseFeederState(null), undefined);
     assert.equal(parseFeederState({ opening: 3, busy: true, job: '<script>' })?.job, undefined);
+});
+
+test('tuning a feeder: speed, acceleration, steps, the zero', () => {
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_config', speed: 800 }), { cmd: 'feeder_config', speed: 800 });
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_config', speed: 1200, accel: 4000 }), { cmd: 'feeder_config', speed: 1200, accel: 4000 });
+    assert.equal(cleanCommand({ cmd: 'feeder_config' }), undefined);
+    assert.equal(cleanCommand({ cmd: 'feeder_config', speed: 50 }), undefined);
+    assert.equal(cleanCommand({ cmd: 'feeder_config', accel: 30000 }), undefined);
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_move', steps: -200 }), { cmd: 'feeder_move', steps: -200 });
+    assert.equal(cleanCommand({ cmd: 'feeder_move', steps: 0 }), undefined);
+    assert.equal(cleanCommand({ cmd: 'feeder_move', steps: 5000 }), undefined);
+    assert.equal(cleanCommand({ cmd: 'feeder_move', steps: 1.5 }), undefined);
+    assert.deepEqual(cleanCommand({ cmd: 'feeder_home', extra: true }), { cmd: 'feeder_home' });
 });

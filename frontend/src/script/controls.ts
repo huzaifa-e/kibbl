@@ -1,5 +1,5 @@
 import { climateHints } from '../../../shared/climate';
-import { FEEDER_MAX_MM, FEEDER_MIN_MM, feedLevels, roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
+import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_SPEED, feedLevels, roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
 import { request } from './socket';
 import { escapeHtml } from './utils';
 
@@ -41,6 +41,31 @@ export function airNowHtml(d: DeviceSummary) {
         ${worst ? `<div class="small mt-1 ${worst.level === 'alert' ? 'text-danger' : 'text-orange'}"><i class="ti ti-${worst.icon}"></i> ${escapeHtml(worst.title)}</div>` : ''}`;
 }
 
+// the feeders whose tuning is unfolded: the card is redrawn with every update
+const tuningOpen = new Set<string>();
+
+// tuning a feeder: speed and acceleration of its motor, steps by hand, the zero
+function feederTuningHtml(d: DeviceSummary, disabled: string, busy: string) {
+    const f = d.feeder;
+    const speed = f?.speed ?? 2400;
+    const accel = f?.accel ?? 8000;
+    const rpm = (speed / 4096) * 60;
+    const jog = (steps: number) =>
+        `<button class="btn btn-sm" data-control="feeder-move" data-steps="${steps}" data-device="${d._id}" ${disabled} ${busy}>${steps > 0 ? '+' : ''}${steps}</button>`;
+    return `<details class="mb-3" data-feeder-tuning="${d._id}" ${tuningOpen.has(d._id) ? 'open' : ''}>
+        <summary class="text-secondary small"><i class="ti ti-adjustments me-1"></i> Tuning · ${f?.position ?? '–'} steps, ${speed} steps/s</summary>
+        <div class="mt-2">
+            <label class="form-label d-flex small"><span class="flex-fill">Speed</span><span data-feeder-speed="${d._id}">${speed} steps/s · ${rpm.toFixed(0)} rpm</span></label>
+            <input type="range" class="form-range" min="${FEEDER_SPEED.min}" max="${FEEDER_SPEED.max}" step="100" value="${speed}" data-control="feeder-speed" data-device="${d._id}" ${disabled} ${busy} />
+            <label class="form-label d-flex small mt-2"><span class="flex-fill">Acceleration</span><span data-feeder-accel="${d._id}">${accel} steps/s²</span></label>
+            <input type="range" class="form-range" min="${FEEDER_ACCEL.min}" max="${FEEDER_ACCEL.max}" step="200" value="${accel}" data-control="feeder-accel" data-device="${d._id}" ${disabled} ${busy} />
+            <div class="small text-secondary mt-2 mb-1">Steps by hand (+ closes; the stroke is 1792)</div>
+            <div class="btn-group w-100">${[-200, -50, 50, 200].map(jog).join('')}</div>
+            <button class="btn btn-sm w-100 mt-2" data-control="feeder-home" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-target me-1"></i> Find the zero (fully open, into the stop)</button>
+        </div>
+    </details>`;
+}
+
 // a kibbl. feeder: where the iris is, a slider to set it, and the feeding levels
 function feederHtml(d: DeviceSummary, disabled: string) {
     const f = d.feeder;
@@ -70,7 +95,8 @@ function feederHtml(d: DeviceSummary, disabled: string) {
                     </button></div>`,
                 )
                 .join('')}</div>
-        </div>`;
+        </div>
+        ${feederTuningHtml(d, disabled, busy)}`;
 }
 
 // airNow: the air values on top; the home card of a kibbl. air shows them itself
@@ -135,6 +161,18 @@ export function controlsHtml(d: DeviceSummary, airNow = true) {
 }
 
 export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSummary | undefined) {
+    // the tuning of a feeder stays unfolded through the redraws
+    root.addEventListener(
+        'toggle',
+        (e) => {
+            const el = e.target as HTMLDetailsElement;
+            const id = el.dataset?.feederTuning;
+            if (!id) return;
+            if (el.open) tuningOpen.add(id);
+            else tuningOpen.delete(id);
+        },
+        true,
+    );
     const send = async (deviceId: string, command: Record<string, unknown>) => {
         const result = root.querySelector<HTMLElement>(`[data-control-result="${deviceId}"]`);
         const resp = await request<{ ok: boolean; error?: string }>('deviceCommand', deviceId, command);
@@ -152,6 +190,12 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         } else if (el.dataset.control === 'iris') {
             const value = root.querySelector(`[data-feeder-value="${el.dataset.device}"]`);
             if (value) value.textContent = Number(el.value) <= FEEDER_MIN_MM ? 'closed' : `open ${el.value} mm`;
+        } else if (el.dataset.control === 'feeder-speed') {
+            const value = root.querySelector(`[data-feeder-speed="${el.dataset.device}"]`);
+            if (value) value.textContent = `${el.value} steps/s · ${((Number(el.value) / 4096) * 60).toFixed(0)} rpm`;
+        } else if (el.dataset.control === 'feeder-accel') {
+            const value = root.querySelector(`[data-feeder-accel="${el.dataset.device}"]`);
+            if (value) value.textContent = `${el.value} steps/s²`;
         }
     });
 
@@ -167,6 +211,10 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'night', on: el.checked });
         } else if (el.dataset.control === 'iris') {
             send(deviceId, { cmd: 'iris', opening: Number(el.value) });
+        } else if (el.dataset.control === 'feeder-speed') {
+            send(deviceId, { cmd: 'feeder_config', speed: Number(el.value) });
+        } else if (el.dataset.control === 'feeder-accel') {
+            send(deviceId, { cmd: 'feeder_config', accel: Number(el.value) });
         }
     });
 
@@ -180,6 +228,10 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'feed', portions: level.portions, opening: level.opening, openMs: level.openMs });
         } else if (el.dataset.control === 'iris-set') {
             send(deviceId, { cmd: 'iris', opening: Number(el.dataset.opening) });
+        } else if (el.dataset.control === 'feeder-move') {
+            send(deviceId, { cmd: 'feeder_move', steps: Number(el.dataset.steps) });
+        } else if (el.dataset.control === 'feeder-home') {
+            send(deviceId, { cmd: 'feeder_home' });
         } else if (el.dataset.control === 'lamp') {
             void send(deviceId, { cmd: 'lamp', mode: el.dataset.mode }).then((resp) => {
                 if (resp.ok) el.parentElement?.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === el));

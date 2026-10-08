@@ -35,6 +35,9 @@ interface Feeder {
     opening: number;
     busy: boolean;
     job?: string;
+    position?: number;
+    speed?: number;
+    accel?: number;
 }
 
 let feeder: Feeder = { opening: 0, busy: false };
@@ -79,7 +82,16 @@ function nanoSend(cmd: Json, timeoutMs = 60000) {
 
 function stateFrom(msg: Json): Feeder | undefined {
     if (typeof msg.opening !== 'number') return undefined;
-    return { opening: msg.opening, busy: msg.busy === true, job: typeof msg.job === 'string' ? msg.job : undefined };
+    const config = (typeof msg.feeder === 'object' && msg.feeder !== null ? msg.feeder : {}) as Json;
+    const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+    return {
+        opening: msg.opening,
+        busy: msg.busy === true,
+        job: typeof msg.job === 'string' ? msg.job : undefined,
+        position: num(msg.position),
+        speed: num(config.speed),
+        accel: num(config.accel),
+    };
 }
 
 function openNano(path: string) {
@@ -178,6 +190,12 @@ async function run(msg: Json): Promise<Json> {
     } else if (msg.cmd === 'iris') {
         const mm = Number(msg.opening);
         cmd = mm <= MIN_MM ? { cmd: 'close' } : { cmd: 'open', mm };
+    } else if (msg.cmd === 'feeder_config') {
+        cmd = { cmd: 'feeder_config', speed: msg.speed, accel: msg.accel };
+    } else if (msg.cmd === 'feeder_move') {
+        cmd = { cmd: 'move', steps: msg.steps };
+    } else if (msg.cmd === 'feeder_home') {
+        cmd = { cmd: 'home' };
     } else if (msg.cmd === 'info') {
         return { ok: true, ...hello() };
     } else if (msg.cmd === 'reboot') {
