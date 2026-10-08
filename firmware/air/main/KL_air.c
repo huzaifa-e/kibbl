@@ -71,11 +71,17 @@ static const char *room_name(air_room_t r) {
     return r == AIR_ROOM_BATHROOM ? "bathroom" : r == AIR_ROOM_BEDROOM ? "bedroom" : "normal";
 }
 
+// the fan at most: off in a bedroom (quiet), the night setting at night, else as set
+static void apply_fan_cap(void) {
+    fan_set_cap(room == AIR_ROOM_BEDROOM ? 0 : night ? settings.night_fan : 100);
+}
+
 static void room_apply(void) {
     room     = config_air_room();
     shower   = false;
     rh_count = 0;
     lamp_set_night(night || room == AIR_ROOM_BEDROOM);
+    apply_fan_cap();
     DEBUG_F("air: room %s\n", room_name(room));
 }
 
@@ -334,9 +340,7 @@ static void air_task(void *pvParams) {
             config_air_settings(&settings);
             scd30_set_altitude(settings.altitude);
             scd30_set_asc(settings.asc);
-            if (night) {
-                fan_set_cap(settings.night_fan);
-            }
+            apply_fan_cap();
         }
 
         calibrate_step(now);
@@ -512,7 +516,7 @@ void air_set_night(bool on) {
     night = on;
     lamp_set_night(on || room == AIR_ROOM_BEDROOM);
     buzzer_set_muted(on);
-    fan_set_cap(on ? settings.night_fan : 100);
+    apply_fan_cap();
     DEBUG_F("night mode %s\n", on ? "on" : "off");
 }
 

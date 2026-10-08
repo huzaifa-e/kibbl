@@ -45,7 +45,7 @@ const SENSITIVITY = [
     { label: 'Medium', rise: 150 },
     { label: 'Low', rise: 250 },
 ];
-const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂' };
+const FAN_LABELS: Record<string, string> = { off: 'Off', on: 'Always on', pulse: 'On and off in turn', auto: 'With the CO₂ (off while fresh)' };
 
 let devices: DeviceSummary[] = [];
 let device: DeviceSummary | undefined;
@@ -250,7 +250,7 @@ function roomNote() {
     const text =
         wanted === 'bathroom'
             ? 'In a bathroom: after a shower it beeps every 2 minutes until the humidity is back to where it was before the shower.'
-            : 'In a bedroom: the light stays off and it beeps only for a risk to health (below 15 °C, above 30 °C, above 80 % humidity, 2000 ppm CO₂), also at night. The fire alarm sounds as everywhere.';
+            : 'In a bedroom: the light and the fan stay off and it beeps only for a risk to health (below 15 °C, above 30 °C, above 80 % humidity, 2000 ppm CO₂), also at night. The fire alarm sounds as everywhere.';
     const old = !device!.air?.settings?.room;
     return `<div class="alert alert-info py-2 small mb-3"><i class="ti ti-${wanted === 'bathroom' ? 'bath' : 'bed'} me-1"></i> ${text}${old ? ' <b>Needs the firmware 1.2.0 or later on the device.</b>' : ''}</div>`;
 }
