@@ -1,5 +1,5 @@
 import { climateHints } from '../../../shared/climate';
-import { roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
+import { FEEDER_MAX_MM, FEEDER_MIN_MM, feedLevels, roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
 import { request } from './socket';
 import { escapeHtml } from './utils';
 
@@ -41,6 +41,38 @@ export function airNowHtml(d: DeviceSummary) {
         ${worst ? `<div class="small mt-1 ${worst.level === 'alert' ? 'text-danger' : 'text-orange'}"><i class="ti ti-${worst.icon}"></i> ${escapeHtml(worst.title)}</div>` : ''}`;
 }
 
+// a kibbl. feeder: where the iris is, a slider to set it, and the feeding levels
+function feederHtml(d: DeviceSummary, disabled: string) {
+    const f = d.feeder;
+    const opening = f?.opening ?? FEEDER_MIN_MM;
+    const busy = f?.busy ? 'disabled' : '';
+    const state = !d.online
+        ? `<span class="text-secondary">offline: the feeder's controller is not connected</span>`
+        : f?.busy
+          ? `<span class="text-orange"><span class="spinner-border spinner-border-sm me-1"></span> ${f.job === 'feed' ? 'feeding' : 'moving'}…</span>`
+          : `<span class="text-secondary">${opening <= FEEDER_MIN_MM + 0.5 ? 'closed' : `open ${opening.toFixed(0)} mm`}</span>`;
+    return `<div class="mb-3">
+            <label class="form-label d-flex"><span class="flex-fill"><i class="ti ti-aperture me-1"></i> Opening</span><span data-feeder-value="${d._id}">${state}</span></label>
+            <input type="range" class="form-range" min="${FEEDER_MIN_MM}" max="${FEEDER_MAX_MM}" step="1" value="${Math.round(opening)}" data-control="iris" data-device="${d._id}" ${disabled} ${busy} />
+            <div class="d-flex justify-content-between small text-secondary"><span>closed</span><span>${FEEDER_MAX_MM} mm</span></div>
+            <div class="btn-group w-100 mt-2">
+                <button class="btn btn-sm" data-control="iris-set" data-opening="${FEEDER_MIN_MM}" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-circle-dot me-1"></i> Close</button>
+                <button class="btn btn-sm" data-control="iris-set" data-opening="${FEEDER_MAX_MM}" data-device="${d._id}" ${disabled} ${busy}><i class="ti ti-circle me-1"></i> Open</button>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label"><i class="ti ti-bowl me-1"></i> Feed</label>
+            <div class="row g-2">${feedLevels
+                .map(
+                    (l) => `<div class="col-6"><button class="btn w-100 flex-column py-2" data-control="feed" data-level="${l.id}" data-device="${d._id}" ${disabled} ${busy}>
+                        <span class="fw-bold">${l.label}</span>
+                        <span class="small text-secondary">${l.portions} × ${l.opening} mm, ${l.openMs / 1000} s</span>
+                    </button></div>`,
+                )
+                .join('')}</div>
+        </div>`;
+}
+
 // airNow: the air values on top; the home card of a kibbl. air shows them itself
 export function controlsHtml(d: DeviceSummary, airNow = true) {
     const disabled = d.online ? '' : 'disabled';
@@ -77,9 +109,7 @@ export function controlsHtml(d: DeviceSummary, airNow = true) {
         </div>`);
     }
     if (d.caps.includes('feeder')) {
-        blocks.push(`<div class="mb-3">
-            <button class="btn btn-primary w-100" data-control="feed" data-device="${d._id}" ${disabled}><i class="ti ti-bowl me-1"></i> Feed one portion</button>
-        </div>`);
+        blocks.push(feederHtml(d, disabled));
     }
     if (d.caps.includes('switch')) {
         blocks.push(`<div class="mb-3">
@@ -119,6 +149,9 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         if (el.dataset.control === 'light') {
             const value = root.querySelector(`[data-light-value="${el.dataset.device}"]`);
             if (value) value.textContent = `${el.value} %`;
+        } else if (el.dataset.control === 'iris') {
+            const value = root.querySelector(`[data-feeder-value="${el.dataset.device}"]`);
+            if (value) value.textContent = Number(el.value) <= FEEDER_MIN_MM ? 'closed' : `open ${el.value} mm`;
         }
     });
 
@@ -132,6 +165,8 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'switch', channel: 'main', on: el.checked });
         } else if (el.dataset.control === 'night') {
             send(deviceId, { cmd: 'night', on: el.checked });
+        } else if (el.dataset.control === 'iris') {
+            send(deviceId, { cmd: 'iris', opening: Number(el.value) });
         }
     });
 
@@ -141,7 +176,10 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         if (!el || !deviceId) return;
         e.stopPropagation();
         if (el.dataset.control === 'feed') {
-            send(deviceId, { cmd: 'feed', portions: 1 });
+            const level = feedLevels.find((l) => l.id === el.dataset.level) ?? feedLevels[0];
+            send(deviceId, { cmd: 'feed', portions: level.portions, opening: level.opening, openMs: level.openMs });
+        } else if (el.dataset.control === 'iris-set') {
+            send(deviceId, { cmd: 'iris', opening: Number(el.dataset.opening) });
         } else if (el.dataset.control === 'lamp') {
             void send(deviceId, { cmd: 'lamp', mode: el.dataset.mode }).then((resp) => {
                 if (resp.ok) el.parentElement?.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === el));

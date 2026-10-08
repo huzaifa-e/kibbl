@@ -1,0 +1,15 @@
+{
+    "name": "feeder-bridge",
+    "private": true,
+    "description": "The kibbl. feeder's Arduino Nano on USB, connected to the server as a device",
+    "scripts": {
+        "start": "tsx bridge.ts"
+    },
+    "dependencies": {
+        "serialport": "^12.0.0",
+        "ws": "^8.16.0"
+    },
+    "devDependencies": {
+        "tsx": "^4.19.0"
+    }
+}

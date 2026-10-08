@@ -11,6 +11,7 @@ import {
     type LampSettings,
     type DeviceSummary,
     type DeviceTelemetry,
+    type FeederState,
     type MotionSettings,
 } from '../../../shared/protocol';
 import { pairedRoom } from '../tado/service';
@@ -111,6 +112,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         cameraError: str('cameraError'),
         wifiChangeFailed: str('wifiChangeFailed'),
         light: typeof info.light === 'number' ? info.light : undefined,
+        feeder: dev ? parseFeederState(info.feeder) : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         air: airSummary(doc, dev),
         update: updateSummary(doc),
@@ -255,10 +257,28 @@ export async function handleHello(deviceId: string, msg: Record<string, unknown>
     await publishDevice(deviceId);
 }
 
+// the iris of a feeder as the device reports it, or undefined when it does not
+export function parseFeederState(v: unknown): FeederState | undefined {
+    if (typeof v !== 'object' || v === null) return undefined;
+    const f = v as Record<string, unknown>;
+    if (typeof f.opening !== 'number' || !Number.isFinite(f.opening) || typeof f.busy !== 'boolean') return undefined;
+    return {
+        opening: Math.round(Math.min(Math.max(f.opening, 0), 50) * 10) / 10,
+        busy: f.busy,
+        job: typeof f.job === 'string' && /^[a-z]{1,16}$/.test(f.job) ? f.job : undefined,
+    };
+}
+
 export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) {
     const dev = live.get(deviceId);
     if (!dev) {
         return;
+    }
+    // a kibbl. feeder: the app shows the iris as soon as it moves
+    const feeder = parseFeederState(msg.feeder);
+    if (feeder && JSON.stringify(feeder) !== JSON.stringify(parseFeederState(dev.info.feeder))) {
+        dev.info.feeder = feeder;
+        void publishDevice(deviceId);
     }
     const num = (key: string) => (typeof msg[key] === 'number' ? (msg[key] as number) : 0);
     dev.telemetry = {
@@ -343,6 +363,8 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
             { _id: deviceId },
             { air: resp.air as AirSettings, fanSettings: resp.fanSettings as FanSettings, lamp: resp.lamp as LampSettings },
         );
+    } else if ((cmd === 'feed' || cmd === 'iris') && dev && parseFeederState(resp.feeder)) {
+        dev.info.feeder = resp.feeder;
     } else if (cmd === 'night' && typeof resp.night === 'boolean' && dev) {
         // shown at once, not only with the next telemetry
         dev.info.night = resp.night;

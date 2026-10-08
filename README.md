@@ -48,6 +48,7 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
     │   │   └── sdkconfig.defaults, kibbl_partition_tbl.csv
     │   ├── air/                  kibbl. air (Conny CO2 traffic light EHW0001-0013, ESP32-C3); VERSION
     │   │   └── main/             SCD30, traffic light, fan, buzzer, button, smoke and window detection
+    │   ├── feeder-motor/         kibbl. feeder's iris motor for now: Arduino Nano sketch, S42B setup in its README
     │   ├── create_build_info.sh  FW_VERSION for CI builds (product, VERSION, commit)
     │   └── env.sh                ESP-IDF v5.1.6 environment
     ├── backend/                  server (TypeScript, Express, socket.io, ws, MongoDB)
@@ -58,6 +59,7 @@ An ESP32 camera at home streams live video to a server, which shows it in a web 
     ├── frontend/                 web app (Vite, Tabler)
     │   └── src/pages, src/script
     ├── shared/                   protocol types used by both
+    ├── tools/feeder-bridge/      the feeder's Arduino Nano on USB, connected to the server as a device
     ├── hardware/                 printed parts, parametric (build123d) with STEP and STL
     │   ├── camera/case/          case of the kibbl. cam: clip-ons, keyhole hanger
     │   └── feeder/iris/          NEMA 17 iris valve that portions the cat food

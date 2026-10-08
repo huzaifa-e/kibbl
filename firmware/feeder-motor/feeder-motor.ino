@@ -13,7 +13,7 @@
  * enabled at the S42B's default EnablePin !Enable.
  *
  * Serial 115200, one command per line, json as in docs/protocol.md or plain words:
- *   {"cmd":"feed","portions":2,"id":1}   feed 2      portions 1-10
+ *   {"cmd":"feed","portions":2,"id":1}   feed 2      portions 1-10; this feed only: "opening" 4-42 mm, "openMs" 100-20000
  *   {"cmd":"open","mm":30}               open 30     opening 2-42 mm (42 without mm)
  *   {"cmd":"close"}                      close
  *   {"cmd":"home"}                       home        to open, HOME_OVERTRAVEL past it and back: takes up a small drift
@@ -384,8 +384,12 @@ static void command(char *text) {
         if (json) number(text, "portions", f); else if (hasValue) f = value;
         int portions = (int)f;
         if (portions < 1 || portions > 10) { respond(id, false, "portions must be 1 to 10"); return; }
-        add(GO, stepsFor(config.opening), config.speed);
-        add(WAIT, config.openMs);
+        // a feeding level: opening and time of this feed only, the stored ones otherwise
+        float opening = config.opening / 10.0f, openMs = config.openMs;
+        if (json && number(text, "opening", opening) && (opening < 4 || opening > 42)) { respond(id, false, "opening must be 4 to 42 mm"); return; }
+        if (json && number(text, "openMs", openMs) && (openMs < 100 || openMs > 20000)) { respond(id, false, "openMs must be 100 to 20000"); return; }
+        add(GO, stepsFor((int16_t)(opening * 10 + 0.5f)), config.speed);
+        add(WAIT, (int32_t)openMs);
         closeWithNudge();
         add(WAIT, 300);
         jobRepeats = portions - 1;

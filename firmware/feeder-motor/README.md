@@ -92,7 +92,7 @@ USB serial, 115200 baud, one line each, json as in `docs/protocol.md` or plain w
 
 | Json | Words | |
 | --- | --- | --- |
-| `{"cmd":"feed","portions":2,"id":1}` | `feed 2` | open to `opening`, wait `openMs`, close with the nudge; 1-10 portions; ends with `{"type":"event","event":"fed"}` |
+| `{"cmd":"feed","portions":2,"id":1}` | `feed 2` | open to `opening`, wait `openMs`, close with the nudge; 1-10 portions; `opening` and `openMs` in the json for this feed only; ends with `{"type":"event","event":"fed"}` |
 | `{"cmd":"open","mm":30}` | `open 30` | to an opening of 2-42 mm, `open` alone fully |
 | `{"cmd":"close"}` | `close` | |
 | `{"cmd":"move","steps":-50}` | `move -50` | relative, no limits: for setting up |
@@ -101,6 +101,27 @@ USB serial, 115200 baud, one line each, json as in `docs/protocol.md` or plain w
 | `{"cmd":"stop"}` | `stop` | |
 | `{"cmd":"info"}` | `info` | position, opening, settings |
 | `{"cmd":"feeder_config","speed":2400}` | `config speed 2400` | any of `opening`, `openMs`, `speed`, `accel`, `invert` |
+
+## In the app
+
+The Nano has no network: `tools/feeder-bridge` on the computer it is plugged into connects it to the server as a kibbl. feeder. The feeder is online in the app while the bridge runs and the Nano answers; unplugged, it goes offline and the bridge waits for it.
+
+```bash
+cd tools/feeder-bridge && npm install          # once
+npx tsx bridge.ts                              # wss://kibbl.tail529b44.ts.net/device/socket, the only usbserial port
+npx tsx bridge.ts wss://…/device/socket /dev/cu.usbserial-11210
+```
+
+The first time it shows up as a new device under Devices for the admin to approve; its id and secret are kept in `.feeder-bridge.json` where it runs. Its card has the opening as a slider (closed to 42 mm), Close and Open, and the feeding levels of `shared/protocol.ts`:
+
+| Level | Portions | Opening | Open |
+| --- | ---: | ---: | ---: |
+| Snack | 1 | 15 mm | 0.6 s |
+| Small | 1 | 22 mm | 1 s |
+| Medium | 2 | 22 mm | 1 s |
+| Large | 3 | 30 mm | 1.5 s |
+
+The bridge asks the port for its line state every 50 ms: with Node 26 and serialport 12 on macOS the Nano's answers otherwise wait in the driver until the next write.
 
 ## Build and upload
 

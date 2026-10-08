@@ -62,6 +62,8 @@ The device pings every 10 s; the server closes a connection that was silent for 
 { "type": "telemetry", "uptime": 3600, "rssi": -61, "heap": 150000, "psram": 3300000, "cameraFps": 2, "fps": 2, "frameBytes": 24500 }
 ```
 
+A kibbl. feeder adds `feeder` to the hello and to every telemetry: `opening` (mm), `busy` (moving or feeding), `job` (`feed`, `open`, `close`). It answers `feed` and `iris` as soon as the iris starts, with `busy` true, and sends a telemetry when it has stopped; a command while it is busy is refused with `busy`. Until it has its own Wi-Fi, its controller (an Arduino Nano, `firmware/feeder-motor`) reaches the server through `tools/feeder-bridge` on the computer it is plugged into.
+
 A kibbl. air adds its state to the hello and to every telemetry: `co2` (ppm, mean of 3 readings), `temperature` (°C, corrected for the warmth of the board), `humidity`, `level` (`none`, `green`, `yellow`, `red`), `fan` (pwm % now), `window` (`open`, `closed`, `learning` during its first 3 min of readings, `paused` while the detectors rest during a calibration and 15 min after), `night`, `calibrating`, `puffs` (of a cigarette going on), `fire` (its alarm sounds), `sensorError` (while the CO2 sensor does not answer); its hello also `air`, `fanSettings` and `lamp` (the settings below), `sensor`, `expander`, `powerOn`.
 
 ### `event` (kibbl. air)
@@ -105,7 +107,8 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level (air: `count` only) | – |
 | `ota`         | ota        | `url`: http(s) url of an application image                                   | – (downloads, restarts) |
 | `switch`      | switch     | `channel` (string), `on` (bool)                                              | – |
-| `feed`        | feeder     | `portions` 1–10                                                              | – |
+| `feed`        | feeder     | `portions` 1–10, and for this feed only `opening` 4–42 (mm) and `openMs` 100–20000: the feeding levels of the app (`feedLevels` in `shared/protocol.ts`) | `feeder` |
+| `iris`        | feeder     | `opening` 2–42 (mm): the iris to that opening, 2 closes it                    | `feeder` |
 | `thermostat`  | thermostat | `target` 5–30 (°C)                                                           | – |
 | `air_config`  | air        | any of `yellow` 400–5000, `red` 400–10000 (> yellow), `buzzer`, `asc`, `altitude` 0–3000, `smoke`, `puffRise` 30–2000, `nightFan` 0–100, `remindMinutes` 0–60 and `remindFrom` (`yellow`, `red`: a beep every so many minutes while the air is that bad, until a window opens; 5, red), `tempAdjust` −5…5 (°C on top of the warmth correction, to match a reference thermometer; the humidity is converted to the corrected temperature), `room` (`normal`, `bathroom`: after a shower, a rise of 8 % humidity within 20 minutes, a beep every 2 minutes once it stops rising until the humidity is back to 2 % above where it was; `bedroom`: the light and the fan off, no beeps of the traffic light, the reminder or a window, only for a risk to health every 30 minutes also at night: below 15 °C, above 30 °C, above 80 %, from 2000 ppm; set by the server from the kind of the room, firmware 1.2.0 on) | `air`, `fanSettings`, `lamp` |
 | `fan`         | fan        | any of `mode` (`off`, `on`, `pulse`, `auto`: off below yellow − 400 ppm, from there rising with the CO2 to `level` at red), `level` 1–100, `onSeconds`/`offSeconds` 1–3600 | as `air_config` |

@@ -16,7 +16,7 @@ export const capabilityCommands: Record<string, string[]> = {
     ota: [],
     // for the devices that are still to come: relay outputs, a pet feeder, a heating valve
     switch: ['switch'],
-    feeder: ['feed'],
+    feeder: ['feed', 'iris'],
     thermostat: ['thermostat'],
     // kibbl. air (the Conny CO2 traffic light)
     air: ['air_config'],
@@ -76,6 +76,35 @@ export interface MotionSettings {
     // keep a picture of each movement; off, a movement is logged as activity only and no frame is stored
     keepPictures: boolean;
 }
+
+/* ----------------------------------------------------------------------- */
+/* kibbl. feeder: the iris under the hopper (hardware/feeder/iris) */
+
+export const FEEDER_MIN_MM = 2; // closed: the hole the blades leave
+export const FEEDER_MAX_MM = 42; // fully open
+
+// where the iris is (hello, telemetry, and the answer to feed and iris)
+export interface FeederState {
+    opening: number; // mm
+    busy: boolean; // moving or feeding now
+    job?: string; // what it is doing: feed, open, close
+}
+
+// the feeding levels the app offers: portions, how far and how long the iris opens each time
+export interface FeedLevel {
+    id: string;
+    label: string;
+    portions: number;
+    opening: number; // mm
+    openMs: number;
+}
+
+export const feedLevels: FeedLevel[] = [
+    { id: 'snack', label: 'Snack', portions: 1, opening: 15, openMs: 600 },
+    { id: 'small', label: 'Small', portions: 1, opening: 22, openMs: 1000 },
+    { id: 'medium', label: 'Medium', portions: 2, opening: 22, openMs: 1000 },
+    { id: 'large', label: 'Large', portions: 3, opening: 30, openMs: 1500 },
+];
 
 export interface DeviceTelemetry {
     uptime: number;
@@ -255,6 +284,7 @@ export interface DeviceSummary {
     cameraError?: string;
     wifiChangeFailed?: string; // the network a change from the app could not join; the device went back
     light?: number;
+    feeder?: FeederState; // a kibbl. feeder
     motion: MotionSettings;
     air?: AirDevice; // a kibbl. air
     roomId?: string; // the room of the home it stands in

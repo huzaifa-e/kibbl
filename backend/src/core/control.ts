@@ -1,4 +1,4 @@
-import { fanModes, framesizes, lampColors, lampModes, type MotionSettings } from '../../../shared/protocol';
+import { FEEDER_MAX_MM, FEEDER_MIN_MM, fanModes, framesizes, lampColors, lampModes, type MotionSettings } from '../../../shared/protocol';
 import { setNightOverride } from './air';
 import { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
@@ -20,6 +20,7 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
         return undefined;
     }
     const int = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+    const mm = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
     switch (cmd) {
         case 'info':
         case 'reboot':
@@ -62,8 +63,23 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
         // future devices (docs/protocol.md)
         case 'switch':
             return isString(command.channel, 16) && typeof command.on === 'boolean' ? { cmd, channel: command.channel, on: command.on } : undefined;
-        case 'feed':
-            return int(command.portions, 1, 10) ? { cmd, portions: command.portions } : undefined;
+        case 'feed': {
+            // a feeding level: the opening and the time of this feed, the device's own otherwise
+            if (!int(command.portions, 1, 10)) return undefined;
+            const out: Record<string, unknown> = { cmd, portions: command.portions };
+            if (command.opening !== undefined) {
+                if (!mm(command.opening, 4, FEEDER_MAX_MM)) return undefined;
+                out.opening = command.opening;
+            }
+            if (command.openMs !== undefined) {
+                if (!int(command.openMs, 100, 20000)) return undefined;
+                out.openMs = command.openMs;
+            }
+            return out;
+        }
+        // the iris of a feeder to an opening, the closed one included
+        case 'iris':
+            return mm(command.opening, FEEDER_MIN_MM, FEEDER_MAX_MM) ? { cmd, opening: Math.round((command.opening as number) * 10) / 10 } : undefined;
         case 'blink':
             return int(command.count ?? 2, 1, 10) && int(command.level ?? 30, 1, 100)
                 ? { cmd, count: command.count ?? 2, level: command.level ?? 30 }
