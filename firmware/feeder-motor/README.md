@@ -95,6 +95,13 @@ With kibble in the hopper the iris does not reach the empty stops. In the app (f
 
 A run goes at full speed (4000 steps/s, 20000 steps/s²) until Stop, without limits. Stop takes no braking ramp: no more steps from the moment it arrives, the S42B brings the shaft to rest.
 
+Taught so far:
+
+| Date | Load | Closed limit | Notes |
+| --- | --- | ---: | --- |
+| 2026-10-08 | empty | 1782 | the design's stroke, closed fully |
+| 2026-10-09 | loaded with kibble | 2293 | closing run stopped at 2364, the opening run 71 steps short of the old 0; runs at 4000 steps/s, so part of the extra 500 steps may be the motor lagging when Stop came |
+
 `close`, `open`, the slider and the feeding levels then work between the two: the opening table of the design is stretched over them. Teach again when the load or the mechanics change.
 
 ### Finding the zero with EN
