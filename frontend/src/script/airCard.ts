@@ -2,18 +2,18 @@ import type { Weather } from '../../../shared/climate';
 import { roomClimate, type AirEvent, type AirReading, type AirState, type DeviceSummary } from '../../../shared/protocol';
 import { escapeHtml, timeAgo } from './utils';
 
-/* The home card of a kibbl. air, in the look of the heating cards: the freshness of the air
- * as a gauge of its CO2, how the room feels in three tiles, the CO2 of the last hours as a
- * line and the windows below it. */
+/* The home card of a kibbl. air, in the look of the heating cards and in the colour of its
+ * air: how the room feels as a dial of temperature and humidity, the values in three tiles,
+ * the CO2 of the last hours as a line and the windows below it. */
 
-type Freshness = { word: string; color: string };
+type Freshness = { word: string; tone: string };
 
 // by CO2: under 800 ppm fresh, up to 1200 fair, above stale (German Environment Agency: 1000-2000 conspicuous)
 function freshness(co2: number | undefined): Freshness {
-    if (co2 === undefined) return { word: 'Measuring', color: '#8a8f94' };
-    if (co2 < 800) return { word: 'Fresh', color: '#5cb894' };
-    if (co2 <= 1200) return { word: 'Fair', color: '#e8c24a' };
-    return { word: 'Stale', color: '#ec8a55' };
+    if (co2 === undefined) return { word: 'Measuring', tone: 'none' };
+    if (co2 < 800) return { word: 'Fresh', tone: 'fresh' };
+    if (co2 <= 1200) return { word: 'Fair', tone: 'fair' };
+    return { word: 'Stale', tone: 'stale' };
 }
 
 // what a person feels: cold and too warm first, then dry and humid
@@ -71,29 +71,20 @@ export async function loadAirHistory(deviceId: string) {
     if (res?.ok) history.set(deviceId, (await res.json()) as AirReading[]);
 }
 
-// the gauge: an arc of 240 degrees over 400-2000 ppm, green, yellow and orange, the CO2 a dot on it
-const GAUGE_MIN = 400;
-const GAUGE_MAX = 2000;
-function gauge(co2: number | undefined, f: Freshness) {
-    const r = 64;
-    const point = (ppm: number) => {
-        const a = ((-210 + ((clamp(ppm, GAUGE_MIN, GAUGE_MAX) - GAUGE_MIN) / (GAUGE_MAX - GAUGE_MIN)) * 240) * Math.PI) / 180;
-        return [80 + r * Math.cos(a), 80 + r * Math.sin(a)];
-    };
-    const arc = (from: number, to: number, colour: string, width: number) => {
-        const [x1, y1] = point(from);
-        const [x2, y2] = point(to);
-        const large = ((to - from) / (GAUGE_MAX - GAUGE_MIN)) * 240 > 180 ? 1 : 0;
-        return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A${r} ${r} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" stroke="${colour}" stroke-width="${width}" fill="none" stroke-linecap="round" />`;
-    };
-    const [dx, dy] = point(co2 ?? GAUGE_MIN);
-    return `<svg viewBox="0 0 160 140" class="room-gauge" role="img" aria-label="Air ${f.word}">
-        ${arc(GAUGE_MIN, GAUGE_MAX, 'rgba(255,255,255,0.08)', 12)}
-        ${arc(GAUGE_MIN, 790, '#5cb894', 6)}${arc(810, 1190, '#e8c24a', 6)}${arc(1210, GAUGE_MAX, '#ec8a55', 6)}
-        ${co2 === undefined ? '' : `<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="8" fill="${f.color}" stroke="#26292d" stroke-width="3" />`}
-        <text x="80" y="78" text-anchor="middle" class="room-gauge-word" fill="${f.color}">${f.word}</text>
-        <text x="80" y="98" text-anchor="middle" class="room-gauge-ppm">${co2 === undefined ? '' : `${co2} ppm CO₂`}</text>
-    </svg>`;
+// how the room feels: humidity 20-80 % left to right, temperature 16-28 °C bottom to top; the comfort zone in the middle
+function dial(t: number | undefined, rh: number | undefined, word: string) {
+    const x = rh === undefined ? 100 : 100 + clamp((rh - 50) / 30, -1, 1) * 62;
+    const y = t === undefined ? 100 : 100 - clamp((t - 21.5) / 6, -1, 1) * 62;
+    return `<svg viewBox="-34 0 268 200" class="room-dial" role="img" aria-label="Room comfort: ${word}">
+        <circle cx="100" cy="100" r="74" class="room-dial-ring" />
+        <circle cx="100" cy="100" r="24" class="room-dial-zone" />
+        ${t === undefined || rh === undefined ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" class="room-dial-dot" />`}
+        <text x="100" y="16" class="room-dial-label" text-anchor="middle">TOO WARM</text>
+        <text x="100" y="194" class="room-dial-label" text-anchor="middle">COLD</text>
+        <text x="20" y="104" class="room-dial-label" text-anchor="end">DRY</text>
+        <text x="180" y="104" class="room-dial-label" text-anchor="start">HUMID</text>
+    </svg>
+    <div class="room-dial-word">${word}</div>`;
 }
 
 // the CO2 of the last hours, the newest reading at the end; the lines of 800 and 1200 ppm behind it
@@ -107,13 +98,12 @@ function co2Line(points: { at: number; co2: number }[]) {
     const bottom = Math.min(400, ...points.map((p) => p.co2));
     const y = (v: number) => h - ((v - bottom) / (top - bottom)) * h;
     const xy = points.map((p) => `${(((p.at - from) / span) * w).toFixed(1)},${y(p.co2).toFixed(1)}`);
-    const last = points[points.length - 1];
     return `<svg viewBox="0 -4 ${w} ${h + 8}" class="room-line" preserveAspectRatio="none" aria-hidden="true">
-        <defs><linearGradient id="room-line-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${freshness(last.co2).color}" stop-opacity="0.35"/><stop offset="1" stop-color="${freshness(last.co2).color}" stop-opacity="0"/></linearGradient></defs>
+        <defs><linearGradient id="room-line-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
         <line x1="0" x2="${w}" y1="${y(800).toFixed(1)}" y2="${y(800).toFixed(1)}" class="room-line-mark" />
         <line x1="0" x2="${w}" y1="${y(1200).toFixed(1)}" y2="${y(1200).toFixed(1)}" class="room-line-mark" />
         <polygon points="0,${h} ${xy.join(' ')} ${w},${h}" fill="url(#room-line-fill)" />
-        <polyline points="${xy.join(' ')}" fill="none" stroke="${freshness(last.co2).color}" stroke-width="2" vector-effect="non-scaling-stroke" />
+        <polyline points="${xy.join(' ')}" fill="none" stroke="#f2f2f2" stroke-width="2" vector-effect="non-scaling-stroke" />
     </svg>`;
 }
 
@@ -142,14 +132,14 @@ export function airCardHtml(d: DeviceSummary, weather: Weather | null, lastOpen:
     const notes = [climate?.fromTado ? 'temperature and humidity from tado' : '', weather?.source === 'openweather' ? 'weather © OpenWeather' : '']
         .filter(Boolean)
         .join(' · ');
-    return `<a href="/air/${d._id}" class="card room-card text-reset text-decoration-none h-100" data-air-card="${d._id}">
+    return `<a href="/air/${d._id}" class="card room-card room-${f.tone} text-reset text-decoration-none h-100" data-air-card="${d._id}">
         <div class="room-head"><span class="room-name">${escapeHtml(d.name)}</span>${outside}</div>
         ${d.online ? '' : `<div class="room-offline">offline${d.lastSeen ? ` since ${timeAgo(d.lastSeen)}` : ''}</div>`}
-        ${gauge(s?.co2, f)}
+        ${dial(t, rh, comfort(t, rh))}
         <div class="room-tiles">
             ${tile('temperature', 'Temperature', t === undefined ? '–' : `${t.toFixed(1)}°`)}
             ${tile('droplet', 'Humidity', rh === undefined ? '–' : `${Math.round(rh)}%`)}
-            ${tile('mood-smile', 'Feels', comfort(t, rh))}
+            ${tile('leaf', s?.co2 !== undefined ? `Air · ${s.co2} ppm` : 'Air', f.word)}
         </div>
         ${points.length > 1 ? `<div class="room-line-box"><div class="room-line-caption">CO₂, last ${HISTORY_HOURS} h</div>${co2Line(points)}</div>` : ''}
         ${windowChip(s, lastOpen)}
