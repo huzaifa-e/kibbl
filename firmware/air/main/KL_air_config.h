@@ -92,7 +92,7 @@ bool config_fan_quiet_from_json(const cJSON *json, uint8_t *percent);
  * depends on the fan, so it is a setting too. Its own key. */
 #define FAN_FREQ_MIN     5 // the timer reaches 4.8 Hz with 14 bits
 #define FAN_FREQ_MAX     30000
-#define FAN_FREQ_DEFAULT 25
+#define FAN_FREQ_DEFAULT 5 // a quiet pulse with the Conny's fan; 25 Hz and up screech or tick at part speed
 uint32_t config_fan_freq(void);
 bool config_set_fan_freq(uint32_t hz);
 // "freqHz" FAN_FREQ_MIN..FAN_FREQ_MAX; true and *hz kept when left out

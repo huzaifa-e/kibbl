@@ -28,7 +28,7 @@ static uint16_t humidity_factor = 1000;
 // every 5 minutes from red ("air now"), after a request of the user
 static air_remind_t remind = {.minutes = 5, .level = REMIND_RED};
 static air_room_t room       = AIR_ROOM_NORMAL;
-static uint8_t fan_quiet     = 25;
+static uint8_t fan_quiet     = 60; // at 5 Hz still turning, heard only as a soft pulse
 static uint32_t fan_freq     = FAN_FREQ_DEFAULT;
 static const char *room_names[] = {"normal", "bathroom", "bedroom"};
 // outside air before a calibration recorded the home's own: about 420 ppm

@@ -10,7 +10,7 @@
  * plain 2-wire fan behind a transistor, made to run at the speed R15 sets. Switched at
  * 25 kHz its own commutation electronics restart thousands of times a second and it
  * screeches at part speed; which frequency it is quiet at depends on the fan. */
-#define FAN_FREQ_HZ  25 // until the setting is applied (air_start)
+#define FAN_FREQ_HZ  5 // until the setting is applied (air_start)
 /* The timer runs from the 80 MHz APB clock through a divider of at most 1023: a low frequency
  * needs a finer duty resolution (more steps a period), a high one a coarser. resolution_for
  * picks the bits that fit, at least 8. */
@@ -42,7 +42,7 @@ static volatile uint16_t yellow    = 1000;
 static volatile uint16_t red       = 2000;
 static volatile uint8_t level_now  = 0;
 static volatile uint8_t cap        = 100;
-static volatile uint8_t quiet      = 25; // config_fan_quiet
+static volatile uint8_t quiet      = 60; // config_fan_quiet
 
 static esp_timer_handle_t tick_timer = NULL;
 static uint32_t pulse_s = 0; // seconds into the current pulse cycle
