@@ -101,6 +101,16 @@ static const char *cmd_settings(const cJSON *req, cJSON *resp, settings_from_jso
     if ((remind.minutes != config_air_remind().minutes || remind.level != config_air_remind().level) && !config_set_air_remind(remind)) {
         return "reminder not stored";
     }
+    air_room_t room = config_air_room();
+    if (!config_air_room_from_json(req, &room)) {
+        return "invalid setting";
+    }
+    if (room != config_air_room()) {
+        if (!config_set_air_room(room)) {
+            return "room not stored";
+        }
+        air_room_changed();
+    }
     if (temp_adjust != config_temp_adjust() && !config_set_temp_adjust(temp_adjust)) {
         return "temperature adjustment not stored";
     }

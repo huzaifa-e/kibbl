@@ -13,6 +13,7 @@
 #define NVS_TEMP_ADJUST "TEMP_ADJ" // tenths of °C + 1000
 #define NVS_HUM_FACTOR  "HUM_FACT" // thousandths
 #define NVS_REMIND      "REMIND"   // minutes | level << 8
+#define NVS_ROOM        "ROOM"     // air_room_t
 #define NVS_FRESH       "FRESH"    // min | max << 16, ppm
 #define REMIND_YELLOW   2          // AIR_LEVEL_YELLOW
 #define REMIND_RED      3          // AIR_LEVEL_RED
@@ -24,6 +25,8 @@ static int16_t temp_adjust      = 0;
 static uint16_t humidity_factor = 1000;
 // every 5 minutes from red ("air now"), after a request of the user
 static air_remind_t remind = {.minutes = 5, .level = REMIND_RED};
+static air_room_t room       = AIR_ROOM_NORMAL;
+static const char *room_names[] = {"normal", "bathroom", "bedroom"};
 // outside air before a calibration recorded the home's own: about 420 ppm
 static air_fresh_t fresh = {.min = 400, .max = 460};
 
@@ -78,6 +81,11 @@ void config_air_load(void) {
         }
     }
 
+    uint32_t stored_room = 0;
+    if (nvs_queue_job(NVS_ROOM, &stored_room, 0, UINT32_T, READ) && stored_room <= AIR_ROOM_BEDROOM) {
+        room = (air_room_t)stored_room;
+    }
+
     uint32_t stored_fresh = 0;
     if (nvs_queue_job(NVS_FRESH, &stored_fresh, 0, UINT32_T, READ)) {
         air_fresh_t f = {.min = stored_fresh & 0xffff, .max = stored_fresh >> 16};
@@ -96,6 +104,7 @@ void config_air_reset(void) {
     nvs_remove_key(NVS_TEMP_ADJUST);
     nvs_remove_key(NVS_HUM_FACTOR);
     nvs_remove_key(NVS_REMIND);
+    nvs_remove_key(NVS_ROOM);
     nvs_remove_key(NVS_FRESH);
 }
 
@@ -174,6 +183,36 @@ bool config_set_air_remind(air_remind_t value) {
     remind          = value;
     uint32_t stored = value.minutes | ((uint32_t)value.level << 8);
     return nvs_queue_job(NVS_REMIND, &stored, 0, UINT32_T, WRITE);
+}
+
+air_room_t config_air_room(void) {
+    return room;
+}
+
+bool config_set_air_room(air_room_t value) {
+    if (value > AIR_ROOM_BEDROOM) {
+        return false;
+    }
+    room            = value;
+    uint32_t stored = value;
+    return nvs_queue_job(NVS_ROOM, &stored, 0, UINT32_T, WRITE);
+}
+
+bool config_air_room_from_json(const cJSON *json, air_room_t *value) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(json, "room");
+    if (item == NULL) {
+        return true;
+    }
+    if (!cJSON_IsString(item)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(room_names) / sizeof(room_names[0]); i++) {
+        if (strcmp(item->valuestring, room_names[i]) == 0) {
+            *value = (air_room_t)i;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool config_air_remind_from_json(const cJSON *json, air_remind_t *value) {
@@ -330,6 +369,7 @@ void config_air_to_json(const air_settings_t *settings, cJSON *json) {
     cJSON_AddNumberToObject(json, "freshMax", fresh.max);
     cJSON_AddNumberToObject(json, "remindMinutes", remind.minutes);
     cJSON_AddStringToObject(json, "remindFrom", remind.level == REMIND_YELLOW ? "yellow" : "red");
+    cJSON_AddStringToObject(json, "room", room_names[room]);
 }
 
 void config_fan_to_json(const air_settings_t *settings, cJSON *json) {

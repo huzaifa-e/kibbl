@@ -11,6 +11,7 @@ import {
     type LampColor,
     type SmokeDay,
     roomClimate,
+    airRoomFor,
 } from '../../../shared/protocol';
 import { allRoomHints, type HintLevel, type RecentAir, type Weather } from '../../../shared/climate';
 import { baseOptions } from './activityCharts';
@@ -239,6 +240,18 @@ function renderTiles() {
         );
     byId('air-alerts').innerHTML = alerts.join('');
     renderClimate();
+}
+
+// what the kind of its room changes on the device: the beeps after a shower, a quiet bedroom
+function roomNote() {
+    const wanted = airRoomFor(device!.air?.roomKind);
+    if (wanted === 'normal') return '';
+    const text =
+        wanted === 'bathroom'
+            ? 'In a bathroom: after a shower it beeps every 2 minutes until the humidity is back to where it was before the shower.'
+            : 'In a bedroom: the light stays off and it beeps only for a risk to health (below 15 °C, above 30 °C, above 80 % humidity, 2000 ppm CO₂), also at night. The fire alarm sounds as everywhere.';
+    const old = !device!.air?.settings?.room;
+    return `<div class="alert alert-info py-2 small mb-3"><i class="ti ti-${wanted === 'bathroom' ? 'bath' : 'bed'} me-1"></i> ${text}${old ? ' <b>Needs the firmware 1.2.0 or later on the device.</b>' : ''}</div>`;
 }
 
 // the minutes of the last readings: a shower or cooking shows as a quick rise
@@ -471,6 +484,7 @@ function renderSettings() {
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title"><i class="ti ti-adjustments me-1"></i> Air light and sound</h3></div>
             <div class="card-body">
+                ${roomNote()}
                 <div class="row g-2 mb-2">
                     <div class="col-6"><label class="form-label">Yellow from</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="th-yellow" min="400" max="5000" step="50" value="${s?.yellow ?? 1000}" ${off} /><span class="input-group-text">ppm</span></div></div>
                     <div class="col-6"><label class="form-label">Red from</label><div class="input-group input-group-flat"><input type="number" class="form-control" id="th-red" min="400" max="10000" step="50" value="${s?.red ?? 2000}" ${off} /><span class="input-group-text">ppm</span></div></div>

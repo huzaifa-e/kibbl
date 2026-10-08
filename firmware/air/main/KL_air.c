@@ -35,6 +35,116 @@ static volatile bool settings_changed = false;
 
 static volatile bool night = false;
 
+/* ----------------------------------------------------------------------- */
+
+/* What the room is used for (config_air_room, set by the server from the kind of the room).
+ * A bathroom: a shower is a quick rise of the humidity; once it stops rising the device
+ * beeps every few minutes until the humidity is back to where it was before. A bedroom: the
+ * light stays off, the traffic light, the reminder and the window do not beep, only a risk
+ * to health does, also at night. The fire alarm sounds in every room. */
+#define SHOWER_SAMPLE_MS (30 * 1000) // a humidity sample every 30 s
+#define SHOWER_SAMPLES   40          // 20 minutes of them
+#define SHOWER_RISE      8.0f        // percentage points within them: a shower runs
+#define SHOWER_MIN_RH    60.0f       // and at least this humid
+#define SHOWER_PEAK_MS   (2 * 60 * 1000)          // no new peak for this long: the shower is over, the beeps start
+#define SHOWER_BEEP_MS   (2 * 60 * 1000)
+#define SHOWER_BACK      2.0f                     // points above the humidity before it: back to it
+#define SHOWER_MAX_MS    (3 * 3600 * 1000LL)      // a forgotten one ends anyway
+
+#define HEALTH_COLD    15.0f // °C: the airways cool down, colds become likely (WHO: 18 indoors)
+#define HEALTH_HOT     30.0f // °C: heat stress
+#define HEALTH_HUMID   80.0f // %: water on the walls, mould
+#define HEALTH_CO2     2000  // ppm: unacceptable after the German Environment Agency
+#define HEALTH_BEEP_MS (30 * 60 * 1000)
+
+static air_room_t room                = AIR_ROOM_NORMAL;
+static volatile bool room_changed     = false;
+static float rh_samples[SHOWER_SAMPLES];
+static int rh_count                   = 0;
+static int64_t rh_last                = 0;
+static bool shower                    = false;
+static float shower_before, shower_peak;
+static int64_t shower_start, shower_peak_at, shower_beep;
+static int64_t health_beep            = -HEALTH_BEEP_MS;
+
+static const char *room_name(air_room_t r) {
+    return r == AIR_ROOM_BATHROOM ? "bathroom" : r == AIR_ROOM_BEDROOM ? "bedroom" : "normal";
+}
+
+static void room_apply(void) {
+    room     = config_air_room();
+    shower   = false;
+    rh_count = 0;
+    lamp_set_night(night || room == AIR_ROOM_BEDROOM);
+    DEBUG_F("air: room %s\n", room_name(room));
+}
+
+static void shower_step(float rh, int64_t now) {
+    if (room != AIR_ROOM_BATHROOM) {
+        return;
+    }
+    if (rh_count == 0 || now - rh_last >= SHOWER_SAMPLE_MS) {
+        rh_samples[rh_count % SHOWER_SAMPLES] = rh;
+        rh_count++;
+        rh_last = now;
+    }
+    if (!shower) {
+        int n = rh_count < SHOWER_SAMPLES ? rh_count : SHOWER_SAMPLES;
+        if (n < 4) {
+            return;
+        }
+        float lo = rh_samples[0];
+        for (int i = 1; i < n; i++) {
+            lo = rh_samples[i] < lo ? rh_samples[i] : lo;
+        }
+        if (rh - lo >= SHOWER_RISE && rh >= SHOWER_MIN_RH) {
+            shower         = true;
+            shower_before  = lo;
+            shower_peak    = rh;
+            shower_start   = now;
+            shower_peak_at = now;
+            shower_beep    = 0;
+            DEBUG_F("air: a shower, the humidity rose from %.0f to %.0f %%\n", lo, rh);
+        }
+        return;
+    }
+    if (rh > shower_peak) {
+        shower_peak    = rh;
+        shower_peak_at = now;
+    }
+    if (rh <= shower_before + SHOWER_BACK || now - shower_start > SHOWER_MAX_MS) {
+        shower   = false;
+        rh_count = 0; // the next shower is measured from the humidity after this one
+        DEBUG_F("air: the humidity is back to %.0f %% after the shower\n", rh);
+        return;
+    }
+    if (now - shower_peak_at >= SHOWER_PEAK_MS && now - shower_beep >= SHOWER_BEEP_MS) {
+        shower_beep = now;
+        buzzer_play(TONE_SHOWER);
+        DEBUG("air: still %.0f %% after the shower (%.0f %% before): open the window or the door\n", rh, shower_before);
+    }
+}
+
+static void health_step(float t, float rh, uint16_t co2, int64_t now) {
+    if (room != AIR_ROOM_BEDROOM || !(t < HEALTH_COLD || t > HEALTH_HOT || rh > HEALTH_HUMID || co2 >= HEALTH_CO2)) {
+        return;
+    }
+    // at most every HEALTH_BEEP_MS, also when a value goes back and forth over its line
+    if (now - health_beep >= HEALTH_BEEP_MS) {
+        health_beep = now;
+        buzzer_play_urgent(TONE_HEALTH);
+        DEBUG_F("air: a risk to health in the bedroom (%.1f °C, %.0f %%, %u ppm)\n", t, rh, co2);
+    }
+}
+
+void air_room_changed(void) {
+    room_changed = true; // the air task takes it
+}
+
+bool air_room_quiet(void) {
+    return room == AIR_ROOM_BEDROOM;
+}
+
 static volatile uint16_t calibrate_ppm = 0; // > 0: a calibration runs
 static int64_t calibrate_start         = 0;
 static int64_t detectors_from          = 0; // millis() from which smoke, window and fire rates run again
@@ -133,7 +243,7 @@ static int64_t remind_last = 0;
 
 static void remind_to_air(air_level_t level, int64_t now) {
     air_remind_t remind = config_air_remind();
-    if (remind.minutes == 0 || level < remind.level || window_open() || calibrate_ppm != 0) {
+    if (remind.minutes == 0 || room == AIR_ROOM_BEDROOM || level < remind.level || window_open() || calibrate_ppm != 0) {
         remind_last = now; // the first reminder comes a full interval after the air got bad
         return;
     }
@@ -147,7 +257,7 @@ static void remind_to_air(air_level_t level, int64_t now) {
 static void show_level(air_level_t level, air_level_t before, uint16_t co2) {
     lamp_set_level(level);
     fan_set_air(level, co2);
-    if (settings.buzzer && level > before && before != AIR_LEVEL_NONE) {
+    if (settings.buzzer && room != AIR_ROOM_BEDROOM && level > before && before != AIR_LEVEL_NONE) {
         buzzer_play(level == AIR_LEVEL_RED ? TONE_RED : TONE_YELLOW);
     }
     remind_to_air(level, millis());
@@ -213,6 +323,11 @@ static void air_task(void *pvParams) {
     while (1) {
         delay_ms(AIR_POLL_MS);
         int64_t now = millis();
+
+        if (room_changed) {
+            room_changed = false;
+            room_apply();
+        }
 
         if (settings_changed) {
             settings_changed = false;
@@ -306,7 +421,12 @@ static void air_task(void *pvParams) {
             state.humidity = 100;
         }
         state.level       = level;
+        float temperature = state.temperature;
+        float humidity    = state.humidity;
         xSemaphoreGive(state_mutex);
+
+        shower_step(humidity, now);
+        health_step(temperature, humidity, co2, now);
 
         DEBUG("air: %u ppm (%.0f), %.1f °C (sensor %.1f), %.1f %% (sensor %.1f)\n", co2, values.co2, state.temperature, values.temperature,
               state.humidity, values.humidity);
@@ -321,6 +441,7 @@ void air_start(void) {
 
     lamp_set_mode((lamp_mode_t)settings.lamp_mode, settings.lamp_colors, settings.lamp_fade);
     fan_configure(&settings);
+    room_apply();
     air_fresh_t fresh = config_air_fresh();
     window_set_fresh(fresh.min, fresh.max);
 
@@ -389,7 +510,7 @@ bool air_detecting(void) {
 
 void air_set_night(bool on) {
     night = on;
-    lamp_set_night(on);
+    lamp_set_night(on || room == AIR_ROOM_BEDROOM);
     buzzer_set_muted(on);
     fan_set_cap(on ? settings.night_fan : 100);
     DEBUG_F("night mode %s\n", on ? "on" : "off");

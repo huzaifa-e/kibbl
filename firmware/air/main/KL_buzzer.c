@@ -26,6 +26,10 @@ static const note_t tone_calibrate_end[]   = {{500, 280, 100}, {300, 180, 80}};
 static const note_t tone_logged[]          = {{620, 110, 95}, {735, 180, 100}};
 // two rising tones, softer than the alarms: fresh air comes in
 static const note_t tone_window[]          = {{660, 90, 70}, {990, 140, 0}};
+// two falling tones, soft: the damp of a shower is still in the bathroom
+static const note_t tone_shower[]          = {{880, 120, 90}, {660, 160, 0}};
+// three long low tones: unlike the traffic light, something to act on now
+static const note_t tone_health[]          = {{520, 300, 150}, {520, 300, 150}, {520, 300, 0}};
 // the temporal pattern of smoke alarms (ISO 8201): three tones, a pause
 static const note_t tone_alarm[] = {{3100, 500, 500}, {3100, 500, 500}, {3100, 500, 1500}};
 
@@ -40,6 +44,8 @@ static const struct {
     [TONE_CALIBRATE_END]   = {tone_calibrate_end, sizeof(tone_calibrate_end) / sizeof(note_t)},
     [TONE_LOGGED]          = {tone_logged, sizeof(tone_logged) / sizeof(note_t)},
     [TONE_WINDOW]          = {tone_window, sizeof(tone_window) / sizeof(note_t)},
+    [TONE_SHOWER]          = {tone_shower, sizeof(tone_shower) / sizeof(note_t)},
+    [TONE_HEALTH]          = {tone_health, sizeof(tone_health) / sizeof(note_t)},
 };
 
 static bool available       = false;
@@ -137,14 +143,25 @@ void buzzer_set_muted(bool mute) {
     muted = mute;
 }
 
-void buzzer_play(buzzer_tone_t tone) {
-    if (!available || muted || alarm || tone >= sizeof(tones) / sizeof(tones[0])) {
-        return;
-    }
+static void play(buzzer_tone_t tone) {
     esp_timer_stop(note_timer);
     silence();
     playing    = tones[tone].notes;
     notes_left = tones[tone].count;
     sounding   = false;
     note_cb(NULL);
+}
+
+void buzzer_play(buzzer_tone_t tone) {
+    if (!available || muted || alarm || tone >= sizeof(tones) / sizeof(tones[0])) {
+        return;
+    }
+    play(tone);
+}
+
+void buzzer_play_urgent(buzzer_tone_t tone) {
+    if (!available || alarm || tone >= sizeof(tones) / sizeof(tones[0])) {
+        return;
+    }
+    play(tone);
 }

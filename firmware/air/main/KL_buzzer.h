@@ -15,6 +15,8 @@ typedef enum {
     TONE_CALIBRATE_END,
     TONE_LOGGED, // a cigarette logged with the button
     TONE_WINDOW, // a window was seen opening
+    TONE_SHOWER, // a bathroom still humid after a shower: open the window or the door
+    TONE_HEALTH, // a bedroom's air is a risk to health
 } buzzer_tone_t;
 
 bool buzzer_setup(void);
@@ -25,6 +27,9 @@ void buzzer_play(buzzer_tone_t tone);
 
 // night mode: no tone plays while muted
 void buzzer_set_muted(bool muted);
+
+// a tone that sounds also while muted (a risk to health in a bedroom at night); not over the fire alarm
+void buzzer_play_urgent(buzzer_tone_t tone);
 
 /* The fire alarm: a loud pattern over and over, also when muted, until it is switched
  * off. Other tones wait meanwhile. */

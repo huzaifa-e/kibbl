@@ -1,3 +1,5 @@
+import type { RoomKind } from './roomKind';
+
 /*
  * The device protocol (docs/protocol.md) as both the server and the app see it.
  * A capability a device names in its hello message unlocks the commands listed for
@@ -123,6 +125,14 @@ export function airSensorError(state: AirState | undefined, before?: string) {
 }
 
 // the settings stored on the device (air_config, fan, lamp)
+/* What a kibbl. air does for the room it stands in: a bathroom beeps after a shower until the
+ * humidity is back, a bedroom keeps its light off and beeps only for a risk to health. */
+export type AirRoom = 'normal' | 'bathroom' | 'bedroom';
+
+export function airRoomFor(kind: RoomKind | undefined): AirRoom {
+    return kind === 'bathroom' || kind === 'bedroom' ? kind : 'normal';
+}
+
 export interface AirSettings {
     yellow: number;
     red: number;
@@ -136,6 +146,7 @@ export interface AirSettings {
     humidityFactor?: number; // 0.7-1.3 on the humidity, to match a reference hygrometer
     remindMinutes?: number; // a beep every so many minutes while the air is bad, 0: off
     remindFrom?: 'yellow' | 'red';
+    room?: AirRoom; // what the device does for its room (firmware 1.2.0 on), set by the server from the room's kind
     freshMin?: number; // the CO2 of fresh air at the open window, recorded while calibrating: the reference for open windows
     freshMax?: number;
 }
@@ -161,7 +172,6 @@ export interface NightSchedule {
 }
 
 import type { PairedRoom } from './heating';
-import type { RoomKind } from './roomKind';
 
 export interface AirDevice {
     state?: AirState; // while online

@@ -1,5 +1,14 @@
 import crypto from 'node:crypto';
-import type { AirEvent, AirNight, AirReading, AirState, DeviceSummary, NightSchedule, SmokeDay } from '../../../shared/protocol';
+import {
+    airRoomFor,
+    type AirEvent,
+    type AirNight,
+    type AirReading,
+    type AirState,
+    type DeviceSummary,
+    type NightSchedule,
+    type SmokeDay,
+} from '../../../shared/protocol';
 import { AirEventModel, AirReading as AirReadingModel, Device } from './db';
 import { sendCommand } from './devices';
 import { hub } from './hub';
@@ -172,6 +181,25 @@ function reconcileNight(deviceId: string, state: AirState) {
         .then((resp) => {
             if (resp.ok) log.info('night mode by schedule', { device: deviceId, night: wanted });
             else log.warn('night mode not taken', { device: deviceId, error: resp.error });
+        })
+        .catch(() => undefined);
+}
+
+/* The device does what its room needs (airRoomFor): the server tells it when the kind of the
+ * room changes, the device moves or comes online with another. A firmware before 1.2.0 reports
+ * no room and is left as it is. */
+const roomSent = new Map<string, number>();
+
+function reconcileRoom(device: DeviceSummary) {
+    const reported = device.air?.settings?.room;
+    if (!reported) return;
+    const wanted = airRoomFor(device.air?.roomKind);
+    if (wanted === reported || Date.now() - (roomSent.get(device._id) ?? 0) < NIGHT_RETRY_MS) return;
+    roomSent.set(device._id, Date.now());
+    sendCommand(device._id, { cmd: 'air_config', room: wanted })
+        .then((resp) => {
+            if (resp.ok) log.info('room set on the device', { device: device._id, room: wanted });
+            else log.warn('room not taken', { device: device._id, error: resp.error });
         })
         .catch(() => undefined);
 }
@@ -349,6 +377,7 @@ export function initAir() {
             if (m) storeMinute(device._id, m).catch(() => undefined);
         } else if (device.status === 'approved' && device.air.state) {
             reconcileNight(device._id, device.air.state);
+            reconcileRoom(device);
         }
     });
     hub.on('telemetry', (deviceId, telemetry) => {

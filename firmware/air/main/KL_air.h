@@ -52,6 +52,11 @@ uint32_t air_settle_seconds(void);
 void air_set_night(bool night);
 bool air_night(void);
 
+// the room setting changed (config_air_room): the air task applies it
+void air_room_changed(void);
+// a bedroom: no beeps but for a risk to health
+bool air_room_quiet(void);
+
 // a press of the button: a cigarette logged by hand
 void air_button_pressed(void);
 

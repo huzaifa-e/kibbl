@@ -78,6 +78,19 @@ bool config_set_air_remind(air_remind_t remind);
 // "remindMinutes" 0..60, "remindFrom" "yellow" or "red"; true and *remind kept for keys left out
 bool config_air_remind_from_json(const cJSON *json, air_remind_t *remind);
 
+/* What the room the device stands in is used for, set by the server from the room's kind:
+ * a bathroom beeps after a shower until the humidity is back, a bedroom keeps the light off
+ * and beeps only for a risk to health. Its own key. */
+typedef enum {
+    AIR_ROOM_NORMAL = 0,
+    AIR_ROOM_BATHROOM,
+    AIR_ROOM_BEDROOM,
+} air_room_t;
+air_room_t config_air_room(void);
+bool config_set_air_room(air_room_t room);
+// "room" "normal", "bathroom" or "bedroom"; true and *room kept when left out
+bool config_air_room_from_json(const cJSON *json, air_room_t *room);
+
 /* Fresh air as the device saw it at the open window while it calibrated: the lowest and
  * highest CO2 (calibrated ppm). The window detection takes it as "open". Its own key. */
 typedef struct {

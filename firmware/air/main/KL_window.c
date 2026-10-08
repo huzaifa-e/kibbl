@@ -2,6 +2,7 @@
 
 #include "cJSON.h"
 
+#include "KL_air.h"
 #include "KL_buzzer.h"
 #include "KL_events.h"
 #include "KL_serial.h"
@@ -71,8 +72,10 @@ static void push_event(const char *state, int64_t now_ms, const mean_t *from, co
         // found open after a restart, not seen opening: shown, no alert (an update while the air is fresh)
         cJSON_AddBoolToObject(json, "atStart", true);
     } else {
-        // seen opening: a short tone says it was noticed (muted at night like all of them)
-        buzzer_play(TONE_WINDOW);
+        // seen opening: a short tone says it was noticed (muted at night like all of them, and in a bedroom)
+        if (!air_room_quiet()) {
+            buzzer_play(TONE_WINDOW);
+        }
     }
     events_push(json);
 }
