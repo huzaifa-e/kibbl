@@ -30,7 +30,7 @@ rsync -az --delete -e "${SSH[*]}" \
     --exclude '.simulated-device.json' \
     "$ROOT/" "$HOST:$REMOTE_DIR/"
 
-"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" "$BUILD" <<'EOF'
+"${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" "$(printf %q "$BUILD")" <<'EOF'
 set -euo pipefail
 cd "$1"
 echo "$2" > .deploy-build
