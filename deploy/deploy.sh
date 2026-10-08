@@ -15,6 +15,17 @@ REMOTE_DIR="${REMOTE_DIR:-kibbl}"
 SSH=(ssh -p "$SSH_PORT" -o ConnectTimeout=20)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# The image is built on the host: each build takes a few minutes of CPU, 1-2 GB of memory and
+# leaves build cache behind. A host short of disk is refused before anything is built, and
+# after the build only our old images and cache older than a day are removed.
+MIN_FREE_GB="${MIN_FREE_GB:-3}"
+FREE_GB="$("${SSH[@]}" "$HOST" "df -BG --output=avail \"\$(docker info -f '{{.DockerRootDir}}')\" | tail -1 | tr -dc 0-9")"
+if [ "${FREE_GB:-0}" -lt "$MIN_FREE_GB" ]; then
+    echo "Only ${FREE_GB:-?} GB free for docker on $HOST (at least $MIN_FREE_GB needed): not deploying."
+    echo "See what uses it: ssh -p $SSH_PORT $HOST docker system df"
+    exit 1
+fi
+
 # Apple's git when the one first on the PATH does not run (an Intel build on an arm Mac)
 GIT=git
 git --version > /dev/null 2>&1 || GIT=/usr/bin/git
@@ -39,6 +50,7 @@ rsync -az --delete -e "${SSH[*]}" \
     --exclude 'data/' \
     --exclude '.env' \
     --exclude '.simulated-device.json' \
+    --exclude '.feeder-bridge.json' \
     "$ROOT/" "$HOST:$REMOTE_DIR/"
 
 "${SSH[@]}" "$HOST" bash -s -- "$REMOTE_DIR" <<'EOF'
@@ -54,6 +66,11 @@ if [ ! -f .env ]; then
 fi
 mkdir -p data/app data/mongo
 docker compose up -d --build
-docker image prune -f > /dev/null
+# only our images (label in the Dockerfile): the other projects on the host keep theirs
+docker image prune -f --filter label=org.kibbl.app > /dev/null
+# build cache, of any project: a cache only, the next build of each takes a little longer
+docker builder prune -f --filter until=24h > /dev/null
 docker compose ps
+echo "Disk for docker: $(df -h --output=avail "$(docker info -f '{{.DockerRootDir}}')" | tail -1 | tr -d ' ') free"
+docker system df
 EOF

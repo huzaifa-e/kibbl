@@ -14,6 +14,8 @@ RUN test -f backend/dist/app.js && test -f backend/dist/frontend/index.html
 
 FROM node:20-slim
 
+# deploy/deploy.sh removes the old images of this label after a build
+LABEL org.kibbl.app=kibbl
 ENV NODE_ENV=production
 
 USER node
