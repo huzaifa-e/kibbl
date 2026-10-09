@@ -28,6 +28,10 @@ bool stream_send_bin(const uint8_t *buf, size_t len);
 // sends the hello again: what the device can do has changed (the camera came back)
 void stream_announce(void);
 
+/* sends the telemetry at the next turn of the stream task instead of in up to 10 s: the
+ * product's state is moving (a feeder's iris) */
+void stream_telemetry_soon(void);
+
 #ifdef __cplusplus
 }
 #endif

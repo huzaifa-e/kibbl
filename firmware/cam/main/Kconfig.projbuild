@@ -13,6 +13,9 @@ menu "kibbl. cam"
         config KIBBL_BOARD_FREENOVE_S3
             bool "Freenove ESP32-S3-WROOM CAM"
             depends on IDF_TARGET_ESP32S3
+        config KIBBL_BOARD_EMONI
+            bool "EMONI EHW0014-0011 as a kibbl. feeder (camera and the iris motor)"
+            depends on IDF_TARGET_ESP32S3
     endchoice
 
     config KIBBL_LOCAL_HTTP

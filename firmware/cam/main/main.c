@@ -22,7 +22,9 @@
 #include "KL_camera_config.h"
 #include "KL_commands.h"
 #include "KL_config.h"
+#include "KL_feeder.h"
 #include "KL_frame.h"
+#include "KL_hw.h"
 #include "KL_light.h"
 #include "KL_local_http.h"
 #include "KL_nvs.h"
@@ -100,6 +102,7 @@ void app_main(void) {
 
     status_led_setup();
     light_setup();
+    feeder_setup(); // before the server hears of it: the hello has the iris
 
     bool camera_ok = camera_start_at_boot();
     if (!camera_ok) {
@@ -144,7 +147,7 @@ void network_task(void *pvParams) {
 
     if (mdns_init() == ESP_OK) {
         mdns_hostname_set(wifi_hostname());
-        mdns_instance_name_set("kibbl. cam");
+        mdns_instance_name_set(KIBBL_FEEDER ? "kibbl. feeder" : "kibbl. cam");
         mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
     }
 

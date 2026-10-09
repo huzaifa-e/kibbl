@@ -58,6 +58,9 @@ bool light_setup(void) {
         .timer_sel  = LIGHT_TIMER,
         .duty       = 0,
         .hpoint     = 0,
+#ifdef LIGHT_ACTIVE_LOW
+        .flags.output_invert = LIGHT_ACTIVE_LOW, // on while the pin is low (a P-MOSFET)
+#endif
     };
     if (ledc_timer_config(&timer) != ESP_OK || ledc_channel_config(&channel) != ESP_OK) {
         DEBUG_F_ERROR("flash led pwm not set up\n");

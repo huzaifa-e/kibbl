@@ -1,6 +1,7 @@
 /*
  * kibbl. cam on the shared core (KL_product.h): its info, its commands, the frames
- * it streams to the server and what stops for an update.
+ * it streams to the server and what stops for an update. On the EMONI board it is a
+ * kibbl. feeder as well: the camera looks at the iris (KL_feeder.c).
  */
 
 #include "KL_product.h"
@@ -14,6 +15,7 @@
 #include "KL_camera.h"
 #include "KL_camera_config.h"
 #include "KL_config.h"
+#include "KL_feeder.h"
 #include "KL_frame.h"
 #include "KL_hw.h"
 #include "KL_light.h"
@@ -54,6 +56,10 @@ void product_add_info(cJSON *json, cmd_source_t source) {
         cJSON_AddItemToArray(caps, cJSON_CreateString("light"));
         cJSON_AddItemToArray(caps, cJSON_CreateString("blink"));
     }
+#if KIBBL_FEEDER
+    cJSON_AddItemToArray(caps, cJSON_CreateString("feeder"));
+    feeder_add_state(json);
+#endif
     cJSON_AddItemToArray(caps, cJSON_CreateString("ota"));
 
     camera_settings_t settings;
@@ -133,6 +139,9 @@ static const char *cmd_stream(const cJSON *req, cJSON *resp) {
 }
 
 bool product_command(const char *cmd, const cJSON *req, cJSON *resp, cmd_source_t source, const char **error) {
+    if (feeder_command(cmd, req, resp, error)) {
+        return true;
+    }
     if (strcmp(cmd, "camera") == 0) {
         *error = cmd_camera(req, resp);
     } else if (strcmp(cmd, "blink") == 0) {
@@ -154,6 +163,9 @@ void product_add_telemetry(cJSON *json) {
     cJSON_AddNumberToObject(json, "cameraFps", frame_fps());
     cJSON_AddNumberToObject(json, "fps", sent_fps);
     cJSON_AddNumberToObject(json, "frameBytes", frame_last_size());
+#if KIBBL_FEEDER
+    feeder_add_state(json);
+#endif
 }
 
 // frames at the server's rate; the frame buffer is kept for the next stream
@@ -187,6 +199,7 @@ void product_stream_disconnected(void) {
 /* ----------------------------------------------------------------------- */
 
 void product_ota_prepare(void) {
+    feeder_stop();
     // the stream competes for the same link and PSRAM
     for (int i = 0; i < FRAME_CONSUMERS; i++) {
         frame_set_demand((frame_consumer_t)i, 0);
@@ -200,4 +213,5 @@ void product_ota_prepare(void) {
 
 void product_reset(void) {
     config_camera_reset();
+    feeder_reset();
 }

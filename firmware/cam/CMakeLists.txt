@@ -28,4 +28,11 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(KIBBL-FW)
+# The EMONI board makes a kibbl. feeder of this firmware: another project name, so the server
+# never offers its image to a camera, nor a camera's to it (backend/src/routes/firmware.ts)
+if("${SDKCONFIG_DEFAULTS}" MATCHES "sdkconfig.defaults.emoni")
+    project(KIBBL-FEEDER)
+    idf_build_set_property(COMPILE_DEFINITIONS "KIBBL_PROJECT_FEEDER=1" APPEND)
+else()
+    project(KIBBL-FW)
+endif()

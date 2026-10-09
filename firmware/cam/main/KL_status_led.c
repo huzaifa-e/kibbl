@@ -87,6 +87,12 @@ static void status_led_task(void *pvParams) {
 }
 
 void status_led_setup(void) {
+#ifdef STATUS_LED_RED_PIN
+    // a second led the status does not use: off
+    gpio_reset_pin((gpio_num_t)STATUS_LED_RED_PIN);
+    gpio_set_direction((gpio_num_t)STATUS_LED_RED_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)STATUS_LED_RED_PIN, STATUS_LED_ACTIVE_LOW ? 1 : 0);
+#endif
     gpio_reset_pin((gpio_num_t)STATUS_LED_PIN);
     gpio_set_direction((gpio_num_t)STATUS_LED_PIN, GPIO_MODE_OUTPUT);
     led_write(false);

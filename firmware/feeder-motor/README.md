@@ -1,6 +1,6 @@
 # Feeder motor
 
-The motor control of the feeder iris (`hardware/feeder/iris`): an Arduino Nano gives STEP/DIR to a BTT S42B closed-loop driver on the NEMA 17, and takes commands over USB serial. Everything below is the setup that was tested on 2026-10-08: the iris closed fully and opened fully at 2400 steps/s.
+The motor control of the feeder iris (`hardware/feeder/iris`): an Arduino Nano gives STEP/DIR to a BTT S42B closed-loop driver on the NEMA 17, and takes commands over USB serial. The EMONI board takes its place, with this sketch ported to the ESP32-S3 (`docs/feeder-emoni.md`); the S42B settings below stay. Everything below is the setup that was tested on 2026-10-08: the iris closed fully and opened fully at 2400 steps/s.
 
 ## Hardware
 

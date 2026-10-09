@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -42,7 +43,7 @@ static camera_config_t camera_config = {
     .pin_href  = CAM_PIN_HREF,
     .pin_pclk  = CAM_PIN_PCLK,
 
-    .xclk_freq_hz = 20000000,
+    .xclk_freq_hz = CAM_XCLK_HZ,
 
     .ledc_timer   = CAMERA_TIMER,
     .ledc_channel = CAMERA_CHANNEL,
@@ -56,10 +57,23 @@ static camera_config_t camera_config = {
     .grab_mode    = CAMERA_GRAB_LATEST, // a slow consumer gets the newest frame, not a queued one
 };
 
+// a board that switches the camera's supply: on, and time for its regulators to settle
+static void camera_power(bool on) {
+#ifdef CAM_POWER_PIN
+    gpio_reset_pin((gpio_num_t)CAM_POWER_PIN);
+    gpio_set_direction((gpio_num_t)CAM_POWER_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)CAM_POWER_PIN, on ? 0 : 1);
+    if (on) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+#endif
+}
+
 bool camera_init(void) {
     if (cam_mutex == NULL) {
         cam_mutex = xSemaphoreCreateMutex();
     }
+    camera_power(true);
 
     xSemaphoreTake(cam_mutex, portMAX_DELAY); // Mutex block
 
@@ -111,6 +125,7 @@ void camera_stop(void) {
     if (ready) {
         ready = false;
         esp_camera_deinit();
+        camera_power(false);
         DEBUG("camera: stopped\n");
     }
     xSemaphoreGive(cam_mutex); // Mutex release

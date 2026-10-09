@@ -7,9 +7,6 @@ extern "C" {
 
 #include "sdkconfig.h"
 
-// the product this firmware makes of the board; the app shows it by this id (shared/protocol.ts)
-#define PRODUCT_MODEL "kibbl-cam"
-
 /*
  * LEDC (=PWM) CHANNELS:
  */
@@ -22,7 +19,9 @@ extern "C" {
 
 #if CONFIG_KIBBL_BOARD_AI_THINKER
 
-#define BOARD_NAME "ai-thinker-esp32-cam"
+// the product this firmware makes of the board; the app shows it by this id (shared/protocol.ts)
+#define PRODUCT_MODEL "kibbl-cam"
+#define BOARD_NAME    "ai-thinker-esp32-cam"
 
 /*
  * Pins for LEDs
@@ -55,7 +54,8 @@ extern "C" {
 
 #elif CONFIG_KIBBL_BOARD_FREENOVE_S3
 
-#define BOARD_NAME "freenove-esp32s3-cam"
+#define PRODUCT_MODEL "kibbl-cam"
+#define BOARD_NAME    "freenove-esp32s3-cam"
 
 /*
  * Pins for LEDs
@@ -86,12 +86,74 @@ extern "C" {
 #define CAM_PIN_HREF  7
 #define CAM_PIN_PCLK  13
 
+#elif CONFIG_KIBBL_BOARD_EMONI
+
+/* The EMONI main board EHW0014-0011 (ESP32-S3-WROOM-1-N16R8, without the buzzer) as a
+ * kibbl. feeder: its camera looks at the iris, the S42B motor driver takes STEP, DIR and
+ * EN from three test pads the feeder does not need otherwise (docs/feeder-emoni.md) */
+#define PRODUCT_MODEL "kibbl-feeder"
+#define BOARD_NAME    "emoni-ehw0014-0011"
+
+/*
+ * Pins for LEDs: each one through a P-MOSFET, on while the pin is low
+ */
+#define STATUS_LED_PIN        17 // LED.1, the green led D5
+#define STATUS_LED_ACTIVE_LOW 1
+#define STATUS_LED_RED_PIN    18 // LED.2, the red led D4: kept off
+#define LIGHT_PIN             19 // LED.0, the illuminator leds on JP1/JP2
+#define LIGHT_ACTIVE_LOW      1
+
+/*
+ * Camera pins
+ */
+#define CAM_POWER_PIN         10 // CAM_PWR: the P-MOSFET Q1 powers the camera while low
+#define CAM_XCLK_HZ           5000000 // as in the EMONI firmware (ESW0009) on this board
+
+#define CAM_PIN_PWDN  -1 // pulled down on the board
+#define CAM_PIN_RESET -1 // pulled up on the board, software reset
+#define CAM_PIN_XCLK  11
+#define CAM_PIN_SIOD  1
+#define CAM_PIN_SIOC  2
+
+#define CAM_PIN_D7    40
+#define CAM_PIN_D6    39
+#define CAM_PIN_D5    12
+#define CAM_PIN_D4    14
+#define CAM_PIN_D3    47
+#define CAM_PIN_D2    38
+#define CAM_PIN_D1    48
+#define CAM_PIN_D0    21
+
+#define CAM_PIN_VSYNC 42
+#define CAM_PIN_HREF  41
+#define CAM_PIN_PCLK  13
+
+/*
+ * The feeder: the S42B's signal header, COM on +3V3, so a low pin drives its input
+ */
+#define KIBBL_FEEDER  1
+#define FEEDER_STEP_PIN 15 // test pad BAT_READ (VBAT.READ, 100k to GND: low while booting)
+#define FEEDER_DIR_PIN  9  // test pad BAT_LEVEL (VBAT.EXT, 330k to GND)
+#define FEEDER_EN_PIN   8  // test pad EN.EXT (USB present, high from USB: the S42B off while booting)
+
 #else
 #error "no camera board selected (idf.py menuconfig -> kibbl.)"
 #endif
 
 #ifdef __cplusplus
 }
+#endif
+
+#ifndef CAM_XCLK_HZ
+#define CAM_XCLK_HZ 20000000
+#endif
+#ifndef KIBBL_FEEDER
+#define KIBBL_FEEDER 0 // a camera only
+#endif
+
+// the image's project name tells the server the product: KIBBL-FEEDER for this board only
+#if KIBBL_FEEDER != defined(KIBBL_PROJECT_FEEDER)
+#error "the EMONI board is built with sdkconfig.defaults.emoni (docs/feeder-emoni.md)"
 #endif
 
 #endif /* KL_HW_H */

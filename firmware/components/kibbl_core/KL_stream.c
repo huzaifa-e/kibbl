@@ -36,6 +36,7 @@ static QueueHandle_t cmd_queue;
 
 static volatile bool connected     = false;
 static volatile bool hello_pending = false;
+static volatile bool telemetry_pending = false;
 
 // the command being received, when the server splits it over several data events
 static char *rx_buf    = NULL;
@@ -190,8 +191,9 @@ static void stream_task(void *pvParams) {
             send_hello();
         }
 
-        if (connected && millis() - last_telemetry >= TELEMETRY_INTERVAL_MS) {
-            last_telemetry = millis();
+        if (connected && (telemetry_pending || millis() - last_telemetry >= TELEMETRY_INTERVAL_MS)) {
+            telemetry_pending = false;
+            last_telemetry    = millis();
             send_telemetry();
         }
 
@@ -259,6 +261,10 @@ bool stream_send_bin(const uint8_t *buf, size_t len) {
 
 void stream_announce(void) {
     hello_pending = true;
+}
+
+void stream_telemetry_soon(void) {
+    telemetry_pending = true;
 }
 
 bool stream_connected(void) {
