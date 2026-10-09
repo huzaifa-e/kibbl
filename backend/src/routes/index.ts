@@ -1,5 +1,6 @@
 import express from 'express';
 import { default as initAccountRoutes } from './account';
+import { default as initAnalysisRoutes } from './analysis';
 import { default as initAirRoutes } from './air';
 import { default as initAuthRoutes } from './auth';
 import { default as initFirmwareRoutes } from './firmware';
@@ -25,6 +26,7 @@ export function initRoutes(app: express.Application) {
     initHomeRoutes(app);
     initHeatingRoutes(app);
     initHeatRoutes(app);
+    initAnalysisRoutes(app);
     initMcpRoutes(app);
     initPageRoutes(app);
 }
