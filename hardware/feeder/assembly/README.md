@@ -17,6 +17,10 @@ The whole cat feeder around the [iris](../iris): a hopper for 1 kg of dry food o
 
 The motor is hidden in the body: the NEMA 17 hangs from the underside of the iris base, 67.5 mm right of the outlet, through the square cut-out in the deck, with the S42B on its back facing down. The second turn of the GIF opens the right side of the housing to show it.
 
+![A portion, cut open: the motor turns the ring, the iris opens, food falls through the chute into the bowl, the iris closes](images/feeding.gif)
+
+A portion, cut open and slowed down: the motor turns the pinion and ring (158° of motor from closed to open), the iris opens, the kibble falls onto the chute, slides down at 35° (friction 0.3 on PETG assumed) and drops into the bowl, then the iris closes. The kibble follows simple physics in `render.py`, not a measurement; the timing of the motor is not to scale.
+
 ![Exploded](images/exploded.png)
 
 ## What is where
@@ -68,7 +72,7 @@ A 24-pin OV2640 or OV5640 module with a **75 mm flex** (the 21 mm and 40 mm ones
 | `feeder.py` | the design: every dimension is a parameter at the top, the layout follows from them |
 | `stl/*.stl` | parts lying in their print orientation |
 | `step/*.step` | parts in their assembled place; `assembly.step` with the iris, motor, S42B, screws of the iris, camera, bowl and the board envelope, each body named and coloured |
-| `render.py` | the pictures here; `--orbit` only the turning GIF |
+| `render.py` | the pictures here; `--orbit` only the turning GIF, `--feeding` only the cut-open portion |
 
 ```bash
 pip install -r ../../requirements.txt
