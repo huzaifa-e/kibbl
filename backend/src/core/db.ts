@@ -25,6 +25,7 @@ export let TadoReading: Model<TadoReadingDoc>;
 export let FirmwareRelease: Model<FirmwareReleaseDoc>;
 export let HeatMeterModel: Model<HeatMeterDoc>;
 export let HeatReadingModel: Model<HeatReadingDoc>;
+export let HeatReportModel: Model<HeatReportDoc>;
 
 let isConnected = false;
 
@@ -396,6 +397,23 @@ async function init() {
     );
     heatReadingSchema.index({ meterId: 1, date: 1 }, { unique: true });
     HeatReadingModel = model<HeatReadingDoc>('HeatReading', heatReadingSchema);
+
+    // reports of the meter reading company: the PDF (file, under reportRoot) and what was read from it
+    const heatReportSchema = new Schema<HeatReportDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true, index: true },
+            fileName: { type: String, required: true },
+            file: { type: String, required: true },
+            size: { type: Number, required: true },
+            uploadedAt: { type: Number, required: true },
+            appliedAt: Number,
+            data: { type: Schema.Types.Mixed, required: true },
+            warnings: { type: [String], default: [] },
+        },
+        { versionKey: false, minimize: false },
+    );
+    HeatReportModel = model<HeatReportDoc>('HeatReport', heatReportSchema);
 
     connection.on('connected', () => {
         isConnected = true;

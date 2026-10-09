@@ -45,4 +45,59 @@ export interface HeatOverview {
     meters: HeatMeter[];
     days: HeatDay[];
     location: boolean; // a home location is set: the weather helps spread
+    energy?: { kWhPerUnit: number; from?: string; to?: string }; // from the latest imported report: a radiator unit in kWh
 }
+
+/* A report of the meter reading company (Techem's Heizkostenabrechnung), read from its PDF on
+ * the server (backend/src/heat/report.ts) and checked by the person before it is imported. */
+
+export interface HeatReportDevice {
+    serial: string; // the number on the heat cost allocator
+    room?: string; // the report's room code: B, S, W, Z, K …
+    date: string; // YYYY-MM-DD it was read
+    old: number; // the reading at the start of the period
+    new: number; // the reading at its end
+    use: number; // what the report counts for it (units), (new - old) × its factor
+}
+
+export interface HeatReportData {
+    company: 'techem' | 'unknown';
+    period?: { from: string; to: string };
+    userNo?: string;
+    devices: HeatReportDevice[];
+    units?: number; // the home's units
+    buildingUnits?: number; // all units of the building
+    buildingKWh?: number; // the energy the building's heating used (gas, kWh)
+    costs?: number; // the home's heating costs, EUR
+    costPerUnit?: number; // EUR per unit of use
+    analysisKWh?: number; // the report's weather corrected consumption of the home
+    climateFactor?: number; // the weather correction it used
+}
+
+export interface HeatReportSummary {
+    _id: string;
+    fileName: string;
+    uploadedAt: number;
+    appliedAt?: number;
+    data: HeatReportData;
+    warnings: string[];
+}
+
+// what one unit of the heat cost allocators stands for: the building's energy shared out by its units
+export function kWhPerUnit(d: Pick<HeatReportData, 'buildingKWh' | 'buildingUnits'>) {
+    return d.buildingKWh && d.buildingUnits ? d.buildingKWh / d.buildingUnits : undefined;
+}
+
+// the report's room codes (Techem: B = Bad, S = Schlafzimmer, W = Wohnzimmer, Z = Zimmer …)
+export const REPORT_ROOMS: Record<string, { name: string; kind?: string }> = {
+    B: { name: 'Bathroom', kind: 'bathroom' },
+    D: { name: 'Hall' },
+    E: { name: 'Dining room' },
+    F: { name: 'Hall' },
+    K: { name: 'Kitchen', kind: 'kitchen' },
+    KZ: { name: "Children's room", kind: 'bedroom' },
+    A: { name: 'Office', kind: 'office' },
+    S: { name: 'Bedroom', kind: 'bedroom' },
+    W: { name: 'Living room', kind: 'living' },
+    Z: { name: 'Room' },
+};

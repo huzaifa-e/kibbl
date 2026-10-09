@@ -15,6 +15,11 @@ export function firmwareRoot() {
     return path.resolve(process.env.FIRMWARE_DATA_PATH || './data/firmware');
 }
 
+// heating cost reports (heat/reports.ts), next to the images unless set
+export function reportRoot() {
+    return path.resolve(process.env.REPORT_DATA_PATH || path.join(path.dirname(imageRoot()), 'reports'));
+}
+
 // resolves a stored relative path and refuses anything that leaves the root
 export function resolveInside(root: string, relative: string) {
     const full = path.resolve(root, relative);

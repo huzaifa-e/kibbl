@@ -1,6 +1,7 @@
 import type { AirSettings, CameraSettings, FanSettings, LampSettings, MotionSettings, NightSchedule } from '../../shared/protocol';
 import type express from 'express';
 import type { HomeLocation } from '../../shared/climate';
+import type { HeatReportData } from '../../shared/heat';
 
 declare global {
     interface User {
@@ -202,6 +203,18 @@ declare global {
         value: number;
         source: 'manual' | 'report' | 'assistant';
         enteredAt: number;
+    }
+
+    interface HeatReportDoc {
+        _id: string;
+        ownerID: string;
+        fileName: string;
+        file: string; // relative to reportRoot()
+        size: number;
+        uploadedAt: number;
+        appliedAt?: number;
+        data: HeatReportData;
+        warnings: string[];
     }
 
     interface MeterReadingDoc {

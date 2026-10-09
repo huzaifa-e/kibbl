@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { HeatDay, HeatKind, HeatMeter, HeatOverview, HeatReading, HeatUnit } from '../../../shared/heat';
-import { HeatMeterModel, HeatReadingModel, TadoLink, TadoReading } from '../core/db';
+import { kWhPerUnit, type HeatDay, type HeatKind, type HeatMeter, type HeatOverview, type HeatReading, type HeatUnit } from '../../../shared/heat';
+import { HeatMeterModel, HeatReadingModel, HeatReportModel, TadoLink, TadoReading } from '../core/db';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
 import { homeOf } from '../core/weather';
@@ -179,7 +179,12 @@ export async function overview(userID: string): Promise<HeatOverview> {
     const now = today();
     const from = [daysBefore(now, SHOWN_DAYS), ...readings.map((r) => r.date)].sort()[0];
 
-    const [link, perRoom, home] = await Promise.all([TadoLink.findById(userID, { rooms: 1 }).lean(), tadoHours(userID, from, now), homeOf(userID)]);
+    const [link, perRoom, home, energy] = await Promise.all([
+        TadoLink.findById(userID, { rooms: 1 }).lean(),
+        tadoHours(userID, from, now),
+        homeOf(userID),
+        latestEnergy(userID),
+    ]);
     const outside = home ? await outsideMeans(home.latitude, home.longitude, from, now, now) : new Map<string, number>();
     const tadoIn = (roomId?: string) =>
         roomId ? (link?.rooms ?? []).filter((r) => r.roomId === roomId && perRoom.has(r.id)).map((r) => perRoom.get(r.id)!) : [];
@@ -204,5 +209,17 @@ export async function overview(userID: string): Promise<HeatOverview> {
         if (allTado.has(day.date)) day.heatingHours = Math.round(allTado.get(day.date)! * 100) / 100;
         if (outside.has(day.date)) day.outside = outside.get(day.date);
     }
-    return { meters, days: [...days.values()], location: !!home };
+    return { meters, days: [...days.values()], location: !!home, energy };
+}
+
+// a radiator unit in kWh, from the latest imported report that has the building's figures
+async function latestEnergy(userID: string) {
+    const reports = await HeatReportModel.find({ ownerID: userID, appliedAt: { $exists: true } }, { data: 1 })
+        .sort({ 'data.period.to': -1 })
+        .lean();
+    for (const r of reports) {
+        const k = kWhPerUnit(r.data);
+        if (k) return { kWhPerUnit: Math.round(k * 10_000) / 10_000, from: r.data.period?.from, to: r.data.period?.to };
+    }
+    return undefined;
 }
