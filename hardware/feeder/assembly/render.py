@@ -5,6 +5,7 @@ trimesh next to build123d.
 
     python render.py
     python render.py --orbit    only the turning GIF (a few minutes)
+    python render.py --feeding  only the cut-open portion GIF
 """
 import math
 import os
@@ -197,10 +198,284 @@ def orbit(path, frames=36):
     pics[0].save(path, save_all=True, append_images=pics[1:], duration=110, loop=0, optimize=True)
 
 
+# ───────────────────────────── a portion, cut open ─────────────────────────────
+G = 9810.0  # mm/s2
+DT = 0.012  # simulated seconds per frame: slowed down about five times
+FRICTION = 0.3  # kibble on printed PETG
+
+
+def _tris(solid, max_edge=6.0):
+    from build123d import export_stl
+    import trimesh
+
+    with tempfile.TemporaryDirectory() as tmp:
+        f = os.path.join(tmp, 'p.stl')
+        export_stl(solid, f, tolerance=0.2, angular_tolerance=0.3)
+        mesh = trimesh.load(f)
+    v, t = trimesh.remesh.subdivide_to_size(mesh.vertices, mesh.faces, max_edge)
+    return v[t]
+
+
+def _turn(tris, deg, x, y):
+    """Turn triangles about the vertical axis through (x, y)."""
+    a = math.radians(deg)
+    c, s = math.cos(a), math.sin(a)
+    out = tris.copy()
+    dx, dy = tris[..., 0] - x, tris[..., 1] - y
+    out[..., 0] = x + c * dx - s * dy
+    out[..., 1] = y + s * dx + c * dy
+    return out
+
+
+def _shade(tris, rgb, light):
+    n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+    shade = 0.45 + 0.55 * np.clip(np.abs(n @ light), 0, 1)
+    return np.clip(np.asarray(rgb)[None, :] * shade[:, None], 0, 1)
+
+
+QUARTER = ('body', 'shell', 'hopper', 'hopper_lid', 'floor', 'iris base', 'iris lid', 'iris funnel', 'iris ring', 'iris blade')
+HALF_Y = ('motor', 'driver', 'iris pinion')  # cut through the motor axis
+HALF_X = ('chute', 'bowl')  # cut through the iris axis
+
+
+def _removed(p, name='body'):
+    """The cut: housing and iris a quarter (front and left away), motor at its axis, chute and bowl at the middle."""
+    x, y = p[..., 0], p[..., 1]
+    if name.startswith(HALF_Y):
+        return y < 0
+    if name.startswith(HALF_X):
+        return x < 0
+    if name.startswith(QUARTER):
+        return (x < 0) | (y < 0)
+    return np.zeros(x.shape, bool)
+
+
+def _inside(z):
+    """Radius of the food's room above the iris at height z."""
+    from iris import FUNNEL_H, LID_T, R_AP, Z_TOP
+    z0 = feeder.Z_IRIS + Z_TOP + LID_T
+    if z < z0:
+        return R_AP
+    if z < z0 + FUNNEL_H:
+        return R_AP + (iris_mod().FUNNEL_TOP_R - R_AP) * (z - z0) / FUNNEL_H
+    if z < feeder.Z_CONE:
+        return feeder.SPIGOT_R
+    return min(feeder.HOPPER_R, feeder.SPIGOT_R + (z - feeder.Z_CONE) * feeder.COT)
+
+
+def iris_mod():
+    import iris
+    return iris
+
+
+def kibble_paths(n_fall, rng):
+    """Where every falling kibble is in every frame after its release: list of (release frame, [(x, y, z)])."""
+    th = math.radians(feeder.CHUTE_ANGLE)
+    a_slide = G * (math.sin(th) - FRICTION * math.cos(th))
+    landed = []
+    paths = []
+    for k in range(n_fall):
+        release = 30 + int(k * 40 / n_fall)
+        r = 3.0
+        while True:
+            x, y = rng.uniform(2, 17), rng.uniform(-14, 14)
+            if math.hypot(x, y) < 17:
+                break
+        z = feeder.Z_IRIS + 12 + rng.uniform(0, 6)
+        pts, vz, v = [], 0.0, None
+        phase = 'fall'
+        while True:
+            if phase == 'fall':
+                vz -= G * DT
+                z += vz * DT
+                floor = feeder.floor_z(y) + r
+                if z <= floor:
+                    z, phase, v = floor, 'slide', abs(vz) * math.sin(th) * 0.3
+            elif phase == 'slide':
+                v += a_slide * DT
+                y -= v * math.cos(th) * DT
+                if y <= feeder.Y_EXIT:
+                    phase, vy, vz = 'fly', -v * math.cos(th), -v * math.sin(th)
+                    y = feeder.Y_EXIT
+                z = feeder.floor_z(y) + r
+            else:
+                y += vy * DT
+                vz -= G * DT
+                z += vz * DT
+                rest = feeder.TRAY_T + 1.2 + r
+                if z <= rest:
+                    # it bounces and rolls a little: a heap, not a tower
+                    x = min(max(x + rng.uniform(0, 25), 3), 50)
+                    y += rng.uniform(-22, 22)
+                    near = sum(1 for p in landed if math.hypot(p[0] - x, p[1] - y) < 9)
+                    dy = y - feeder.BOWL_Y
+                    if math.hypot(x, dy) > 52:
+                        x, y = x * 52 / math.hypot(x, dy), feeder.BOWL_Y + dy * 52 / math.hypot(x, dy)
+                    z = rest + 3.5 * min(near, 2)
+                    pts.append((x, y, z))
+                    landed.append((x, y, z))
+                    break
+            pts.append((x, y, z))
+        paths.append((release, pts))
+    return paths
+
+
+def pile_points(rng):
+    """The food left in the hopper, in the kept half: lowest first."""
+    pts = []
+    step = 8.5
+    z = feeder.Z_IRIS + 10
+    while z < feeder.Z_CONE + 45:
+        r = _inside(z) - 4
+        for x in np.arange(-r, r + 0.1, step):
+            for y in np.arange(-r, r + 0.1, step):
+                p = (x + rng.uniform(-2, 2), y + rng.uniform(-2, 2), z + rng.uniform(-2, 2))
+                if math.hypot(p[0], p[1]) < r and not _removed(np.array(p), 'hopper'):
+                    pts.append(p)
+        z += step * 0.8
+    return pts
+
+
+def feeding(path, frames=132, preview=None):
+    """Cut open: the motor turns the ring, the iris opens, food falls through the chute into the bowl, the iris closes."""
+    from build123d import Box, Pos
+    from PIL import Image
+    import trimesh
+
+    iris = iris_mod()
+    rng = np.random.default_rng(3)
+    light = np.array([-0.6, -0.5, 0.65])
+    light /= np.linalg.norm(light)
+    printed, bought, _ = feeder.assembly()
+    left, front = Pos(-200, 0, 200) * Box(400, 800, 800), Pos(0, -200, 200) * Box(800, 400, 800)
+    moving = ('iris ring', 'iris pinion', 'iris blade', 'motor shaft')
+    static_t, static_c, move = [], [], []
+    for name, solid in printed + bought:
+        if name.startswith(('screw', 'grub')) or name in ('camera module',):
+            continue
+        rgb = matplotlib.colors.to_rgb(feeder.color_of(name))
+        if name.startswith(moving):
+            t = _tris(solid, 4.0)
+            move.append((name, t, rgb))
+            continue
+        away = front if name.startswith(HALF_Y) else left if name.startswith(HALF_X) else left + front if name.startswith(QUARTER) else None
+        if away is not None:
+            solid = solid - away
+            if solid.volume < 0.01:
+                continue
+        t = _tris(solid)
+        static_t.append(t)
+        static_c.append(_shade(t, rgb, light))
+    static_t, static_c = np.concatenate(static_t), np.concatenate(static_c)
+
+    shape = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
+    base = shape.vertices[shape.faces] * np.array([5.0, 4.2, 3.0])
+
+    def piece(p, rot):
+        return base @ rot.T + np.asarray(p)
+
+    def random_rot():
+        q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
+        return q
+
+    n_fall = 40
+    paths = kibble_paths(n_fall, rng)
+    pile = pile_points(rng)
+    pile_rot = [random_rot() for _ in pile]
+    fall_rot = [random_rot() for _ in paths]
+    spin = [rng.normal(size=3) * 0.25 for _ in paths]
+    kibble_rgb = [np.array(matplotlib.colors.to_rgb('#8a5a2b')) * rng.uniform(0.8, 1.1) for _ in range(len(pile) + n_fall)]
+
+    def alpha_at(f):
+        """Blade swing: ALPHA_MAX closed, 0 open."""
+        a = iris.ALPHA_MAX
+        ease = lambda u: 0.5 - 0.5 * math.cos(math.pi * min(max(u, 0), 1))
+        if f < 8:
+            return a
+        if f < 26:
+            return a * (1 - ease((f - 8) / 18))
+        if f < 74:
+            return 0.0
+        return a * ease((f - 74) / 18)
+
+    lim = ((-120, 120), (-260, 100), (0, 400))
+    pics = []
+    for f in (preview or range(frames)):
+        alpha = alpha_at(f)
+        tris, cols = [static_t], [static_c]
+        for name, t, rgb in move:
+            if name == 'iris ring':
+                t = _turn(t, iris.K_RING * alpha, 0, 0)
+            elif name.startswith('iris blade'):
+                i = int(name.split()[2]) - 1
+                px, py = iris.polar(iris.RP, 360 * i / iris.N)
+                t = _turn(t, alpha, px, py)
+            else:  # pinion and shaft
+                t = _turn(t, -iris.motor_turn(alpha), iris.CENTER_DIST, 0)
+            keep = ~_removed(t.mean(axis=1), name)
+            tris.append(t[keep])
+            cols.append(_shade(t[keep], rgb, light))
+        # the food: the pile sinks by what has fallen, the falling ones follow their paths
+        gone = sum(1 for rel, _ in paths if f >= rel)
+        shown = len(pile) - int(gone * 1.6)
+        order = sorted(range(len(pile)), key=lambda k: pile[k][2])
+        for k in order[:max(shown, 0)]:
+            t = piece(pile[k], pile_rot[k])
+            tris.append(t)
+            cols.append(_shade(t, kibble_rgb[k], light))
+        for j, (rel, pts) in enumerate(paths):
+            if f < rel:
+                continue
+            step = min(f - rel, len(pts) - 1)
+            ang = spin[j] * step if step < len(pts) - 1 else spin[j] * (len(pts) - 1)
+            rx = trimesh.transformations.euler_matrix(*ang)[:3, :3]
+            t = piece(pts[step], fall_rot[j] @ rx)
+            tris.append(t)
+            cols.append(_shade(t, kibble_rgb[len(pile) + j], light))
+        tris, cols = np.concatenate(tris), np.concatenate(cols)
+
+        fig = plt.figure(figsize=(9, 9), facecolor=PAPER)
+        ax = fig.add_subplot(projection='3d')
+        ax.add_collection3d(Poly3DCollection(tris, facecolors=cols, edgecolors=cols, linewidths=0.15))
+        (x0, x1), (y0, y1), (z0, z1) = lim
+        ax.set_xlim(x0, x1)
+        ax.set_ylim(y0, y1)
+        ax.set_zlim(z0, z1)
+        ax.set_box_aspect((x1 - x0, y1 - y0, z1 - z0), zoom=1.0)
+        ax.view_init(elev=18, azim=-112)
+        ax.set_facecolor(PAPER)
+        ax.axis('off')
+        state = 'closed' if alpha >= iris.ALPHA_MAX - 1e-6 else 'open' if alpha == 0 else 'opening' if f < 50 else 'closing'
+        fig.text(0.5, 0.93, 'a portion, cut open', ha='center', color=INK, fontsize=12, weight='bold')
+        fig.text(0.5, 0.905, f'motor {iris.motor_turn(iris.ALPHA_MAX - alpha):.0f}° from closed · iris {state} · slowed down',
+                 ha='center', color=INK, fontsize=9)
+        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        fig.canvas.draw()
+        pics.append(Image.frombuffer('RGBA', fig.canvas.get_width_height(), fig.canvas.buffer_rgba()).convert('RGB'))
+        plt.close(fig)
+        print(f'frame {f + 1}/{frames}', end='\r', flush=True)
+    # one crop for all frames: the box around everything drawn
+    from PIL import ImageChops
+    bg = Image.new('RGB', pics[0].size, PAPER)
+    boxes = [ImageChops.difference(p, bg).getbbox() for p in pics]
+    box = (min(b[0] for b in boxes) - 12, min(b[1] for b in boxes) - 12, max(b[2] for b in boxes) + 12, max(b[3] for b in boxes) + 12)
+    pics = [p.crop(box) for p in pics]
+    if preview:
+        for f, pic in zip(preview, pics):
+            pic.save(path.replace('.gif', f'-{f}.png'))
+        return
+    pics = [p.quantize(colors=128, method=Image.Quantize.MEDIANCUT) for p in pics]
+    pics[0].save(path, save_all=True, append_images=pics[1:], duration=60, loop=0, optimize=True)
+
+
 if __name__ == '__main__':
     import sys
 
     os.makedirs(os.path.join(HERE, 'images'), exist_ok=True)
+    if '--feeding' in sys.argv:
+        feeding(os.path.join(HERE, 'images', 'feeding.gif'))
+        raise SystemExit
     orbit(os.path.join(HERE, 'images', 'feeder-orbit.gif'))
     if '--orbit' in sys.argv:
         raise SystemExit
