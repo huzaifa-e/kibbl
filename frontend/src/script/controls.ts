@@ -1,5 +1,6 @@
 import { climateHints } from '../../../shared/climate';
 import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_SPEED, feedLevels, roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
+import { feedLevelAnimHtml, irisSvg, setIris } from './iris';
 import { request } from './socket';
 import { escapeHtml } from './utils';
 
@@ -91,8 +92,9 @@ function feederHtml(d: DeviceSummary, disabled: string) {
         : f?.busy
           ? `<span class="text-orange"><span class="spinner-border spinner-border-sm me-1"></span> ${f.job === 'feed' ? 'feeding' : 'moving'}…</span>`
           : `<span class="text-secondary">${opening <= FEEDER_MIN_MM + 0.5 ? 'closed' : `open ${opening.toFixed(0)} mm`}</span>`;
+    const tuning = { speed: f?.speed, accel: f?.accel, closedPos: f?.closedPos };
     return `<div class="mb-3">
-            <label class="form-label d-flex"><span class="flex-fill"><i class="ti ti-aperture me-1"></i> Opening</span><span data-feeder-value="${d._id}">${state}</span></label>
+            <label class="form-label d-flex align-items-center gap-2">${irisSvg(opening, 28, `data-feeder-iris="${d._id}"`)}<span class="flex-fill">Opening</span><span data-feeder-value="${d._id}">${state}</span></label>
             <input type="range" class="form-range" min="${FEEDER_MIN_MM}" max="${FEEDER_MAX_MM}" step="1" value="${Math.round(opening)}" data-control="iris" data-device="${d._id}" ${disabled} ${busy} />
             <div class="d-flex justify-content-between small text-secondary"><span>closed</span><span>${FEEDER_MAX_MM} mm</span></div>
             <div class="btn-group w-100 mt-2">
@@ -106,7 +108,8 @@ function feederHtml(d: DeviceSummary, disabled: string) {
                 .map(
                     (l) => `<div class="col-6"><button class="btn w-100 flex-column py-2" data-control="feed" data-level="${l.id}" data-device="${d._id}" ${disabled} ${busy}>
                         <span class="fw-bold">${l.label}</span>
-                        <span class="small text-secondary">${l.portions} × ${l.opening} mm, ${l.openMs / 1000} s</span>
+                        <span class="small text-secondary">${l.portions} × ${l.opening} mm, held ${l.openMs / 1000} s</span>
+                        ${feedLevelAnimHtml(l, tuning)}
                     </button></div>`,
                 )
                 .join('')}</div>
@@ -205,6 +208,8 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         } else if (el.dataset.control === 'iris') {
             const value = root.querySelector(`[data-feeder-value="${el.dataset.device}"]`);
             if (value) value.textContent = Number(el.value) <= FEEDER_MIN_MM ? 'closed' : `open ${el.value} mm`;
+            const iris = root.querySelector(`[data-feeder-iris="${el.dataset.device}"]`);
+            if (iris) setIris(iris, Number(el.value));
         } else if (el.dataset.control === 'feeder-speed') {
             const value = root.querySelector(`[data-feeder-speed="${el.dataset.device}"]`);
             if (value) value.textContent = `${el.value} steps/s · ${((Number(el.value) / 4096) * 60).toFixed(0)} rpm`;

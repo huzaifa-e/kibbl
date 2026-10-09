@@ -177,6 +177,49 @@ html[data-bs-theme='dark'] .theme-label-dark {
     }
 }
 
+/* the iris of a feeder (script/iris.ts): the hole lit in kibble colour, the blades over it */
+.feeder-iris {
+    flex: none;
+}
+.feeder-iris-housing {
+    fill: var(--kb-mustard);
+    stroke: var(--kb-ink);
+    stroke-width: 3;
+}
+.feeder-iris-blades {
+    fill: var(--kb-text-muted);
+}
+.feeder-iris-seams {
+    fill: none;
+    stroke: var(--kb-surface);
+    stroke-width: 1.5;
+}
+
+/* a feeding level played: the iris, its opening over the feed, the time it is open */
+.feeder-feed {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    margin-top: 6px;
+}
+.feeder-feed-graph {
+    width: 100%;
+    height: 22px;
+}
+.feeder-feed-area {
+    fill: var(--kb-mustard);
+    stroke: var(--kb-pumpkin);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+.feeder-feed-head {
+    stroke: var(--kb-ink);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+}
+
 .center-loading {
     padding: 15vh 0;
 }

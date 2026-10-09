@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { feedOpeningAt, feedTimeline } from '../../../shared/feeder';
 import { feedLevels } from '../../../shared/protocol';
 import { cleanCommand } from './control';
 import { parseFeederState } from './devices';
@@ -68,4 +69,21 @@ test('tuning a feeder: speed, acceleration, steps, the zero', () => {
     assert.deepEqual(cleanCommand({ cmd: 'feeder_config', closedPos: 1782 }), { cmd: 'feeder_config', closedPos: 1782 });
     assert.equal(cleanCommand({ cmd: 'feeder_config', closedPos: 0 }), undefined);
     assert.equal(parseFeederState({ opening: 2.3, busy: false, closedPos: 2100 })?.closedPos, 2100);
+});
+
+test('a feed played as the firmware runs it', () => {
+    const one = feedTimeline({ portions: 1, opening: 42, openMs: 1000 });
+    // fully open at 2400 steps/s: the 1.1 s of the firmware's readme
+    assert.ok(Math.abs(one.segments[0].ms - 1043) < 5, String(one.segments[0].ms));
+    assert.equal(feedOpeningAt(one, 0), feedOpeningAt(one, one.ms));
+    assert.equal(feedOpeningAt(one, one.segments[0].ms + 500), 42);
+    // every level opens as far as it says, and each portion plays again
+    for (const l of feedLevels) {
+        const t = feedTimeline(l);
+        assert.ok(Math.abs(feedOpeningAt(t, t.segments[0].ms + l.openMs / 2) - l.opening) < 0.1, l.id);
+        assert.ok(t.openMs > t.holdMs && t.holdMs === l.portions * l.openMs, l.id);
+        assert.ok(Math.abs(t.ms - l.portions * feedTimeline({ ...l, portions: 1 }).ms) < 1, l.id);
+    }
+    // a slower feeder takes longer
+    assert.ok(feedTimeline(feedLevels[0], { speed: 800 }).ms > feedTimeline(feedLevels[0]).ms);
 });
