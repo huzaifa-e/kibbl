@@ -4,13 +4,15 @@ import type { HeatMeter, HeatOverview, HeatReading, HeatUnit } from '../../../sh
 import type { HomeRoom } from '../../../shared/heating';
 import { baseOptions } from './activityCharts';
 import { tone, type Tone } from './healthCharts';
+import { initReports, loadReports, reportsCard } from './heatReports';
 import { socket } from './socket';
 import { byId, emptyState, errorAlert, escapeHtml, localDayKey } from './utils';
 
 /* The heat used in the home: the readings of the heat cost allocators on the radiators and
  * of meters of the whole home, entered here or from a Techem report, and the use per day,
  * month and year, spread between readings by tado's heating time and the weather
- * (backend/src/heat). tado's heating hours are drawn with it. */
+ * (backend/src/heat). tado's heating hours are drawn with it; reports are uploaded and
+ * imported in heatReports.ts. */
 
 type Period = 'day' | 'month' | 'year';
 const PERIOD_LABELS: Record<Period, string> = { day: 'Days', month: 'Months', year: 'Years' };
@@ -20,7 +22,8 @@ const TONES: Tone[] = ['pumpkin', 'pine', 'mustard', 'plum', 'olive', 'rust', 'b
 let data: HeatOverview | undefined;
 let rooms: HomeRoom[] = [];
 let period: Period = 'month';
-let unit: HeatUnit | undefined;
+let hadEnergy = false;
+let unit: HeatUnit | 'energy' | undefined; // energy: the radiators' units in kWh, by the latest report
 let editing: string | undefined; // the meter whose form is open, 'new' for a new one
 let opened: string | undefined; // the meter whose readings are shown
 let chart: ApexCharts | undefined;
@@ -67,13 +70,15 @@ function layout() {
             <div class="card-header"><h3 class="card-title">Heat meters</h3>
                 <div class="card-actions"><button class="btn btn-sm btn-primary" id="add-meter"><i class="ti ti-plus me-1"></i>Add</button></div></div>
             <div id="meters"></div>
-        </div>`;
+        </div>
+        ${reportsCard()}`;
     document.querySelectorAll<HTMLButtonElement>('[data-period]').forEach((b) =>
         b.addEventListener('click', () => {
             period = b.dataset.period as Period;
             renderChart();
         }),
     );
+    initReports({ rooms: () => rooms, meters: () => data?.meters ?? [] });
     byId('add-meter').addEventListener('click', () => {
         editing = 'new';
         renderMeters();
@@ -81,7 +86,9 @@ function layout() {
 }
 
 // the meters counted in this unit, the ones the chart and the tiles add up
-const shownMeters = () => (data?.meters ?? []).filter((m) => m.unit === unit);
+const shownMeters = () => (data?.meters ?? []).filter((m) => m.unit === (unit === 'energy' ? 'units' : unit));
+const scale = () => (unit === 'energy' ? (data?.energy?.kWhPerUnit ?? 1) : 1);
+const unitLabel = () => (unit === 'energy' ? 'kWh' : (unit ?? ''));
 
 function sumUse(from: string, to = '9999') {
     const ids = shownMeters().map((m) => m._id);
@@ -91,7 +98,7 @@ function sumUse(from: string, to = '9999') {
         if (d.date < from || d.date > to) continue;
         for (const id of ids)
             if (d.use[id] !== undefined) {
-                sum += d.use[id];
+                sum += d.use[id] * scale();
                 any = true;
             }
     }
@@ -114,9 +121,11 @@ function renderTiles() {
             <div class="d-flex align-items-center gap-2 mb-1"><i class="ti ti-${icon}" style="color:${color}"></i><span class="text-secondary small">${label}</span></div>
             <div class="d-flex align-items-baseline gap-2"><span class="stat-value">${value}</span><span class="text-secondary">${u}</span></div>
             <div class="text-secondary small">${sub}</div></div></div></div>`;
-    const u = unit ?? '';
+    const u = unitLabel();
+    const e = data!.energy;
+    const energyNote = unit === 'energy' && e ? ` · ${fmt(e.kWhPerUnit, 2)} kWh per unit (report ${e.to?.slice(0, 4) ?? ''})` : '';
     byId('tiles').innerHTML =
-        tile('flame', tone('pumpkin'), 'This heating season', fmt(sumUse(season), 0), u, `since ${dayLabel(season)}, up to the last reading`) +
+        tile('flame', tone('pumpkin'), 'This heating season', fmt(sumUse(season), 0), u, `since ${dayLabel(season)}, up to the last reading${energyNote}`) +
         tile('calendar', tone('mustard'), 'This month', fmt(sumUse(`${month}-01`), 1), u, 'up to the last reading') +
         tile('temperature', tone('pine'), 'tado heating', fmt(hours, 1), 'h', 'this month, at full power') +
         tile(
@@ -130,15 +139,23 @@ function renderTiles() {
 }
 
 function renderUnits() {
-    const units = [...new Set(data!.meters.map((m) => m.unit))];
-    if (!unit || !units.includes(unit)) unit = units[0];
+    const units: (HeatUnit | 'energy')[] = [...new Set(data!.meters.map((m) => m.unit))];
+    if (data!.energy && units.includes('units')) units.unshift('energy');
+    // kWh as soon as a report tells what a unit is worth
+    if (!unit || !units.includes(unit) || (units[0] === 'energy' && !hadEnergy)) unit = units[0];
+    hadEnergy = units[0] === 'energy';
     byId('unit-buttons').innerHTML =
         units.length > 1
-            ? units.map((u) => `<button class="btn btn-sm${u === unit ? ' active' : ''}" data-unit="${escapeHtml(u)}">${escapeHtml(u)}</button>`).join('')
+            ? units
+                  .map(
+                      (u) =>
+                          `<button class="btn btn-sm${u === unit ? ' active' : ''}" data-unit="${escapeHtml(u)}"${u === 'energy' ? ' title="The radiators\' units in kWh, by the latest report"' : ''}>${u === 'energy' ? 'kWh ≈' : escapeHtml(u)}</button>`,
+                  )
+                  .join('')
             : '';
     document.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach((b) =>
         b.addEventListener('click', () => {
-            unit = b.dataset.unit as HeatUnit;
+            unit = b.dataset.unit as HeatUnit | 'energy';
             render();
         }),
     );
@@ -159,7 +176,7 @@ function renderChart() {
         for (const m of meters) {
             if (d.use[m._id] === undefined) continue;
             if (!use.has(m._id)) use.set(m._id, new Map());
-            use.get(m._id)!.set(key, (use.get(m._id)!.get(key) ?? 0) + d.use[m._id]);
+            use.get(m._id)!.set(key, (use.get(m._id)!.get(key) ?? 0) + d.use[m._id] * scale());
         }
         if (d.heatingHours !== undefined) hours.set(key, (hours.get(key) ?? 0) + d.heatingHours);
     }
@@ -214,7 +231,7 @@ function renderChart() {
             intersect: false,
             y: {
                 formatter: (v: number | null, o: { seriesIndex: number }) =>
-                    v === null ? '–' : o.seriesIndex < bars ? `${fmt(v, 1)} ${unit}` : `${fmt(v, 1)} h`,
+                    v === null ? '–' : o.seriesIndex < bars ? `${fmt(v, 1)} ${unitLabel()}` : `${fmt(v, 1)} h`,
             },
         },
     });
@@ -415,6 +432,7 @@ async function load(first = false) {
         return;
     }
     if (first) layout();
+    else void loadReports();
     render();
     // the entry form keeps what is typed while the rest updates
     if (first || !document.getElementById('entry-form')?.contains(document.activeElement)) renderEntry();
