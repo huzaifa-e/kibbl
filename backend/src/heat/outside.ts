@@ -13,13 +13,13 @@ const log = logger('heat');
 const ARCHIVE_LAG_DAYS = 6;
 const RECENT_DAYS = 31;
 const RECENT_MS = 3600_000;
-const RETRY_MS = 6 * 3600_000; // archive days that came without a value are asked again after this
+const RETRY_MS = 6 * 3600_000; // an archive day that came without a value is asked again after this
 const DAY_MS = 24 * 3600_000;
 
 interface Place {
     temps: Map<string, number>;
     recentAt: number;
-    archiveTriedAt: number;
+    tried: Map<string, number>; // archive days asked for that came without a value, and when
 }
 
 const places = new Map<string, Place>();
@@ -41,17 +41,20 @@ async function daily(url: string): Promise<Map<string, number>> {
 // °C per day from..to (YYYY-MM-DD, the home's days); days it could not get are missing
 export async function outsideMeans(latitude: number, longitude: number, from: string, to: string, today: string) {
     const key = `${latitude.toFixed(2)},${longitude.toFixed(2)}`;
-    const place = places.get(key) ?? { temps: new Map<string, number>(), recentAt: 0, archiveTriedAt: 0 };
+    const place = places.get(key) ?? { temps: new Map<string, number>(), recentAt: 0, tried: new Map<string, number>() };
     places.set(key, place);
     const at = `latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_mean&timezone=auto`;
 
     const archiveEnd = [to, shift(today, -ARCHIVE_LAG_DAYS)].sort()[0];
-    const missing = from <= archiveEnd ? dayKeys(from, archiveEnd).filter((d) => !place.temps.has(d)) : [];
-    if (missing.length && Date.now() - place.archiveTriedAt > RETRY_MS) {
-        place.archiveTriedAt = Date.now();
+    const missing = from <= archiveEnd ? dayKeys(from, archiveEnd).filter((d) => !place.temps.has(d) && Date.now() - (place.tried.get(d) ?? 0) > RETRY_MS) : [];
+    if (missing.length) {
+        for (const d of missing) place.tried.set(d, Date.now());
         try {
             const got = await daily(`https://archive-api.open-meteo.com/v1/archive?${at}&start_date=${missing[0]}&end_date=${missing[missing.length - 1]}`);
-            for (const [d, t] of got) place.temps.set(d, t);
+            for (const [d, t] of got) {
+                place.temps.set(d, t);
+                place.tried.delete(d);
+            }
         } catch (err) {
             log.warn('past weather not read', undefined, err);
         }
