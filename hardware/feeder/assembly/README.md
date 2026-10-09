@@ -13,6 +13,10 @@ The whole cat feeder around the [iris](../iris): a hopper for 1 kg of dry food o
 | Electronics | EMONI board on the inside of the front wall, right of the chute; S42B under the iris on the motor; 12 V in at the back |
 | Camera | in the eye above the spout, 58° down, 134 mm to the middle of the bowl; a 75 mm flex reaches J2 (route 72 mm) |
 
+![One turn around the feeder, then one with the side open](images/feeder-orbit.gif)
+
+The motor is hidden in the body: the NEMA 17 hangs from the underside of the iris base, 67.5 mm right of the outlet, through the square cut-out in the deck, with the S42B on its back facing down. The second turn of the GIF opens the right side of the housing to show it.
+
 ![Exploded](images/exploded.png)
 
 ## What is where
@@ -64,7 +68,7 @@ A 24-pin OV2640 or OV5640 module with a **75 mm flex** (the 21 mm and 40 mm ones
 | `feeder.py` | the design: every dimension is a parameter at the top, the layout follows from them |
 | `stl/*.stl` | parts lying in their print orientation |
 | `step/*.step` | parts in their assembled place; `assembly.step` with the iris, motor, S42B, screws of the iris, camera, bowl and the board envelope, each body named and coloured |
-| `render.py` | the pictures here |
+| `render.py` | the pictures here; `--orbit` only the turning GIF |
 
 ```bash
 pip install -r ../../requirements.txt
