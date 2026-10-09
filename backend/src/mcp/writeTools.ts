@@ -11,6 +11,8 @@ import { logger } from '../core/logger';
 import { createRoom, listRooms, moveDevice, renameRoom, setRoomKind } from '../core/rooms';
 import { ROOM_KINDS, type RoomKind } from '../../../shared/roomKind';
 import { forgetHome, searchPlaces } from '../core/weather';
+import { HEAT_UNITS } from '../../../shared/heat';
+import { HeatError, addMeter as addHeatMeter, addReadings as addHeatReadings, listMeters as listHeatMeters } from '../heat/service';
 import { command as heatingCommand, placeTadoRoom, publishPaired, status as heatingStatus } from '../tado/service';
 
 /*
@@ -27,6 +29,7 @@ const json = (data: unknown): CallToolResult => ({ content: [{ type: 'text', tex
 const fail = (message: string): CallToolResult => ({ content: [{ type: 'text', text: message }], isError: true });
 const writes = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const hour = z.number().int().min(0).max(23);
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const lower = (s: string) => s.trim().toLowerCase();
 
@@ -348,6 +351,68 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             forgetHome(session.userID);
             log.info('home location set', { place: home.name, user: who, via: VIA });
             return json({ ok: true, home: home.name });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_heat_meter_add',
+        {
+            title: 'Add a heat meter',
+            description:
+                'Adds a heat meter: the heat cost allocator on a radiator (kind radiator, counted in units; factor: what one unit counts for, as the ' +
+                'Techem report lists it, 1 if unknown) or a meter of the whole home (kind meter, kWh, MWh or m³). room: the room of the home it is in.',
+            inputSchema: {
+                name: z.string().min(1).max(60),
+                kind: z.enum(['radiator', 'meter']),
+                unit: z.enum(HEAT_UNITS).optional().describe('for a meter; a radiator counts units'),
+                factor: z.number().positive().max(100).optional(),
+                room: z.string().optional(),
+                serial: z.string().max(40).optional().describe('the number on the device'),
+            },
+            annotations: { ...writes, idempotentHint: false },
+        },
+        async ({ name, kind, unit, factor, room, serial }) => {
+            const home = room ? await findRoom(session.userID, room) : undefined;
+            if (room && !home) return fail(`No room "${room}". Rooms: ${(await listRooms(session.userID)).map((r) => r.name).join(', ')}.`);
+            if ((await listHeatMeters(session.userID)).some((m) => lower(m.name) === lower(name))) return fail(`A heat meter "${name}" is there already.`);
+            const id = await addHeatMeter(session.userID, { name, kind, unit, factor, roomId: home?._id, serial });
+            log.info('heat meter added', { name, user: who, via: VIA });
+            return json({ ok: true, id });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_heat_readings_add',
+        {
+            title: 'Add heat readings',
+            description:
+                'Stores what heat meters showed on a day (a running total, as on the device or the report; a lower value than before counts as a reset). ' +
+                'A reading of the same meter and day is replaced. Meters by name or id (kibbl_heat lists them).',
+            inputSchema: {
+                date: day.describe('the day they were read'),
+                readings: z
+                    .array(z.object({ meter: z.string(), value: z.number().min(0) }))
+                    .min(1)
+                    .max(100),
+                from_report: z.boolean().default(false).describe('taken from a report of the meter reading company'),
+            },
+            annotations: writes,
+        },
+        async ({ date, readings, from_report }) => {
+            const meters = await listHeatMeters(session.userID);
+            const values: { meterId: string; value: number }[] = [];
+            for (const r of readings) {
+                const m = meters.find((x) => x._id === r.meter.trim() || lower(x.name) === lower(r.meter) || (x.serial && lower(x.serial) === lower(r.meter)));
+                if (!m) return fail(`No heat meter "${r.meter}". Heat meters: ${meters.map((x) => x.name).join(', ') || 'none (kibbl_heat_meter_add)'}.`);
+                values.push({ meterId: m._id, value: r.value });
+            }
+            try {
+                await addHeatReadings(session.userID, date, values, from_report ? 'report' : 'assistant');
+            } catch (err) {
+                return fail(err instanceof HeatError ? err.message : 'Not stored.');
+            }
+            log.info('heat readings added', { date, count: values.length, user: who, via: VIA });
+            return json({ ok: true, stored: values.length });
         },
     );
 }

@@ -184,6 +184,26 @@ declare global {
         lastSyncError?: string;
     }
 
+    interface HeatMeterDoc {
+        _id: string;
+        ownerID: string;
+        name: string;
+        kind: 'radiator' | 'meter';
+        unit: string;
+        factor: number;
+        roomId?: string;
+        serial?: string;
+        addedAt: number;
+    }
+
+    interface HeatReadingDoc {
+        meterId: string;
+        date: string;
+        value: number;
+        source: 'manual' | 'report' | 'assistant';
+        enteredAt: number;
+    }
+
     interface MeterReadingDoc {
         meterId: string;
         at: Date;

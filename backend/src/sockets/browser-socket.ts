@@ -37,6 +37,7 @@ interface ServerToClientEvents {
     meterUpdate: (meterId: string) => void;
     airEvent: (event: AirEvent) => void;
     heatingUpdate: () => void;
+    heatUpdate: () => void;
 }
 
 interface EventQuery {
@@ -382,6 +383,7 @@ export function initBrowserSocket(http: HttpServer) {
     hub.on('motionEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('motionEvent', event)));
     hub.on('airEvent', (event) => toOwner(event.deviceId, (room) => io.to(room).emit('airEvent', event)));
     hub.on('heatingUpdate', (userID) => io.to(`user:${userID}`).emit('heatingUpdate'));
+    hub.on('heatUpdate', (userID) => io.to(`user:${userID}`).emit('heatUpdate'));
     hub.on('meterUpdate', (meterId) => {
         Meter.findById(meterId, { ownerID: 1 })
             .lean()

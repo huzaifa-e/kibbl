@@ -5,6 +5,7 @@ import { default as initAuthRoutes } from './auth';
 import { default as initFirmwareRoutes } from './firmware';
 import { default as initHealthRoutes } from './health';
 import { default as initHealthAccessRoutes } from './healthAccess';
+import { default as initHeatRoutes } from './heat';
 import { default as initHeatingRoutes } from './heating';
 import { default as initHomeRoutes } from './home';
 import { default as initMcpRoutes } from './mcp';
@@ -23,6 +24,7 @@ export function initRoutes(app: express.Application) {
     initAirRoutes(app);
     initHomeRoutes(app);
     initHeatingRoutes(app);
+    initHeatRoutes(app);
     initMcpRoutes(app);
     initPageRoutes(app);
 }

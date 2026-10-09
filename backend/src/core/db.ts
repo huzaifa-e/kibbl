@@ -23,6 +23,8 @@ export let TadoLink: Model<TadoLinkDoc>;
 export let Room: Model<RoomDoc>;
 export let TadoReading: Model<TadoReadingDoc>;
 export let FirmwareRelease: Model<FirmwareReleaseDoc>;
+export let HeatMeterModel: Model<HeatMeterDoc>;
+export let HeatReadingModel: Model<HeatReadingDoc>;
 
 let isConnected = false;
 
@@ -363,6 +365,37 @@ async function init() {
     );
     tadoReadingSchema.index({ userID: 1, roomId: 1, at: 1 }, { unique: true });
     TadoReading = model<TadoReadingDoc>('TadoReading', tadoReadingSchema);
+
+    /* Heat used in the home (heat/): the heat cost allocators on the radiators and meters of the
+     * whole home, with the readings entered by hand or from the report of the meter reading company. */
+    const heatMeterSchema = new Schema<HeatMeterDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true, index: true },
+            name: { type: String, required: true },
+            kind: { type: String, required: true, enum: ['radiator', 'meter'] },
+            unit: { type: String, required: true },
+            factor: { type: Number, default: 1 },
+            roomId: String,
+            serial: String,
+            addedAt: { type: Number, required: true },
+        },
+        { versionKey: false },
+    );
+    HeatMeterModel = model<HeatMeterDoc>('HeatMeter', heatMeterSchema);
+
+    const heatReadingSchema = new Schema<HeatReadingDoc>(
+        {
+            meterId: { type: String, required: true },
+            date: { type: String, required: true }, // YYYY-MM-DD
+            value: { type: Number, required: true },
+            source: { type: String, required: true },
+            enteredAt: { type: Number, required: true },
+        },
+        { versionKey: false },
+    );
+    heatReadingSchema.index({ meterId: 1, date: 1 }, { unique: true });
+    HeatReadingModel = model<HeatReadingDoc>('HeatReading', heatReadingSchema);
 
     connection.on('connected', () => {
         isConnected = true;

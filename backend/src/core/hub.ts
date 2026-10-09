@@ -11,6 +11,7 @@ interface HubEvents {
     meterUpdate: [string]; // a meter's id, after new readings were stored
     airEvent: [AirEvent]; // a kibbl. air detected something
     heatingUpdate: [string]; // an account's tado rooms were read or changed
+    heatUpdate: [string]; // an account's heat meters or their readings changed
     devicePublish: [string]; // a device's summary changed outside its own messages (the tado room of its room)
 }
 

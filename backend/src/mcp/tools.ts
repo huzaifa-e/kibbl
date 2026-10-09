@@ -14,6 +14,7 @@ import { configured } from '../health/google';
 import { INTRADAY_TYPES, intraday, summary, syncStatus, trackers } from '../health/service';
 import { storageStats } from '../health/store';
 import { meterPeriods, meterReadings, meterState } from '../meters/service';
+import { meterReadings as heatMeterReadings, overview as heatOverview } from '../heat/service';
 import { allRoomHints } from '../../../shared/climate';
 import { airEvents, airReadings, lastNight, recentAirOf, smokeDays } from '../core/air';
 import { weatherForUser } from '../core/weather';
@@ -184,7 +185,7 @@ export function createMcpServer(session: SessionInfo) {
         {
             instructions:
                 "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), " +
-                'utility meters and health data from a fitness tracker. ' +
+                'utility meters, the heat used (radiator readings, Techem) and health data from a fitness tracker. ' +
                 "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends. " +
                 'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise.',
         },
@@ -447,6 +448,63 @@ export function createMcpServer(session: SessionInfo) {
                 from: range.from,
                 to: range.to,
                 readings: rows.map((r) => ({ at: localTime(r.at), value: r.value, battery_mv: r.batteryMv, signal_dbm: r.rssi })),
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_heat',
+        {
+            title: 'Heat used',
+            description:
+                'The heat used in the home from readings entered by hand or from a Techem report: each heat meter (the heat cost allocator of a radiator, in units ' +
+                'times its factor, or a meter of the whole home in kWh or m³) with its latest reading, and the use per day, month or year. Between two readings the ' +
+                "use is spread by tado's heating time in the radiator's room (spread tado), else by the degree days outside (weather), else evenly. " +
+                "Also tado's heating hours (heating power × time of all its rooms) and the mean outside temperature. With meter, that meter's readings.",
+            inputSchema: {
+                per: z.enum(['day', 'month', 'year']).default('month'),
+                from: z.string().optional().describe('first day, month or year as YYYY-MM-DD, YYYY-MM or YYYY'),
+                to: z.string().optional().describe('last one, in the same form'),
+                meter: z.string().optional().describe('a heat meter by name or id: its readings'),
+            },
+            annotations: readOnly,
+        },
+        async ({ per, from, to, meter }) => {
+            const o = await heatOverview(session.userID);
+            if (meter) {
+                const m = o.meters.find((x) => x._id === meter.trim() || x.name.toLowerCase() === meter.trim().toLowerCase());
+                if (!m) return fail(`No heat meter "${meter}". Heat meters: ${o.meters.map((x) => x.name).join(', ') || 'none'}.`);
+                return json({ meter: m.name, unit: m.unit, factor: m.factor, readings: await heatMeterReadings(session.userID, m._id) });
+            }
+            const len = per === 'day' ? 10 : per === 'month' ? 7 : 4;
+            const periods = new Map<string, { use: Record<string, number>; heating_hours: number; outside: number[] }>();
+            for (const d of o.days) {
+                const key = d.date.slice(0, len);
+                if ((from && key < from) || (to && key > to)) continue;
+                const p = periods.get(key) ?? { use: {}, heating_hours: 0, outside: [] };
+                periods.set(key, p);
+                for (const m of o.meters) if (d.use[m._id] !== undefined) p.use[m.name] = (p.use[m.name] ?? 0) + d.use[m._id];
+                p.heating_hours += d.heatingHours ?? 0;
+                if (d.outside !== undefined) p.outside.push(d.outside);
+            }
+            const r2 = (v: number) => Math.round(v * 100) / 100;
+            return json({
+                meters: o.meters.map((m) => ({
+                    id: m._id,
+                    name: m.name,
+                    kind: m.kind,
+                    unit: m.unit,
+                    factor: m.factor,
+                    latest: m.latest ?? null,
+                    readings: m.readings,
+                })),
+                per,
+                periods: [...periods].map(([key, p]) => ({
+                    period: key,
+                    use: Object.fromEntries(Object.entries(p.use).map(([k, v]) => [k, r2(v)])),
+                    tado_heating_hours: r2(p.heating_hours),
+                    outside_mean: p.outside.length ? r2(p.outside.reduce((s, v) => s + v, 0) / p.outside.length) : null,
+                })),
             });
         },
     );
