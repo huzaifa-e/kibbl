@@ -58,6 +58,10 @@ static const int OPENING_TABLE[15] = {420, 410, 387, 363, 338, 312, 284, 255, 22
 #define RELEASE_MS 120            // EN off: longer than a loop of the S42B with its display
 #define MIN_SPEED 60
 #define NUDGE_STEPS AT(60L)        // reopen a little after closing, then close again: frees kibble in the gap
+// Closed, the motor is off: held at the closed limit the S42B would keep pushing against the
+// blades and kibble (it buzzes, and the pins carry the load for hours). Enabled again, the S42B
+// takes the angle it stands at as its target; the steps wait until it has
+#define ENABLE_MS 150
 
 // ─────────────────────────── settings (EEPROM) ───────────────────────────
 struct Config {
@@ -228,29 +232,42 @@ static void add(Step kind, int32_t value, uint16_t speed = 0) {
 static void respond(long id, bool ok, const char *error = nullptr);
 static void sendInfo(long id);
 
+static bool motorOff = false;
+static bool enabling = false;  // the wait is the S42B coming on, the move is still to come
+
+static void motor(bool on) {
+    if (on) PORTB &= ~_BV(EN_BIT); else PORTB |= _BV(EN_BIT);
+    motorOff = !on;
+}
+
 static void jobUpdate() {
     if (moving || !*jobName) return;  // a job ends here once its last move is done
     if (waiting) {
         if ((int32_t)(millis() - waitUntil) < 0) return;
         waiting = false;
-        jobAt++;
+        if (enabling) enabling = false;
+        else jobAt++;
     }
     while (jobAt < jobLength && !moving && !waiting) {
         Action &a = job[jobAt];
-        if (a.kind == GO) {
+        if (a.kind == GO && motorOff) {
+            motor(true);
+            enabling = true;
+            waitUntil = millis() + ENABLE_MS;
+            waiting = true;
+        } else if (a.kind == GO) {
             startMove(a.value, a.speed);
             jobAt++;
         } else if (a.kind == ZERO) {
             // enabled again where it stands: the S42B holds its encoder angle, here is open
-            PORTB &= ~_BV(EN_BIT);
+            motor(true);
             noInterrupts();
             position = target = 0;
             interrupts();
             savePosition();
             jobAt++;
         } else {
-            if (a.kind == RELEASE) PORTB |= _BV(EN_BIT);
-            else PORTB &= ~_BV(EN_BIT);  // a wait after a release: enabled again
+            motor(a.kind != RELEASE);  // a wait after a release: enabled again
             waitUntil = millis() + a.value;
             waiting = true;
         }
@@ -261,6 +278,7 @@ static void jobUpdate() {
     }
     if (jobAt >= jobLength && !moving && !waiting) {
         if (!strcmp(jobName, "teach")) teachLimit();
+        if (readPosition() == CLOSED_POS) motor(false);
         if (jobPortions) {
             Serial.print(F("{\"type\":\"event\",\"event\":\"fed\",\"portions\":"));
             Serial.print(jobPortions);
@@ -322,6 +340,7 @@ static void sendInfo(long id) {
     Serial.print(F(",\"ok\":true,\"model\":\"kibbl-feeder\",\"position\":")); Serial.print(p);
     Serial.print(F(",\"opening\":")); Serial.print(openingAt(p) / 10.0, 1);
     Serial.print(F(",\"busy\":")); Serial.print(busy() ? F("true") : F("false"));
+    Serial.print(F(",\"motor\":")); Serial.print(motorOff ? F("false") : F("true"));
     if (busy()) { Serial.print(F(",\"job\":\"")); Serial.print(jobName); Serial.print('"'); }
     Serial.print(F(",\"feeder\":{\"opening\":")); Serial.print(config.opening / 10.0, 1);
     Serial.print(F(",\"openMs\":")); Serial.print(config.openMs);
@@ -424,7 +443,7 @@ static void command(char *text) {
         bool run = running();
         jobLength = jobAt = jobPortions = jobRepeats = 0;
         jobName = "";
-        waiting = false;
+        waiting = enabling = false;
         if (run && moving) {
             // the limit is where Stop was pressed: no more steps from here
             noInterrupts();
@@ -570,6 +589,7 @@ void setup() {
     bool known = check == ~p && labs(p) <= 100000000L;
     position = target = known ? p : 0;
 
+    if (position == CLOSED_POS) motor(false);  // closed: off, as after a close
     timerStart();
     Serial.print(F("{\"type\":\"hello\",\"model\":\"kibbl-feeder\",\"caps\":[\"feeder\"],\"positionKnown\":"));
     Serial.print(known ? F("true") : F("false"));

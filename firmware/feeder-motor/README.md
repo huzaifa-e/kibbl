@@ -101,8 +101,13 @@ Taught so far:
 | --- | --- | ---: | --- |
 | 2026-10-08 | empty | 1782 | the design's stroke, closed fully |
 | 2026-10-09 | loaded with kibble | 2293 | closing run stopped at 2364, the opening run 71 steps short of the old 0; runs at 4000 steps/s, so part of the extra 500 steps may be the motor lagging when Stop came |
+| 2026-10-09 | loaded with kibble | 2092 | set by hand: at 2293 the S42B kept pushing against the closed blades and buzzed |
 
 `close`, `open`, the slider and the feeding levels then work between the two: the opening table of the design is stretched over them. Teach again when the load or the mechanics change.
+
+### Off when closed
+
+Held at the closed limit, the S42B pushes for as long as its encoder is short of the target: against blades and kibble it buzzes, and the pins carry the load. So the motor is switched off (EN high) whenever a job ends at the closed limit, and at power-up when it stands there; `info` tells it with `"motor":false`. The next move enables it and waits 150 ms before the first step: enabled again, the S42B takes the angle it stands at as its target. Open, the motor stays on and holds 0. An iris turned by hand while closed and off needs `home` afterwards.
 
 ### Finding the zero with EN
 
