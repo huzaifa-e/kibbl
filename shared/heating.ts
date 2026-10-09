@@ -2,9 +2,9 @@ import type { RoomKind } from './roomKind';
 
 /*
  * Heating through tado: the rooms of the account's tado home as the app shows them, and
- * what the app can ask for. tado's REST API allows 100 requests a day without Auto-Assist:
- * the server reads all rooms in one request every 20 minutes and keeps the rest for
- * commands (backend/src/tado).
+ * what the app can ask for. tado's REST API allows 100 requests a day without Auto-Assist,
+ * more with it: the server reads all rooms in one request, every 2 to 20 minutes by what is
+ * left, and keeps the rest for commands (backend/src/tado).
  */
 
 export interface HeatingRoom {

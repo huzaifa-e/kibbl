@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseRate } from './client';
-import { classicRoom, xRoom } from './service';
+import { classicRoom, pollMinutes, xRoom } from './service';
 
 test('a classic zone state becomes a room', () => {
     const room = classicRoom(1, 'Living Room', {
@@ -49,4 +49,12 @@ test('the rate limit header says what is left', () => {
     assert.equal(empty.remaining, 0);
     assert.ok(empty.resetAt! > Date.now() + 100_000);
     assert.deepEqual(parseRate(null), {});
+});
+
+test('the rooms are read as often as the budget left allows', () => {
+    assert.equal(pollMinutes(undefined), 20);
+    assert.equal(pollMinutes(950), 2);
+    assert.equal(pollMinutes(200), 5);
+    assert.equal(pollMinutes(100), 20);
+    assert.equal(pollMinutes(10), 60);
 });

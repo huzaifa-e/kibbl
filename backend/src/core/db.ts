@@ -298,7 +298,7 @@ async function init() {
     AirEventModel = model<AirEventDoc>('AirEvent', airEventSchema);
 
     /* tado: an account's link (the tokens encrypted, its home and rooms) and every reading of
-     * its rooms, one per poll (every 20 minutes). */
+     * its rooms, one per poll (every 2 to 20 minutes, by tado's daily budget). */
     const tadoLinkSchema = new Schema<TadoLinkDoc>(
         {
             _id: { type: String, required: true },

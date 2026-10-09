@@ -95,7 +95,7 @@ export function heatingCardHtml() {
         const b = h.budget;
         body = `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>tado room</th><th>Now</th><th>In room</th></tr></thead><tbody>${list}</tbody></table></div>
             <div class="card-body d-flex flex-wrap align-items-center gap-2 text-secondary small">
-                <span class="flex-fill">${h.home ? escapeHtml(h.home.name) : ''}${h.lastPoll ? ` · read ${timeAgo(h.lastPoll)}` : ''} · every ${b?.pollMinutes ?? 20} min${b?.remaining !== undefined ? ` · ${b.remaining} of 100 requests left today` : ''}${b?.paused ? ' · paused to keep requests for your commands' : ''}</span>
+                <span class="flex-fill">${h.home ? escapeHtml(h.home.name) : ''}${h.lastPoll ? ` · read ${timeAgo(h.lastPoll)}` : ''} · every ${b?.pollMinutes ?? 20} min${b?.remaining !== undefined ? ` · ${b.remaining} requests left today` : ''}${b?.paused ? ' · paused to keep requests for your commands' : ''}</span>
                 <button class="btn btn-sm btn-ghost-danger" data-heating-disconnect>Disconnect</button>
             </div>
             ${h.error ? `<div class="card-body pt-0">${errorAlert(escapeHtml(h.error))}</div>` : ''}`;

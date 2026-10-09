@@ -7,10 +7,12 @@ import { logger } from '../core/logger';
 import { HOPS_API, MY_API, TadoError, forgetTokens, pollDeviceLogin, startDeviceLogin, tadoRequest, type DeviceLogin } from './client';
 
 /*
- * Heating through tado for each account that connected it (Devices). With 100 requests a day
- * (no Auto-Assist) the server reads all rooms in one request every POLL_MINUTES (72 a day)
- * and keeps the rest for what the person and the kibbl. air ask for. With less left than
- * LOW_BUDGET it reads every hour, below RESERVE only commands go out.
+ * Heating through tado for each account that connected it (Devices). The server reads all
+ * rooms in one request, as often as what is left of tado's daily budget allows (POLL_STEPS):
+ * every 2 minutes with hundreds left (an account with 1000 a day), so a change made in tado's
+ * own app shows here soon; every 20 minutes with 100 a day (no Auto-Assist, 72 reads), the
+ * rest kept for what the person and the kibbl. air ask for. With less left than LOW_BUDGET
+ * it reads every hour, below RESERVE only commands go out.
  *
  * tado's rooms stand in the rooms of the home (core/rooms.ts), made from their names when tado
  * connects. A kibbl. air in the same room shows tado's temperature and humidity; when it
@@ -20,6 +22,11 @@ import { HOPS_API, MY_API, TadoError, forgetTokens, pollDeviceLogin, startDevice
 
 const log = logger('tado');
 
+// minutes between reads by the requests left today: 720 reads a day at 2 minutes, leaving 280 of 1000
+const POLL_STEPS = [
+    { left: 300, minutes: 2 },
+    { left: 150, minutes: 5 },
+];
 const POLL_MINUTES = 20;
 const SLOW_POLL_MINUTES = 60;
 const LOW_BUDGET = 20;
@@ -174,8 +181,10 @@ async function poll(userID: string) {
     hub.emit('heatingUpdate', userID);
 }
 
-function pollMinutes(remaining: number | undefined) {
-    return remaining !== undefined && remaining < LOW_BUDGET ? SLOW_POLL_MINUTES : POLL_MINUTES;
+export function pollMinutes(remaining: number | undefined) {
+    if (remaining === undefined) return POLL_MINUTES;
+    if (remaining < LOW_BUDGET) return SLOW_POLL_MINUTES;
+    return POLL_STEPS.find((s) => remaining >= s.left)?.minutes ?? POLL_MINUTES;
 }
 
 async function tick() {

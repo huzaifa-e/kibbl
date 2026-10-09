@@ -557,7 +557,7 @@ export function createMcpServer(session: SessionInfo) {
             title: 'Heating',
             description:
                 'The heating through tado: each tado room with its temperature and humidity (measured by tado), what it heats to (null: off), heating power in %, manual or schedule, ' +
-                "tado's open window detection, and the room of the home it is in (a kibbl. air in the same room shares its temperature and humidity). With hours, the readings of a room (every 20 min).",
+                "tado's open window detection, and the room of the home it is in (a kibbl. air in the same room shares its temperature and humidity). With hours, the readings of a room (every 2 to 20 min).",
             inputSchema: {
                 room: z.string().optional().describe('a tado room by name, for its readings'),
                 hours: z

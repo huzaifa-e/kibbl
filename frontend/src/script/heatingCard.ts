@@ -4,7 +4,7 @@ import { errorAlert, escapeHtml } from './utils';
 /* A card per room of tado on the home page, as tado's own app shows a room: what it measures,
  * the temperature it heats to in large, a bar to slide it (at the bottom: off) and how long a
  * change lasts. A change is sent a moment after the bar is let go, not while it moves: each
- * one is one of tado's 100 requests a day. */
+ * one is one of tado's requests of the day. */
 
 let status: HeatingStatus | undefined;
 const MIN = 5;
