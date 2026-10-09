@@ -101,3 +101,30 @@ export const REPORT_ROOMS: Record<string, { name: string; kind?: string }> = {
     W: { name: 'Living room', kind: 'living' },
     Z: { name: 'Room' },
 };
+
+/* What the heat data says (backend/src/heat/insights.ts): the radiators by their use, and hints
+ * where heat may be wasted. */
+
+export interface HeatRank {
+    meterId: string;
+    name: string;
+    roomId?: string;
+    use: number; // units with the radiator's factor
+    share: number; // of all radiators, 0..1
+    kWh?: number; // by the latest report's kWh per unit
+}
+
+export interface HeatInsight {
+    kind: 'top' | 'weather' | 'warm' | 'window' | 'cold' | 'loss' | 'data';
+    level: 'info' | 'warn';
+    title: string;
+    text: string;
+    meterId?: string;
+    roomId?: string;
+}
+
+export interface HeatInsights {
+    period?: { from: string; to: string }; // of the ranking
+    ranking: HeatRank[];
+    insights: HeatInsight[];
+}

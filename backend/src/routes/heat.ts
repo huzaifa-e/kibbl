@@ -4,6 +4,7 @@ import { HEAT_UNITS, type HeatUnit } from '../../../shared/heat';
 import { checkAuthMiddleware } from '../core/auth';
 import { logger } from '../core/logger';
 import { ownRoom } from '../core/rooms';
+import { heatInsights } from '../heat/insights';
 import { OcrError } from '../heat/ocr';
 import { ReportError, applyReport, listReports, removeReport, reportFile, uploadReport, type ApplyDevice } from '../heat/reports';
 import {
@@ -65,6 +66,11 @@ export default function initHeatRoutes(app: express.Application) {
     // the meters and the use of every day from the first reading on
     app.get('/api/heat', auth, async (req: RequestWithSessionInfo, res) => {
         res.json(await overview(user(req)));
+    });
+
+    // which radiator uses the most, and where heat may be wasted
+    app.get('/api/heat/insights', auth, async (req: RequestWithSessionInfo, res) => {
+        res.json(await heatInsights(user(req)));
     });
 
     app.get('/api/heat/meters', auth, async (req: RequestWithSessionInfo, res) => {
