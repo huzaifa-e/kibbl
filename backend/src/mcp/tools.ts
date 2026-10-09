@@ -16,6 +16,8 @@ import { storageStats } from '../health/store';
 import { meterPeriods, meterReadings, meterState } from '../meters/service';
 import { meterReadings as heatMeterReadings, overview as heatOverview } from '../heat/service';
 import { heatInsights } from '../heat/insights';
+import { analysis } from '../analysis/service';
+import { LEVEL_ORDER } from '../../../shared/analysis';
 import { allRoomHints } from '../../../shared/climate';
 import { airEvents, airReadings, lastNight, recentAirOf, smokeDays } from '../core/air';
 import { weatherForUser } from '../core/weather';
@@ -187,7 +189,7 @@ export function createMcpServer(session: SessionInfo) {
             instructions:
                 "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), " +
                 'utility meters, the heat used (radiator readings, Techem) and health data from a fitness tracker. ' +
-                "Start with kibbl_overview. All times are the home's local time; ranges of days include both ends. " +
+                "Start with kibbl_overview; kibbl_analysis says what stands out across all of it (alerts, things worth a look, hints). All times are the home's local time; ranges of days include both ends. " +
                 'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise.',
         },
     );
@@ -506,6 +508,39 @@ export function createMcpServer(session: SessionInfo) {
                     use: Object.fromEntries(Object.entries(p.use).map(([k, v]) => [k, r2(v)])),
                     tado_heating_hours: r2(p.heating_hours),
                     outside_mean: p.outside.length ? r2(p.outside.reduce((s, v) => s + v, 0) / p.outside.length) : null,
+                })),
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_analysis',
+        {
+            title: 'Analysis of the home',
+            description:
+                'Everything that stands out now, across all devices and data, as the Analysis page shows it: per part (heat & radiators, air in the rooms, heating, ' +
+                'meters, devices, health) the findings with a level (alert, warn, info, good), a title and the explanation. Air: the advice for each room, ' +
+                'sensor errors, stale air last night, cigarettes, a kibbl. air reading other than tado in the same room. Meters: sync, battery, yesterday against ' +
+                'the usual day, the base load at night. Devices: offline, camera errors, updates, approvals. Health: resting heart rate, HRV and sleep of the last ' +
+                'week against the four before, tracker battery and sync. Heat: the radiators ranked and where heat is wasted (also kibbl_heat_insights).',
+            inputSchema: {
+                min_level: z.enum(['alert', 'warn', 'info', 'good']).default('good').describe('leave out what matters less than this'),
+                fresh: z.boolean().default(false).describe('analyse again now instead of the report of the last 2 minutes'),
+            },
+            annotations: readOnly,
+        },
+        async ({ min_level, fresh }) => {
+            const r = await analysis(session.userID, fresh);
+            const keep = LEVEL_ORDER.slice(0, LEVEL_ORDER.indexOf(min_level) + 1);
+            return json({
+                analysed_at: localTime(r.at),
+                counts: r.counts,
+                parts: r.sections.map((s) => ({
+                    part: s.title,
+                    ...(s.error ? { error: s.error } : {}),
+                    findings: s.findings
+                        .filter((f) => keep.includes(f.level))
+                        .map(({ level, title, text, device }) => ({ level, title, text, ...(device ? { device } : {}) })),
                 })),
             });
         },
