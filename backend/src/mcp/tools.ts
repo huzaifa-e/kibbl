@@ -458,7 +458,7 @@ export function createMcpServer(session: SessionInfo) {
             title: 'Heat used',
             description:
                 'The heat used in the home from readings entered by hand or from a Techem report: each heat meter (the heat cost allocator of a radiator, in units ' +
-                'times its factor, or a meter of the whole home in kWh or m³) with its latest reading, and the use per day, month or year. Between two readings the ' +
+                'times its factor, or a meter of the whole home in kWh or m³) with its latest reading, and the use per day, month or year; kwh_per_unit is a radiator unit in kWh by the latest imported heating cost report. Between two readings the ' +
                 "use is spread by tado's heating time in the radiator's room (spread tado), else by the degree days outside (weather), else evenly. " +
                 "Also tado's heating hours (heating power × time of all its rooms) and the mean outside temperature. With meter, that meter's readings.",
             inputSchema: {
@@ -498,6 +498,7 @@ export function createMcpServer(session: SessionInfo) {
                     latest: m.latest ?? null,
                     readings: m.readings,
                 })),
+                kwh_per_unit: o.energy ? { value: o.energy.kWhPerUnit, from_report: `${o.energy.from ?? '?'} to ${o.energy.to ?? '?'}` } : null,
                 per,
                 periods: [...periods].map(([key, p]) => ({
                     period: key,
