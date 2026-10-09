@@ -92,6 +92,8 @@ export interface FeederState {
     speed?: number; // steps/s
     accel?: number; // steps/s²
     closedPos?: number; // the closed limit taught under load, steps from the open one (0)
+    elapsedMs?: number; // while busy: how long its job has been running
+    feed?: { portions: number; opening: number; openMs: number }; // while feeding: the feed it runs
 }
 
 // what the app may tune on a feeder while it is being set up (firmware/feeder-motor)
@@ -124,6 +126,7 @@ export interface DeviceTelemetry {
     fps: number;
     frameBytes: number;
     air?: AirState; // a kibbl. air
+    feeder?: FeederState; // a kibbl. feeder: several a second while the iris moves
     time: number; // server time it arrived
 }
 

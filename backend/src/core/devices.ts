@@ -271,7 +271,24 @@ export function parseFeederState(v: unknown): FeederState | undefined {
         speed: whole(f.speed, 100000),
         accel: whole(f.accel, 1000000),
         closedPos: whole(f.closedPos, 100000),
+        elapsedMs: f.busy ? whole(f.elapsedMs, 10000000) : undefined,
+        feed: f.busy ? parseFeed(f.feed) : undefined,
     };
+}
+
+function parseFeed(v: unknown): FeederState['feed'] {
+    if (typeof v !== 'object' || v === null) return undefined;
+    const f = v as Record<string, unknown>;
+    const ok = (x: unknown, min: number, max: number) => typeof x === 'number' && Number.isFinite(x) && x >= min && x <= max;
+    if (!ok(f.portions, 1, 10) || !ok(f.opening, 2, 50) || !ok(f.openMs, 0, 100000)) return undefined;
+    return { portions: f.portions as number, opening: f.opening as number, openMs: f.openMs as number };
+}
+
+// what redraws the controls: the iris moving is sent with the telemetry, only its start and end are
+function feederShown(f: FeederState | undefined) {
+    if (!f) return '';
+    const { opening, position, ...rest } = f;
+    return JSON.stringify(f.busy ? { ...rest, elapsedMs: undefined } : { ...rest, opening, position });
 }
 
 export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) {
@@ -279,11 +296,12 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
     if (!dev) {
         return;
     }
-    // a kibbl. feeder: the app shows the iris as soon as it moves
+    // a kibbl. feeder: the app shows the iris as soon as it moves, and follows it in the telemetry
     const feeder = parseFeederState(msg.feeder);
-    if (feeder && JSON.stringify(feeder) !== JSON.stringify(parseFeederState(dev.info.feeder))) {
+    if (feeder) {
+        const changed = feederShown(feeder) !== feederShown(parseFeederState(dev.info.feeder));
         dev.info.feeder = feeder;
-        void publishDevice(deviceId);
+        if (changed) void publishDevice(deviceId);
     }
     const num = (key: string) => (typeof msg[key] === 'number' ? (msg[key] as number) : 0);
     dev.telemetry = {
@@ -295,6 +313,7 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
         fps: num('fps'),
         frameBytes: num('frameBytes'),
         air: parseAirState(msg),
+        feeder,
         time: Date.now(),
     };
     hub.emit('telemetry', deviceId, dev.telemetry);

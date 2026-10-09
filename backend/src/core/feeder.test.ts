@@ -37,6 +37,8 @@ test('the feeder state is kept only as the device should send it', () => {
         speed: undefined,
         accel: undefined,
         closedPos: undefined,
+        elapsedMs: undefined,
+        feed: undefined,
     });
     const state = parseFeederState({ opening: 2.3, busy: true, job: 'feed', position: 1782, speed: 800, accel: 3000 });
     assert.equal(state?.job, 'feed');
@@ -47,6 +49,12 @@ test('the feeder state is kept only as the device should send it', () => {
     assert.equal(parseFeederState({ opening: 3 }), undefined);
     assert.equal(parseFeederState(null), undefined);
     assert.equal(parseFeederState({ opening: 3, busy: true, job: '<script>' })?.job, undefined);
+    // the feed it runs and how far it is, only while busy
+    const feeding = parseFeederState({ opening: 12, busy: true, job: 'feed', elapsedMs: 840, feed: { portions: 2, opening: 22, openMs: 1000 } });
+    assert.deepEqual(feeding?.feed, { portions: 2, opening: 22, openMs: 1000 });
+    assert.equal(feeding?.elapsedMs, 840);
+    assert.equal(parseFeederState({ opening: 2, busy: false, elapsedMs: 840, feed: { portions: 2, opening: 22, openMs: 1000 } })?.feed, undefined);
+    assert.equal(parseFeederState({ opening: 12, busy: true, feed: { portions: 20, opening: 22, openMs: 1000 } })?.feed, undefined);
 });
 
 test('tuning a feeder: speed, acceleration, steps, the zero', () => {

@@ -1,10 +1,11 @@
 import { feedOpeningAt, feedTimeline, type FeederTuning, type FeedTimeline } from '../../../shared/feeder';
-import { FEEDER_MAX_MM, type FeedLevel } from '../../../shared/protocol';
+import { FEEDER_MAX_MM, type DeviceTelemetry, type FeederState, type FeedLevel } from '../../../shared/protocol';
+import { socket } from './socket';
 
 /* The iris of a feeder, drawn: six blades around the hole at an opening, and the feeding
- * levels played on it with the timing of shared/feeder.ts. The cards are redrawn with every
- * update, so the animation is not tied to an element: one loop finds the levels on the page
- * and sets each to where its feed is now, counted from a common clock. */
+ * levels played on it with the timing of shared/feeder.ts, the real iris while it moves. The
+ * cards are redrawn with every update, so the animation is not tied to an element: one loop
+ * finds the irises on the page and sets each to where it is now, counted from a common clock. */
 
 const R = 46; // the housing, in a viewBox of -50..50
 const HOLE = 40; // the hole's inner radius fully open
@@ -79,45 +80,115 @@ function graphSvg(t: FeedTimeline) {
     </svg>`;
 }
 
-// a feeding level, played: the iris, the opening over time, how long it is open
-export function feedLevelAnimHtml(l: FeedLevel, tuning: FeederTuning) {
+// a feeding level, played: the iris, the opening over time, how long it is open. While the
+// feeder runs this feed, it shows the real iris and where the feed is instead
+export function feedLevelAnimHtml(deviceId: string, l: FeedLevel, tuning: FeederTuning) {
     const key = [l.portions, l.opening, l.openMs, tuning.speed ?? 0, tuning.accel ?? 0, tuning.closedPos ?? 0].join(',');
     const t = feedTimeline(l, tuning);
     timelines.set(key, t);
     const s = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
     startLoop();
-    return `<span class="feeder-feed" data-feed-anim="${key}">
+    return `<span class="feeder-feed" data-feed-anim="${key}" data-feed-device="${deviceId}">
         ${irisSvg(2, 44)}
         ${graphSvg(t)}
         <span class="small text-secondary">${l.portions > 1 ? `${l.portions} × ` : ''}open ${s(t.openMs / l.portions)} · ${s(t.ms)} in all</span>
     </span>`;
 }
 
+/* The real iris: the feeder reports where it is several times a second while it moves
+ * (telemetry), and the drawing eases towards each report so it moves as smoothly as the blades. */
+interface Live {
+    target: number; // mm, the last report
+    shown: number; // mm, drawn now
+    busy: boolean;
+    feed?: FeederState['feed'];
+    elapsedMs: number; // of the job at the last report
+    at: number; // when it came, performance.now()
+}
+const live = new Map<string, Live>();
+const EASE_MS = 70;
+
+function report(deviceId: string, f: FeederState) {
+    const was = live.get(deviceId);
+    live.set(deviceId, {
+        target: f.opening,
+        shown: was?.shown ?? f.opening,
+        busy: f.busy,
+        feed: f.busy ? f.feed : undefined,
+        elapsedMs: f.elapsedMs ?? 0,
+        at: performance.now(),
+    });
+}
+
+// a card drawn from the device: its state, unless the reports are newer (a redraw for another reason)
+export function followFeeder(deviceId: string, f: FeederState | undefined) {
+    const was = live.get(deviceId);
+    if (f && (!was || (!was.busy && !f.busy))) report(deviceId, f);
+    startLoop();
+}
+
+// the slider dragged: the iris shows where it will go
+export function previewIris(deviceId: string, mm: number) {
+    const was = live.get(deviceId);
+    if (was && !was.busy) was.target = mm;
+}
+
+socket.on('telemetry', (deviceId: string, t: DeviceTelemetry) => {
+    if (t.feeder) report(deviceId, t.feeder);
+});
+
 let running = false;
+let last = 0;
 
 function startLoop() {
     if (running) return;
     running = true;
+    last = performance.now();
     requestAnimationFrame(frame);
 }
 
 function frame(now: number) {
     const els = document.querySelectorAll<HTMLElement>('[data-feed-anim]');
-    if (!els.length) {
-        running = false; // started again by the next card that has levels
+    const irises = document.querySelectorAll<HTMLElement>('[data-feeder-iris]');
+    if (!els.length && !irises.length) {
+        running = false; // started again by the next card of a feeder
         return;
+    }
+    const ease = 1 - Math.exp(-(now - last) / EASE_MS);
+    last = now;
+    for (const l of live.values()) l.shown += (l.target - l.shown) * ease;
+    for (const svg of irises) {
+        const l = live.get(svg.dataset.feederIris ?? '');
+        if (l) setIris(svg, l.shown);
     }
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     for (const el of els) {
         const t = timelineOf(el);
         const total = t.ms + PAUSE_MS;
-        // without motion: the iris at the level's opening, the graph without a playhead
-        const ms = still ? t.segments[0].ms : now % total;
+        const l = live.get(el.dataset.feedDevice ?? '');
+        const [portions, opening, openMs] = (el.dataset.feedAnim ?? '').split(',').map(Number);
+        const mine = l?.feed && l.feed.portions === portions && l.feed.opening === opening && l.feed.openMs === openMs;
+        let mm: number;
+        let x: number;
+        if (l?.busy && mine) {
+            // this feed is running: the real iris, the playhead where the feed is
+            mm = l.shown;
+            x = (100 * Math.min(l.elapsedMs + now - l.at, t.ms)) / total;
+        } else if (l?.busy) {
+            // the iris is doing something else: the levels wait, closed
+            mm = 2;
+            x = -1;
+        } else {
+            // without motion: the iris at the level's opening, the graph without a playhead
+            const ms = still ? t.segments[0].ms : now % total;
+            mm = feedOpeningAt(t, ms);
+            x = still ? -1 : (100 * ms) / total;
+        }
         const svg = el.querySelector('.feeder-iris');
-        if (svg) setIris(svg, feedOpeningAt(t, ms));
+        if (svg) setIris(svg, mm);
+        el.classList.toggle('feeder-feed-waiting', !!l?.busy && !mine);
         const head = el.querySelector('.feeder-feed-head');
         if (head) {
-            const x = still ? -1 : (100 * ms) / total;
             head.setAttribute('x1', String(x));
             head.setAttribute('x2', String(x));
         }

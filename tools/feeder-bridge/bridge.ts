@@ -24,6 +24,7 @@ const identityFile = '.feeder-bridge.json';
 const BAUD = 115200;
 const MIN_MM = 2.5; // at or below: close, the iris stops short of its closed stop
 const ACCEPT_MS = 300; // the Nano refuses at once (busy, out of range); silence means it started
+const FOLLOW_MS = 150; // while the iris moves the app follows it: where it is, this often
 
 const identity: { id: string; secret: string } = existsSync(identityFile)
     ? JSON.parse(readFileSync(identityFile, 'utf-8'))
@@ -39,6 +40,8 @@ interface Feeder {
     speed?: number;
     accel?: number;
     closedPos?: number;
+    elapsedMs?: number;
+    feed?: { portions: number; opening: number; openMs: number };
 }
 
 let feeder: Feeder = { opening: 0, busy: false };
@@ -156,7 +159,9 @@ function openNano(path: string) {
 function watchNano(msg: Json) {
     const state = msg.type === 'response' ? stateFrom(msg) : undefined;
     if (state) {
-        feeder = state;
+        if (typeof msg.feeder === 'object' && msg.feeder !== null) nanoInfo = { ...nanoInfo, feeder: msg.feeder };
+        feeder = state.busy ? { ...state, elapsedMs: Date.now() - jobStart, feed: jobFeed } : state;
+        if (!state.busy) jobFeed = undefined;
         sendState();
     }
     if (msg.type === 'event' && msg.event === 'fed') console.log(`fed ${String(msg.portions)} portion(s)`);
@@ -177,6 +182,19 @@ function closeNano(why: string) {
 /* ------------------------------ the server ------------------------------ */
 
 let socket: WebSocket | undefined;
+let jobStart = 0;
+let jobFeed: Feeder['feed'];
+let following: NodeJS.Timeout | undefined;
+
+// while the Nano is busy: its info (it answers while moving) every FOLLOW_MS, each one sent on
+function follow() {
+    clearTimeout(following);
+    following = setTimeout(async () => {
+        if (!port || !feeder.busy) return;
+        await nanoSend({ cmd: 'info' }, 1000); // watchNano sends it on
+        if (feeder.busy) follow();
+    }, FOLLOW_MS);
+}
 
 function sendState() {
     if (socket?.readyState === WebSocket.OPEN) {
@@ -215,15 +233,24 @@ async function run(msg: Json): Promise<Json> {
         return { ok: false, error: 'not on the feeder' };
     }
     const job = String(cmd.cmd);
+    const started = Date.now();
+    const config = (nanoInfo.feeder ?? {}) as Json;
+    const feed: Feeder['feed'] =
+        cmd.cmd === 'feed'
+            ? { portions: Number(cmd.portions), opening: Number(cmd.opening ?? config.opening), openMs: Number(cmd.openMs ?? config.openMs) }
+            : undefined;
     const done = nanoSend(cmd);
     const first = await Promise.race([done, new Promise<undefined>((r) => setTimeout(r, ACCEPT_MS))]);
     if (first) {
         if (first.ok === false) return { ok: false, error: String(first.error ?? 'refused') };
         return { ok: true, feeder: stateFrom(first) ?? feeder };
     }
-    // moving: the app hears where the iris is when it is done
-    feeder = { ...feeder, busy: true, job };
+    // moving: the app follows the iris until it is done
+    jobStart = started;
+    jobFeed = feed;
+    feeder = { ...feeder, busy: true, job, elapsedMs: Date.now() - started, feed };
     sendState();
+    follow();
     return { ok: true, feeder };
 }
 
