@@ -4,6 +4,7 @@ from behind, the parts exploded, and what the camera sees of the bowl. Needs mat
 trimesh next to build123d.
 
     python render.py
+    python render.py --orbit    only the turning GIF (a few minutes)
 """
 import math
 import os
@@ -155,8 +156,54 @@ def camera_view(path):
     plt.close(fig)
 
 
+def orbit(path, frames=36):
+    """One turn around the closed feeder, then one with the housing's right side cut away: iris, motor, S42B, board."""
+    from build123d import Box, Pos
+    from PIL import Image
+
+    items = everything()
+    housing = {'body', 'shell', 'hopper', 'hopper_lid', 'floor'}
+    # away: the housing right of the chute and behind the front wall, so the motor and its driver show
+    away = Pos(30 + 100, 20, 200) * Box(200, 160, 500)
+    cut = []
+    for n, s, c in items:
+        if n in housing:
+            s = s - away
+        cut.append((n, s, c))
+    lim = ((-115, 115), (-260, 100), (0, 400))
+    pics = []
+    for its, title in ((items, 'kibbl. feeder'), (cut, 'side open: the motor and its S42B hang under the iris')):
+        light = np.array([0.3, -0.6, 0.7])
+        triangles, colors = meshes(its, light / np.linalg.norm(light), max_edge=8.0)
+        for k in range(frames):
+            azim = -60 + 360 * k / frames
+            fig = plt.figure(figsize=(6.4, 7.2), facecolor=PAPER)
+            ax = fig.add_subplot(projection='3d')
+            ax.add_collection3d(Poly3DCollection(triangles, facecolors=colors, edgecolors=colors, linewidths=0.2))
+            (x0, x1), (y0, y1), (z0, z1) = lim
+            ax.set_xlim(x0, x1)
+            ax.set_ylim(y0, y1)
+            ax.set_zlim(z0, z1)
+            ax.set_box_aspect((x1 - x0, y1 - y0, z1 - z0), zoom=1.2)
+            ax.view_init(elev=18, azim=azim)
+            ax.set_facecolor(PAPER)
+            ax.axis('off')
+            fig.text(0.5, 0.95, title, ha='center', color=INK, fontsize=10, weight='bold')
+            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            fig.canvas.draw()
+            pics.append(Image.frombuffer('RGBA', fig.canvas.get_width_height(), fig.canvas.buffer_rgba()).convert('RGB'))
+            plt.close(fig)
+    pics = [p.quantize(colors=96, method=Image.Quantize.MEDIANCUT) for p in pics]
+    pics[0].save(path, save_all=True, append_images=pics[1:], duration=110, loop=0, optimize=True)
+
+
 if __name__ == '__main__':
+    import sys
+
     os.makedirs(os.path.join(HERE, 'images'), exist_ok=True)
+    orbit(os.path.join(HERE, 'images', 'feeder-orbit.gif'))
+    if '--orbit' in sys.argv:
+        raise SystemExit
     camera_view(os.path.join(HERE, 'images', 'camera-view.png'))
     outside_and_cut(os.path.join(HERE, 'images', 'feeder.png'))
     bay(os.path.join(HERE, 'images', 'bay.png'))
