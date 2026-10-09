@@ -26,8 +26,8 @@ static const note_t tone_calibrate_end[]   = {{500, 280, 100}, {300, 180, 80}};
 static const note_t tone_logged[]          = {{620, 110, 95}, {735, 180, 100}};
 // two rising tones, softer than the alarms: fresh air comes in
 static const note_t tone_window[]          = {{660, 90, 70}, {990, 140, 0}};
-// two falling tones, soft: the damp of a shower is still in the bathroom
-static const note_t tone_shower[]          = {{880, 120, 90}, {660, 160, 0}};
+// beep beep: the shower is over, the door is still shut
+static const note_t tone_shower[]          = {{880, 120, 120}, {880, 120, 0}};
 // three long low tones: unlike the traffic light, something to act on now
 static const note_t tone_health[]          = {{520, 300, 150}, {520, 300, 150}, {520, 300, 0}};
 // the temporal pattern of smoke alarms (ISO 8201): three tones, a pause

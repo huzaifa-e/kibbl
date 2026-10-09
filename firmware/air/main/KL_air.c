@@ -39,7 +39,10 @@ static volatile bool night = false;
 
 /* What the room is used for (config_air_room, set by the server from the kind of the room).
  * A bathroom: a shower is a quick rise of the humidity; once it stops rising the device
- * beeps every few minutes until the humidity is back to where it was before. A bedroom: the
+ * beeps twice every 2 minutes until the door or the window opens: then the CO2 the person
+ * breathed out and the steam leave fast (in this bathroom 200 ppm and 13 points within
+ * 2 minutes, a closed one dries far slower), or the window detector sees it. It stays
+ * quiet for that shower then, also if the door closes again. A bedroom: the
  * light stays off, the traffic light, the reminder and the window do not beep, only a risk
  * to health does, also at night. The fire alarm sounds in every room. */
 #define SHOWER_SAMPLE_MS (30 * 1000) // a humidity sample every 30 s
@@ -49,6 +52,9 @@ static volatile bool night = false;
 #define SHOWER_PEAK_MS   (2 * 60 * 1000)          // no new peak for this long: the shower is over, the beeps start
 #define SHOWER_BEEP_MS   (2 * 60 * 1000)
 #define SHOWER_BACK      2.0f                     // points above the humidity before it: back to it
+#define SHOWER_OPEN_RH   5.0f                     // points the humidity fell within SHOWER_OPEN_SAMPLES: the door is open
+#define SHOWER_OPEN_SAMPLES 4                     // 2 minutes
+#define SHOWER_OPEN_CO2  150                      // ppm below the highest of the shower: the door is open
 #define SHOWER_MAX_MS    (3 * 3600 * 1000LL)      // a forgotten one ends anyway
 
 #define HEALTH_COLD    15.0f // °C: the airways cool down, colds become likely (WHO: 18 indoors)
@@ -63,6 +69,8 @@ static float rh_samples[SHOWER_SAMPLES];
 static int rh_count                   = 0;
 static int64_t rh_last                = 0;
 static bool shower                    = false;
+static bool shower_aired              = false; // the door or the window opened: no more beeps for it
+static uint16_t shower_co2;                     // the highest CO2 since it started
 static float shower_before, shower_peak;
 static int64_t shower_start, shower_peak_at, shower_beep;
 static int64_t health_beep            = -HEALTH_BEEP_MS;
@@ -85,7 +93,7 @@ static void room_apply(void) {
     DEBUG_F("air: room %s\n", room_name(room));
 }
 
-static void shower_step(float rh, int64_t now) {
+static void shower_step(float rh, uint16_t co2, int64_t now) {
     if (room != AIR_ROOM_BATHROOM) {
         return;
     }
@@ -110,6 +118,8 @@ static void shower_step(float rh, int64_t now) {
             shower_start   = now;
             shower_peak_at = now;
             shower_beep    = 0;
+            shower_aired   = false;
+            shower_co2     = co2;
             DEBUG_F("air: a shower, the humidity rose from %.0f to %.0f %%\n", lo, rh);
         }
         return;
@@ -122,6 +132,16 @@ static void shower_step(float rh, int64_t now) {
         shower   = false;
         rh_count = 0; // the next shower is measured from the humidity after this one
         DEBUG_F("air: the humidity is back to %.0f %% after the shower\n", rh);
+        return;
+    }
+    shower_co2 = co2 > shower_co2 ? co2 : shower_co2;
+    if (shower_aired) {
+        return;
+    }
+    float before = rh_count > SHOWER_OPEN_SAMPLES ? rh_samples[(rh_count - 1 - SHOWER_OPEN_SAMPLES) % SHOWER_SAMPLES] : rh;
+    if (before - rh >= SHOWER_OPEN_RH || shower_co2 - co2 >= SHOWER_OPEN_CO2 || window_open()) {
+        shower_aired = true;
+        DEBUG_F("air: the door or the window is open after the shower (%.0f %% from %.0f, %u ppm from %u)\n", rh, before, co2, shower_co2);
         return;
     }
     if (now - shower_peak_at >= SHOWER_PEAK_MS && now - shower_beep >= SHOWER_BEEP_MS) {
@@ -429,7 +449,7 @@ static void air_task(void *pvParams) {
         float humidity    = state.humidity;
         xSemaphoreGive(state_mutex);
 
-        shower_step(humidity, now);
+        shower_step(humidity, co2, now);
         health_step(temperature, humidity, co2, now);
 
         DEBUG("air: %u ppm (%.0f), %.1f °C (sensor %.1f), %.1f %% (sensor %.1f)\n", co2, values.co2, state.temperature, values.temperature,
