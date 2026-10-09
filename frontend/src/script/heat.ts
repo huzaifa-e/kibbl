@@ -4,6 +4,7 @@ import type { HeatMeter, HeatOverview, HeatReading, HeatUnit } from '../../../sh
 import type { HomeRoom } from '../../../shared/heating';
 import { baseOptions } from './activityCharts';
 import { tone, type Tone } from './healthCharts';
+import { insightsCard, loadInsights } from './heatInsights';
 import { initReports, loadReports, reportsCard } from './heatReports';
 import { socket } from './socket';
 import { byId, emptyState, errorAlert, escapeHtml, localDayKey } from './utils';
@@ -62,6 +63,7 @@ function layout() {
                 <div class="card-actions d-flex gap-2"><div class="btn-group" id="unit-buttons"></div><div class="btn-group">${buttons}</div></div></div>
             <div class="card-body"><div id="use-chart"></div><div class="text-secondary small mt-2" id="use-note"></div></div>
         </div>
+        ${insightsCard()}
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title">Enter readings</h3></div>
             <div class="card-body" id="entry"></div>
@@ -438,10 +440,15 @@ async function load(first = false) {
     if (first || !document.getElementById('entry-form')?.contains(document.activeElement)) renderEntry();
 }
 
+// the findings: on opening and when the heat data changed, not with every tado read
+function insights() {
+    if (data) void loadInsights(rooms, (id) => meterTone(data!.meters.find((m) => m._id === id)!));
+}
+
 window.addEventListener('themechange', () => {
     if (data) render();
 });
-socket.on('connect', () => load(!data));
+socket.on('connect', () => load(!data).then(insights));
 // a reading or meter changed, here or through the assistant; tado read its rooms
-socket.on('heatUpdate', () => data && load());
+socket.on('heatUpdate', () => data && load().then(insights));
 socket.on('heatingUpdate', () => data && load());
