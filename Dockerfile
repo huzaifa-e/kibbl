@@ -18,6 +18,11 @@ FROM node:20-slim
 LABEL org.kibbl.app=kibbl
 ENV NODE_ENV=production
 
+# heating cost reports are scans: pdftoppm draws their pages, Tesseract reads them (backend/src/heat/ocr.ts)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu \
+    && rm -rf /var/lib/apt/lists/*
+
 USER node
 WORKDIR /home/node
 
