@@ -104,6 +104,7 @@ async function alertFor(deviceId: string, event: AirEvent) {
             title: `Possible fire: ${name}`,
             text: `${name} sees the air change as in a fire (${parts.join(', ')}). Check now. This is no certified smoke alarm.`,
             urgent: true,
+            email: true,
             path,
         });
     } else if (event.kind === 'window' && event.state === 'open' && !event.atStart) {
@@ -305,6 +306,7 @@ export async function smokeDays(deviceId: string, days: number): Promise<SmokeDa
 export async function removeAirData(deviceId: string) {
     minutes.delete(deviceId);
     schedules.delete(deviceId);
+    windowSince.delete(deviceId);
     overrides.delete(deviceId);
     await Promise.all([AirReadingModel.deleteMany({ deviceId }), AirEventModel.deleteMany({ deviceId })]);
 }
@@ -331,6 +333,52 @@ function remember(deviceId: string, state: AirState) {
     const list = (recentAir.get(deviceId) ?? []).filter((r) => now - r.at <= RECENT_KEEP_MS);
     list.push({ at: now, humidity: state.humidity, co2: state.co2 });
     recentAir.set(deviceId, list);
+}
+
+/* A window open for too long cools the room and its walls: an e-mail, once per opening.
+ * Too long depends on the air outside: in the cold 5 to 10 minutes wide open air a room,
+ * from WINDOW_WARM_C on an open window loses no heat and is no reason for a mail. */
+const WINDOW_LONG_COLD_MIN = 15; // below WINDOW_COLD_C outside, or when the weather is not known
+const WINDOW_LONG_MILD_MIN = 30;
+const WINDOW_COLD_C = 10;
+const WINDOW_WARM_C = 18;
+// device: open since, the mail sent or not needed, a check waiting for the weather
+const windowSince = new Map<string, { since: number; done: boolean; busy?: boolean }>();
+
+async function checkWindow(deviceId: string, state: AirState) {
+    if (state.window !== 'open') {
+        windowSince.delete(deviceId);
+        return;
+    }
+    const now = Date.now();
+    const open = windowSince.get(deviceId) ?? { since: now, done: false };
+    windowSince.set(deviceId, open);
+    if (open.done || open.busy || now - open.since < WINDOW_LONG_COLD_MIN * 60_000) return;
+    open.busy = true;
+    try {
+        const owner = await deviceOwner(deviceId);
+        const outside = owner ? (await weatherForUser(owner))?.temperature : undefined;
+        if (outside !== undefined && outside >= WINDOW_WARM_C) {
+            open.done = true;
+            return;
+        }
+        const limit = outside === undefined || outside < WINDOW_COLD_C ? WINDOW_LONG_COLD_MIN : WINDOW_LONG_MILD_MIN;
+        const minutes = Math.round((now - open.since) / 60_000);
+        if (minutes < limit) return;
+        open.done = true;
+        const doc = await Device.findById(deviceId, { name: 1 }).lean();
+        const name = doc?.name ?? deviceId;
+        const air = outside !== undefined ? ` at ${Math.round(outside)} °C outside` : '';
+        await notifyOwner(deviceId, {
+            title: `Window open for ${minutes} minutes: ${name}`,
+            text: `${name}: a window has been open for ${minutes} minutes${air}. Close it: the room and its walls cool down, airing longer brings no fresher air.`,
+            email: true,
+            path: `/air/${deviceId}`,
+        });
+        log.info('window open too long', { device: deviceId, minutes, outside });
+    } finally {
+        open.busy = false;
+    }
 }
 
 async function checkClimate(deviceId: string, state: AirState) {
@@ -387,5 +435,6 @@ export function initAir() {
         remember(deviceId, telemetry.air);
         reconcileNight(deviceId, telemetry.air);
         checkClimate(deviceId, telemetry.air).catch((err) => log.warn('climate not checked', { device: deviceId }, err));
+        checkWindow(deviceId, telemetry.air).catch((err) => log.warn('window not checked', { device: deviceId }, err));
     });
 }

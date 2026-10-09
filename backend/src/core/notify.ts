@@ -3,10 +3,10 @@ import { appUrl, mailConfigured, sendMail } from './mail';
 import { logger } from './logger';
 
 /*
- * Alerts for the owner of a device: an e-mail (the SMTP account of core/mail.ts) and a
- * push message through ntfy (free, an app on the phone) when NTFY_URL names a topic,
- * e.g. https://ntfy.sh/<a long random topic> or a ntfy server of one's own. Urgent ones
- * (fire) ring through do-not-disturb on the phone.
+ * Alerts for the owner of a device: a push message through ntfy (free, an app on the phone) when NTFY_URL names a topic,
+ * e.g. https://ntfy.sh/<a long random topic> or a ntfy server of one's own, and an e-mail
+ * (the SMTP account of core/mail.ts) only for those that ask for one: a window open for too
+ * long and a fire. Urgent ones (fire) ring through do-not-disturb on the phone.
  */
 
 const log = logger('notify');
@@ -15,6 +15,7 @@ export interface Alert {
     title: string;
     text: string;
     urgent?: boolean;
+    email?: boolean; // also by e-mail, else only the push message
     path?: string; // the page of the app it is about
 }
 
@@ -39,7 +40,7 @@ async function sendNtfy(alert: Alert) {
 }
 
 async function sendEmail(ownerID: string, alert: Alert) {
-    if (!mailConfigured()) return;
+    if (!alert.email || !mailConfigured()) return;
     const user = await User.findById(ownerID, { email: 1 }).lean();
     if (!user) return;
     const link = appUrl() && alert.path ? `${appUrl()}${alert.path}` : undefined;
