@@ -17,7 +17,7 @@ const APP_DESC_OFFSET = 24 + 8;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES, files: 1 } });
 
 // the project each product is built as (project() in firmware/<product>/CMakeLists.txt)
-const PROJECTS: Record<string, string> = { 'kibbl-cam': 'KIBBL-FW', 'kibbl-air': 'KIBBL-AIR' };
+const PROJECTS: Record<string, string> = { 'kibbl-cam': 'KIBBL-FW', 'kibbl-air': 'KIBBL-AIR', 'kibbl-feeder': 'KIBBL-FEEDER' };
 
 // version and project of an application image, undefined when it is none
 function appInfo(image: Buffer) {
