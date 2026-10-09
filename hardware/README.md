@@ -8,10 +8,11 @@ hardware/
 ├── camera/
 │   └── case/              case of the kibbl. cam, with clip-ons and a keyhole hanger
 └── feeder/                cat feeder
-    └── iris/              NEMA 17 iris valve that portions the kibble
+    ├── iris/              NEMA 17 iris valve that portions the kibble
+    └── assembly/          everything around it: 1 kg hopper, body with the EMONI board and camera, chute, bowl tray
 ```
 
-Planned next to it: the feeder hopper and stand, the electronics enclosure (ESP32 + TMC2209), and the parts of the heating control.
+Planned next to it: the parts of the heating control.
 
 ## How the designs are kept
 
