@@ -15,6 +15,7 @@ import { INTRADAY_TYPES, intraday, summary, syncStatus, trackers } from '../heal
 import { storageStats } from '../health/store';
 import { meterPeriods, meterReadings, meterState } from '../meters/service';
 import { meterReadings as heatMeterReadings, overview as heatOverview } from '../heat/service';
+import { heatInsights } from '../heat/insights';
 import { allRoomHints } from '../../../shared/climate';
 import { airEvents, airReadings, lastNight, recentAirOf, smokeDays } from '../core/air';
 import { weatherForUser } from '../core/weather';
@@ -508,6 +509,20 @@ export function createMcpServer(session: SessionInfo) {
                 })),
             });
         },
+    );
+
+    server.registerTool(
+        'kibbl_heat_insights',
+        {
+            title: 'Heat insights',
+            description:
+                'Which radiator uses the most (its share of all radiators over the last year of readings, in units and kWh) and hints where heat may be wasted: ' +
+                'a radiator needing more per degree day than before or counting in warm weather (valve), tado heating with a window open (kibbl. air), ' +
+                'tado heating hard while the room stays cold (air in the radiator), a room cooling faster at night than the others (drafts). Hints, not measurements.',
+            inputSchema: {},
+            annotations: readOnly,
+        },
+        async () => json(await heatInsights(session.userID)),
     );
 
     /* ------------------------------------------------------------------- */
