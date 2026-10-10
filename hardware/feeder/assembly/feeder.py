@@ -33,7 +33,8 @@ sys.path.insert(0, os.path.join(HERE, '..', 'iris'))
 import iris  # noqa: E402
 
 # ───────────────────────────── bowl and tray ─────────────────────────────
-TRAY_T = 4.0
+TRAY_T = 3.0  # a frame: tongue, two bars and the ring round the bowl's foot
+BOWL_Z = 0.0  # the bowl stands on the table, inside the tray's ring
 BOWL_D, BOWL_H, BOWL_BASE_D = 150.0, 45.0, 120.0  # a usual stainless cat bowl: rim, height, foot
 BOWL_GAP = 4.0  # between the body and the bowl rim
 TRAY_D = 162.0  # in front of the body
@@ -45,8 +46,8 @@ TRAY_SCREW_X = 40.0  # two screws from below through the tongue into bosses at t
 SPOUT_ABOVE_RIM = 14.0  # the kibble falls this far into the bowl
 CHUTE_ANGLE = 35.0  # dry food slides from about 25 deg on smooth PETG; 35 keeps it moving with crumbs
 CHUTE_W = 50.0  # inside; the outlet is 42
-CHUTE_WALL = 4.0
-CHUTE_FLOOR = 4.0
+CHUTE_WALL = 1.75
+CHUTE_FLOOR = 2.4
 CHUTE_SIDE = 30.0  # side walls, above the floor
 NOSE = 20.0  # spout in front of the body
 KIBBLE_DROP = 22.0  # deck underside above the chute floor at its back: the outlet never chokes
@@ -58,8 +59,12 @@ LOBE_END = iris.CENTER_DIST + iris.NEMA_BODY / 2 + 2  # the iris base around the
 BODY_W, BODY_D = 200.0, 180.0  # the motor lobe reaches 90.7 to the right
 BODY_CX = 0.0  # on the iris axis, like the hopper
 CORNER_R = 24.0
-WALL = 2.4
-FLOOR_T = 5.0
+# material: PLA on the A1 with its 0.20mm Standard profile, 2 wall loops of 0.42 and 0.45 mm.
+# 1.75 mm is exactly those two loops from each side: no gap fill, the cheapest wall that is stiff.
+WALL = 1.75
+FLOOR_T = 3.0  # a frame with four windows
+FLOOR_RIM, FLOOR_BAR = 14.0, 14.0
+DECK_RIM = 10.0  # the deck is open outside the iris, the shell stands on this rim
 DECK_T = 5.0
 Y_FRONT = -BODY_D / 2
 Y_IN = Y_FRONT + WALL  # inside of the front wall
@@ -112,18 +117,19 @@ WINDOW_T = 1.8
 
 # ───────────────────────────── shell and hopper ─────────────────────────────
 HOPPER_R = 85.0  # inside
-HOPPER_WALL = 2.4
+HOPPER_WALL = 1.75
 HOPPER_SLOPE = 50.0  # cone: steeper than the 30-35 deg the kibble rests at
-SPIGOT_R = 47.0  # inside; outside 49.4 in the 50 mm funnel collar
-SPIGOT_WALL = 2.4
+SPIGOT_R = 49.4 - 1.75  # inside; outside 49.4 in the 50 mm funnel collar
+SPIGOT_WALL = 1.75
 SPIGOT_LIFT = 1.5  # the cone starts this far above the collar
 SPIGOT_LEN = 12.0
-CONE_OFFSET = 3.2  # outer cone, horizontally: 2.45 mm wall
+CONE_OFFSET = HOPPER_WALL / math.sin(math.radians(HOPPER_SLOPE))  # outer cone, horizontally, for a HOPPER_WALL wall
 SEAT_R = 80.0  # the shell carries the hopper where its outer cone has this radius
 SEAT_T = 4.0
 SEAT_CLEAR = 0.3
 HOPPER_CYL = 80.0  # straight part
-LID_LIP = 12.0
+LID_LIP = 8.0
+LID_T = 1.2
 KIBBLE_DENSITY = 0.42  # g/ml, dry cat food 0.40-0.55: the low end
 KIBBLE_MASS = 1000.0  # g, required
 SHELL_SCREWS = [(BODY_CX - BODY_W / 2 + 6.5, 30.0), (BODY_CX + BODY_W / 2 - 6.5, -40.0), (-30.0, BODY_D / 2 - 6.5),
@@ -136,7 +142,7 @@ BED = (256.0, 256.0, 256.0)  # Bambu Lab A1
 # ═════════════════════════════ layout ═════════════════════════════
 TAN = math.tan(math.radians(CHUTE_ANGLE))
 Y_EXIT = Y_FRONT - NOSE
-Z_EXIT = TRAY_T + BOWL_H + SPOUT_ABOVE_RIM  # top of the chute floor at the spout
+Z_EXIT = BOWL_Z + BOWL_H + SPOUT_ABOVE_RIM  # top of the chute floor at the spout
 
 
 def floor_z(y):
@@ -151,7 +157,7 @@ Z_IRIS = Z_DECK + DECK_T  # the iris base stands here
 MOUTH_TOP = floor_z(Y_IN) + CHUTE_SIDE + 1.0  # top of the chute opening, inside the wall
 
 BOWL_Y = Y_FRONT - BOWL_GAP - BOWL_D / 2
-BOWL_TARGET = (0.0, BOWL_Y, TRAY_T + 6.0)  # the camera aims at the middle of the bowl's bottom
+BOWL_TARGET = (0.0, BOWL_Y, BOWL_Z + 6.0)  # the camera aims at the middle of the bowl's bottom
 
 # board: its x runs down, its y along +x, its top side faces the front wall
 BOARD_ORIGIN = (BOARD_X0, Y_IN + BOARD_GAP + BOARD_T, Z_DECK - USB_ROOM - 50.608)
@@ -206,7 +212,7 @@ def camera_view():
         depth = sum(v[i] * d[i] for i in range(3))
         return (sum(v[i] * right[i] for i in range(3)) / depth / th, sum(v[i] * up[i] for i in range(3)) / depth / tv)
 
-    rim_z = TRAY_T + BOWL_H
+    rim_z = BOWL_Z + BOWL_H
     rim = [project((BOWL_D / 2 * math.cos(a), BOWL_Y + BOWL_D / 2 * math.sin(a), rim_z)) for a in
            [2 * math.pi * k / 72 for k in range(72)]]
     spout = project((0.0, Y_EXIT, floor_z(Y_EXIT) + CHUTE_SIDE))
@@ -231,11 +237,11 @@ def check(solids=True):
         print(f'{"ok " if good else "BAD"} {name}: {value}')
 
     print(f'iris base on the deck at z {Z_IRIS:.1f}, funnel collar top {Z_COLLAR_TOP:.1f}, hopper top {Z_HOPPER_TOP:.1f}, '
-          f'with the lid {Z_HOPPER_TOP + 2.4:.0f} mm high')
+          f'with the lid {Z_HOPPER_TOP + LID_T:.0f} mm high')
     vol = kibble_volume()
     report('kibble above the iris (ml, g at %.2f g/ml)' % KIBBLE_DENSITY, f'{vol:.0f} ml, {vol * KIBBLE_DENSITY:.0f} g',
            vol * KIBBLE_DENSITY >= KIBBLE_MASS)
-    report('spout above the bowl rim (mm)', f'{Z_EXIT - TRAY_T - BOWL_H:.0f}', Z_EXIT - TRAY_T - BOWL_H >= 10)
+    report('spout above the bowl rim (mm)', f'{Z_EXIT - BOWL_Z - BOWL_H:.0f}', Z_EXIT - BOWL_Z - BOWL_H >= 10)
     report('kibble lands in the bowl: spout tip over the bowl (mm inside the rim)',
            f'{(Y_FRONT - BOWL_GAP) - Y_EXIT:.0f}', Y_EXIT < Y_FRONT - BOWL_GAP)
     report('hopper spigot in the funnel collar (mm), above its bottom (mm)',
@@ -363,15 +369,21 @@ def body():
     # corners filled from the floor to the deck: the floor screws
     for sx in (-1, 1):
         for sy in (-1, 1):
-            cx, cy = BODY_CX + sx * (BODY_W / 2 - 9), sy * (BODY_D / 2 - 9)
-            block = b.Pos(cx, cy) * b.Rectangle(18, 18)
-            shell += prism(block & inner, FLOOR_T, Z_DECK + 0.01)
+            # a boss for the floor screw, joined to the corner, 45 deg on top: prints hanging from the walls
             sx_, sy_ = BODY_CX + sx * (BODY_W / 2 - CORNER_SCREW), sy * (BODY_D / 2 - CORNER_SCREW)
-            shell -= cyl(PILOT_D / 2, FLOOR_T - 1, FLOOR_T + 14, sx_, sy_)
+            web = b.Pos(sx_ + sx * 6, sy_ + sy * 6) * b.Rot(0, 0, 45 * sx * sy) * b.Rectangle(9, 20)
+            foot = (b.Pos(sx_, sy_) * b.Circle(4.5) + web) & inner
+            shell += prism(foot, FLOOR_T, FLOOR_T + 16) + b.Pos(0, 0, FLOOR_T + 16 - 0.01) * b.extrude(foot, amount=4, taper=44)
+            shell -= cyl(PILOT_D / 2, FLOOR_T - 1, FLOOR_T + 15, sx_, sy_)
 
     # deck: the iris outlet, the motor with its driver, the shell screws from below
     shell -= cyl(OUTLET_R, Z_DECK - 1, Z_IRIS + 1)
     shell -= prism(b.Pos(iris.CENTER_DIST, 0) * b.RectangleRounded(MOTOR_CUT, MOTOR_CUT, 4), Z_DECK - 1, Z_IRIS + 1)
+    windows = outline(-WALL - DECK_RIM) - iris_outline(8.0)
+    for x, y in SHELL_SCREWS:
+        windows -= b.Pos(x, y) * b.Circle(9)
+    windows -= b.Rectangle(2 * (CHUTE_W / 2 + CHUTE_WALL + LUG_T + 4), 2 * (iris.R_HOUSING + 8))  # over the chute box and lugs
+    shell -= prism(windows, Z_DECK - 1, Z_IRIS + 1)
     for x, y in SHELL_SCREWS:
         shell -= cyl(SCREW_D / 2, Z_DECK - 1, Z_IRIS + 1, x, y)
         shell -= cyl(M3_HEAD_D / 2, Z_DECK - 1, Z_DECK + 1.5, x, y)
@@ -446,6 +458,9 @@ def floor_plate():
             x, y = BODY_CX + sx * (BODY_W / 2 - CORNER_SCREW), sy * (BODY_D / 2 - CORNER_SCREW)
             plate -= cyl(SCREW_D / 2, -1, FLOOR_T + 1, x, y)
             plate -= b.Pos(x, y, -0.01) * b.Cone(M3_HEAD_D / 2 + 0.3, SCREW_D / 2, 1.9, align=up)  # countersunk
+    # four windows: a frame with a cross, the bay stays reachable and the plate costs a third
+    win = outline(-WALL - FLOOR_RIM) - b.Rectangle(FLOOR_BAR, BODY_D) - b.Rectangle(BODY_W, FLOOR_BAR)
+    plate -= prism(win, -1, FLOOR_T + 1)
     # notch for the tray's tongue
     plate -= b.Pos(BODY_CX, Y_FRONT + (TONGUE + 0.3) / 2 - 1, -1) * b.Box(TONGUE_W + 0.6, TONGUE + 2.3, FLOOR_T + 2, align=up)
     return plate
@@ -456,11 +471,14 @@ def tray():
     up = (b.Align.CENTER, b.Align.CENTER, b.Align.MIN)
     y_back = Y_FRONT - 0.3
     front = Y_FRONT - TRAY_D
-    plate = b.Pos(BODY_CX, (y_back + front) / 2) * b.RectangleRounded(BODY_W, y_back - front, 30)
-    plate = prism(plate, 0, TRAY_T)
+    r_in = BOWL_BASE_D / 2 + 3.0  # round the bowl's foot, which stands on the table
+    band = b.Pos(0, BOWL_Y) * (b.Circle(r_in + 16) - b.Circle(r_in))
+    bars = b.Pos(BODY_CX, (y_back + BOWL_Y) / 2) * (b.Pos(-TONGUE_W / 2 + 8, 0) * b.Rectangle(16, y_back - BOWL_Y)
+                                                   + b.Pos(TONGUE_W / 2 - 8, 0) * b.Rectangle(16, y_back - BOWL_Y))
+    bars -= b.Pos(0, BOWL_Y) * b.Circle(r_in)
+    plate = prism(band + bars, 0, TRAY_T)
     plate += b.Pos(BODY_CX, Y_FRONT + TONGUE / 2 - 0.5) * b.Box(TONGUE_W, TONGUE + 1, FLOOR_T, align=up)
-    ring = cyl(BOWL_BASE_D / 2 + 1.5 + 2.4, TRAY_T - 0.01, TRAY_T + 3, 0, BOWL_Y) - cyl(BOWL_BASE_D / 2 + 1.5, TRAY_T - 1, TRAY_T + 4, 0, BOWL_Y)
-    plate += ring
+    plate += cyl(r_in + 1.75, TRAY_T - 0.01, TRAY_T + 4, 0, BOWL_Y) - cyl(r_in, -1, TRAY_T + 5, 0, BOWL_Y)
     for sx in (-1, 1):
         x, y = BODY_CX + sx * TRAY_SCREW_X, Y_IN + 4.5
         plate -= cyl(SCREW_D / 2, -1, FLOOR_T + 1, x, y)
@@ -563,8 +581,8 @@ def hopper():
 def hopper_lid():
     b = _b3d()
     z = Z_HOPPER_TOP
-    lid = cyl(HOPPER_OUT + 2.5, z, z + 2.4)  # the rim stands 2.5 mm over the hopper: lift it there
-    lid += cyl(HOPPER_R - 0.4, z - LID_LIP, z + 0.01) - cyl(HOPPER_R - 2.8, z - LID_LIP - 1, z + 0.02)
+    lid = cyl(HOPPER_OUT + 2.5, z, z + LID_T)  # the rim stands 2.5 mm over the hopper: lift it there
+    lid += cyl(HOPPER_R - 0.4, z - LID_LIP, z + 0.01) - cyl(HOPPER_R - 0.4 - WALL, z - LID_LIP - 1, z + 0.02)
     return lid
 
 
@@ -578,8 +596,8 @@ def camera_module():
 
 
 def bowl():
-    rim_z = TRAY_T + BOWL_H
-    pts = [(0, TRAY_T), (BOWL_BASE_D / 2, TRAY_T), (BOWL_D / 2, rim_z), (BOWL_D / 2 - 1.2, rim_z), (BOWL_BASE_D / 2 - 1.2, TRAY_T + 1.2), (0, TRAY_T + 1.2)]
+    rim_z = BOWL_Z + BOWL_H
+    pts = [(0, BOWL_Z), (BOWL_BASE_D / 2, BOWL_Z), (BOWL_D / 2, rim_z), (BOWL_D / 2 - 1.2, rim_z), (BOWL_BASE_D / 2 - 1.2, BOWL_Z + 1.2), (0, BOWL_Z + 1.2)]
     return _b3d().Pos(0, BOWL_Y, 0) * lathe(pts)
 
 

@@ -303,7 +303,7 @@ def kibble_paths(n_fall, rng):
                 y += vy * DT
                 vz -= G * DT
                 z += vz * DT
-                rest = feeder.TRAY_T + 1.2 + r
+                rest = feeder.BOWL_Z + 1.2 + r
                 if z <= rest:
                     # it bounces and rolls a little: a heap, not a tower
                     x = min(max(x + rng.uniform(0, 25), 3), 50)
