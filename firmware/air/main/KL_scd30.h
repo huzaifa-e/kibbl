@@ -24,7 +24,7 @@ bool scd30_setup(uint16_t altitude_m, bool asc);
 // "SCD30 3.66": the sensor and its firmware, "none" before scd30_setup()
 const char *scd30_name(void);
 
-// true and values set when a new measurement was ready
+// true and values set when a new measurement was ready (not the 0 ppm ones after power up)
 bool scd30_read(scd30_values_t *values);
 
 bool scd30_set_altitude(uint16_t altitude_m);

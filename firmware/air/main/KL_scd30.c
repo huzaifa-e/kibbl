@@ -20,6 +20,7 @@
 
 #define READ_DELAY_MS  4    // between a command and its read, at least 3 ms
 #define BOOT_DELAY_MS  2000 // the sensor needs up to 2 s after power up or a reset
+#define MIN_CO2_PPM    100  // below: no measurement yet (0 ppm right after power up), outside air has 420
 
 static bool found = false;
 static char name[16] = "none";
@@ -141,7 +142,9 @@ bool scd30_read(scd30_values_t *values) {
     values->co2         = words_to_float(&words[0]);
     values->temperature = words_to_float(&words[2]);
     values->humidity    = words_to_float(&words[4]);
-    return true;
+    /* the first ones after power up are 0 ppm: counted, the next real one rose by all of it
+     * within a minute, with the board warming up as a fire (living room, 2026-10-10) */
+    return values->co2 >= MIN_CO2_PPM;
 }
 
 bool scd30_set_altitude(uint16_t altitude_m) {
