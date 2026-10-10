@@ -43,14 +43,14 @@ TONGUE_W = 124.0
 TRAY_SCREW_X = 40.0  # two screws from below through the tongue into bosses at the foot of the front wall
 
 # ───────────────────────────── chute ─────────────────────────────
-SPOUT_ABOVE_RIM = 14.0  # the kibble falls this far into the bowl
+SPOUT_ABOVE_RIM = 10.0  # the kibble falls this far into the bowl
 CHUTE_ANGLE = 35.0  # dry food slides from about 25 deg on smooth PETG; 35 keeps it moving with crumbs
 CHUTE_W = 50.0  # inside; the outlet is 42
 CHUTE_WALL = 1.75
 CHUTE_FLOOR = 2.4
 CHUTE_SIDE = 30.0  # side walls, above the floor
-NOSE = 20.0  # spout in front of the body
-KIBBLE_DROP = 22.0  # deck underside above the chute floor at its back: the outlet never chokes
+NOSE = 12.0  # spout in front of the body
+KIBBLE_DROP = 16.0  # deck underside above the chute floor at its back: the outlet never chokes
 CHUTE_BACK = iris.R_AP + 6.0  # inside face of the chute's back wall (y)
 BOX_FRONT = -(iris.R_AP + 8.0)  # the side walls reach up to the deck from here back: a box under the outlet
 
@@ -109,10 +109,10 @@ BUTTON_HOLE_D = 4.0
 CAM_W, CAM_BODY, CAM_LENS_D, CAM_LENS_L = 8.5, 4.5, 8.0, 4.0  # module square, PCB and holder, lens barrel
 CAM_FLEX = 75.0  # the common long flex; 21 mm and 40 mm ones do not reach
 CAM_HFOV, CAM_VFOV = 54.0, 41.0  # standard 66 deg (diagonal) lens; a 120 deg one sees all of the bowl and the cat
-EYE_X = 14.0
+EYE_X = 20.0
 EYE_W = 22.0
 EYE_DEPTH = 9.0  # lens window centre in front of the wall
-EYE_ABOVE_MOUTH = 14.0  # window centre above the top of the chute opening
+EYE_ABOVE_MOUTH = 8.0  # window centre above the top of the chute opening
 WINDOW_T = 1.8
 
 # ───────────────────────────── shell and hopper ─────────────────────────────
