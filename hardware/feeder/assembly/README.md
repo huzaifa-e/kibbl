@@ -6,10 +6,11 @@ The whole cat feeder around the [iris](../iris): a hopper for 1 kg of dry food o
 
 | | |
 | --- | --- |
-| Size | 200 × 180 mm, the tray 162 mm in front of it; 378 mm high with the lid |
-| Hopper | 2455 ml above the closed iris: **1031 g** of dry food at 0.42 g/ml, the low end of 0.40-0.55 |
+| Size | 200 × 180 mm, the tray 162 mm in front of it; 373 mm high with the lid |
+| Hopper | 2541 ml above the closed iris: **1067 g** of dry food at 0.42 g/ml, the low end of 0.40-0.55 |
 | Chute | 50 mm wide, 35° from the iris outlet out through the front wall; the spout ends 20 mm in front of the body, 14 mm above the bowl rim and 16 mm inside it |
-| Bowl | any bowl with a foot up to Ø 123 mm and a rim around Ø 150 mm (a usual stainless one); a ring on the tray keeps it in place |
+| Bowl | any bowl with a foot up to Ø 126 mm and a rim around Ø 150 mm (a usual stainless one); it stands on the table inside the tray's ring |
+| Filament | **about 875 g of PLA** on the A1 with its 0.20mm Standard profile, 21.90 in Bambu PLA Basic; the iris adds about 175 g |
 | Electronics | EMONI board on the inside of the front wall, right of the chute; S42B under the iris on the motor; 12 V in at the back |
 | Camera | in the eye above the spout, 58° down, 134 mm to the middle of the bowl; a 75 mm flex reaches J2 (route 72 mm) |
 
@@ -19,7 +20,7 @@ The motor is hidden in the body: the NEMA 17 hangs from the underside of the iri
 
 ![A portion, cut open: the motor turns the ring, the iris opens, food falls through the chute into the bowl, the iris closes](images/feeding.gif)
 
-A portion, cut open and slowed down: the motor turns the pinion and ring (158° of motor from closed to open), the iris opens, the kibble falls onto the chute, slides down at 35° (friction 0.3 on PETG assumed) and drops into the bowl, then the iris closes. The kibble follows simple physics in `render.py`, not a measurement; the timing of the motor is not to scale.
+A portion, cut open and slowed down: the motor turns the pinion and ring (158° of motor from closed to open), the iris opens, the kibble falls onto the chute, slides down at 35° (friction 0.3 on PLA assumed) and drops into the bowl, then the iris closes. The kibble follows simple physics in `render.py`, not a measurement; the timing of the motor is not to scale.
 
 ![Exploded](images/exploded.png)
 
@@ -36,10 +37,11 @@ From the top:
   * on the inside of the front wall: two standoffs for the EMONI board, two light tunnels from the wall to 1 mm above the red (D4) and green (D5) LED, a Ø 4 hole in front of the button (S2) to press it with a pen;
   * the **eye**: a wedge on the front wall above the spout, its window facing the bowl, the camera module in a square pocket behind it;
   * the chute opening in the front wall; at the back a Ø 8.2 hole for a 12 V panel jack and a 12 × 7 cable slot;
-  * filled corners for the floor screws, two bosses at the foot of the front wall for the tray.
+  * bosses in the corners for the floor screws, two at the foot of the front wall for the tray;
+  * the deck is open outside the iris: the shell stands on a 10 mm rim, the shell screws and the chute lugs keep their plate.
 * **chute**: flat floor, side walls, and a box under the iris outlet that reaches up to the deck, so nothing bounces out. Printed lying on its floor: the kibble slides on the smooth bed side.
-* **floor**: closes the body, a lip inside the walls. Everything inside is reached from below with the floor off.
-* **tray**: in front of the body under the bowl; its tongue fills a notch in the floor under the front wall. It keeps the bowl where the camera and the spout expect it, and the cat standing on it keeps the feeder from tipping forward.
+* **floor**: a 3 mm frame with a cross and four windows, a lip inside the walls. Everything inside is reached from below with the floor off.
+* **tray**: a frame in front of the body: a ring round the bowl's foot (the bowl stands on the table), two bars, and the tongue that fills a notch in the floor under the front wall. It keeps the bowl where the camera and the spout expect it.
 
 ![The front wall from inside](images/bay.png)
 
@@ -86,17 +88,24 @@ python render.py
 
 ## Printing
 
-| File | Material | Orientation (as exported) | Notes |
-| --- | --- | --- | --- |
-| `body.stl` | PETG or PLA | deck on the bed, upside down | no supports: the 59 mm bridge over the chute opening, the lugs and bosses grow up from the deck, the eye's top is 45°; 3 walls, 15 % infill |
-| `shell.stl` | PETG or PLA | hopper seat on the bed | ribs and clamps have 45° undersides |
-| `hopper.stl` | PETG | spigot on the bed | cone 40° from vertical; 3 walls; transparent PETG shows the fill level |
-| `hopper_lid.stl` | PETG or PLA | top on the bed, lip up | |
-| `chute.stl` | PETG | floor on the bed | the floor's bed side is the slide; smooth PEI is best |
-| `floor.stl` | PETG or PLA | as is | |
-| `tray.stl` | PETG or PLA | as is | |
+PLA on the Bambu Lab A1, its **0.20mm Standard** profile as it is (2 wall loops, 5 top and 3 bottom layers, 15 % grid infill). The design is cut to that profile: the walls of body, shell, hopper and chute are 1.75 mm, exactly the two loops from each side (0.42 + 0.45 mm), so no gap fill; floor and tray are frames; the deck is open where the iris does not stand; the floor screws have bosses, not columns.
 
-The parts the food touches (hopper, chute, iris funnel) want PETG: PLA is fine for a prototype. Printed surfaces keep crumbs and fat: wash the hopper and chute, do not put food straight into a printed bowl.
+| File | Orientation (as exported) | PLA | Notes |
+| --- | --- | ---: | --- |
+| `body.stl` | deck on the bed, upside down | 349 g | no supports: the 59 mm bridge over the chute opening, the lugs and bosses grow up from the deck, the eye's top is 45° |
+| `shell.stl` | hopper seat on the bed | 213 g | ribs and clamps have 45° undersides |
+| `hopper.stl` | spigot on the bed | 158 g | cone 40° from vertical |
+| `hopper_lid.stl` | top on the bed, lip up | 47 g | |
+| `chute.stl` | floor on the bed | 45 g | the floor's bed side is the slide: smooth PEI is best |
+| `floor.stl` | as is | 34 g | |
+| `tray.stl` | as is | 29 g | |
+| | | **875 g** | 21.90 at 24.99 a kg (Bambu PLA Basic); plus the iris, about 175 g |
+
+The grams come from `hardware/filament.py`, which slices the STLs the way that profile does (walls, solid skins, 15 % infill, gap fill); Bambu Studio's own figure differs by a few percent. From the first design (2.4 mm walls, solid floor and tray, 5 mm plates, corner columns) this saves about 400 g, a third.
+
+Most of what is left is the two wall loops over the large surfaces: body 276 g, shell 162 g, hopper 139 g. One loop (0.87 mm walls) would take another 200 g off but makes floppy panels; not done.
+
+PLA softens from about 55 °C: keep the feeder out of the sun and off the radiator. Printed surfaces keep crumbs and fat: wash the hopper and chute now and then, and do not put food straight into a printed bowl.
 
 ## Hardware
 
@@ -107,12 +116,12 @@ The parts the food touches (hopper, chute, iris funnel) want PETG: PLA is fine f
 | 12 V supply ≥ 1 A, panel jack 5.5/2.1 with M8 thread (DC-022B) | 1 | |
 | 12 V → 5 V buck module (e.g. MP1584 or Mini560, about 22 × 17 mm) and a short angled USB-C lead | 1 | on the floor with double-sided tape; 5 V into J3 |
 | M3 × 8 socket head, M3 washer | 2 | board onto the standoffs |
-| M3 × 10 | 2 | chute box into the lugs, from inside the box |
+| M3 × 8 | 2 | chute box into the lugs, from inside the box |
 | M3 × 16 socket head | 4 | shell, from below through the deck |
-| M3 × 16 countersunk | 4 | floor into the corners |
-| M3 × 8 countersunk | 2 | tray tongue into the front wall, from below |
+| M3 × 12 countersunk | 4 | floor into the corners |
+| M3 × 10 countersunk | 2 | tray tongue into the front wall, from below |
 | Light pipe Ø 3 or a stub of clear filament | 2 | optional, in the LED holes |
-| stainless cat bowl, rim about Ø 150, foot up to Ø 123 | 1 | |
+| stainless cat bowl, rim about Ø 150, foot up to Ø 126 | 1 | |
 
 Plus what the [iris](../iris/README.md#parts) needs.
 
@@ -121,16 +130,16 @@ Plus what the [iris](../iris/README.md#parts) needs.
 1. Set up the S42B before it disappears in the body (Motor mA 600, calibration; see the iris README) and build the iris with its motor.
 2. Camera: plug its flex into J2 of the board first. Push the module into the eye's pocket from inside, lens out through the window, a drop of hot glue.
 3. Board onto the standoffs, top side to the wall, USB-C up: 2 × M3 × 8 with washers from the back of the board. Light pipes or clear filament into the LED holes if you like.
-4. Chute: spout first, from inside out through the front opening, the box up between the lugs. Through the deck's outlet hole, 2 × M3 × 10 from inside the box out into the lugs.
+4. Chute: spout first, from inside out through the front opening, the box up between the lugs. Through the deck's outlet hole, 2 × M3 × 8 from inside the box out into the lugs.
 5. Iris: turn the motor on the iris base so the S42B's signal header faces the front, then lower the iris onto the deck, motor and S42B through the square cut-out, outlet over the hole.
 6. Shell over the iris (the ribs find the base), 4 × M3 × 16 from below through the deck.
 7. Wiring: 12 V jack into the back wall; 12 V to the S42B and to the buck module, 5 V from it into J3. STEP, DIR and EN from the board to the S42B's header: which pins, the firmware decides.
-8. Floor on, 4 × M3 × 16 countersunk. Tray tongue into the floor's notch, 2 × M3 × 8 countersunk from below.
+8. Floor on, 4 × M3 × 12 countersunk. Tray tongue into the floor's notch, 2 × M3 × 10 countersunk from below.
 9. Hopper into the shell (its spigot finds the funnel collar), food in, lid on.
 
 ## What is not checked yet
 
-* **Tipping**: the full hopper puts 1 kg about 300 mm up on a 200 × 180 mm foot. The tray helps forwards, a cat pushing the hopper sideways does not meet much. Put ballast on the floor if it wobbles (the bay has room), or stand it against a wall.
+* **Tipping**: the full hopper puts 1 kg about 300 mm up on a 200 × 180 mm foot. The tray helps forwards, a cat pushing the hopper sideways does not meet much. Put ballast on the floor's frame if it wobbles (the bay has room), or stand it against a wall.
 * **The flex**: 72 mm of route on a 75 mm flex. If the module's flex is shorter, a 24-pin FPC extension fits, or move `EYE_X` and `EYE_ABOVE_MOUTH`.
 * **Kibble on the chute**: 35° is a guess for crumbs and fat; if food stops on it, raise `CHUTE_ANGLE` (the body grows taller).
 * **The USB-C plug**: 16 mm from J3 to the deck takes an angled plug. A straight lead needs `USB_ROOM` at about 30, which moves the board, and with it J2, further from the eye.

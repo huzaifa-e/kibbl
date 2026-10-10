@@ -5,6 +5,7 @@ Printed parts and mechanics of the devices of kibbl.
 ```
 hardware/
 ├── requirements.txt       python packages for the CAD scripts
+├── filament.py            grams and cost of STLs, sliced like the A1's 0.20mm Standard profile in PLA
 ├── camera/
 │   └── case/              case of the kibbl. cam, with clip-ons and a keyhole hanger
 └── feeder/                cat feeder
