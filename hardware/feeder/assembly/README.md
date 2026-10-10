@@ -6,13 +6,13 @@ The whole cat feeder around the [iris](../iris): a hopper for 1 kg of dry food o
 
 | | |
 | --- | --- |
-| Size | 200 × 180 mm, the tray 162 mm in front of it; 373 mm high with the lid |
+| Size | 200 × 180 mm, the tray 162 mm in front of it; 357 mm high with the lid (body 166 mm) |
 | Hopper | 2541 ml above the closed iris: **1067 g** of dry food at 0.42 g/ml, the low end of 0.40-0.55 |
-| Chute | 50 mm wide, 35° from the iris outlet out through the front wall; the spout ends 20 mm in front of the body, 14 mm above the bowl rim and 16 mm inside it |
+| Chute | 50 mm wide, 35° from the iris outlet out through the front wall; the spout ends 12 mm in front of the body, 10 mm above the bowl rim and 8 mm inside it |
 | Bowl | any bowl with a foot up to Ø 126 mm and a rim around Ø 150 mm (a usual stainless one); it stands on the table inside the tray's ring |
-| Filament | **about 875 g of PLA** on the A1 with its 0.20mm Standard profile, 21.90 in Bambu PLA Basic; the iris adds about 175 g |
+| Filament | **about 846 g of PLA** on the A1 with its 0.20mm Standard profile, 21.15 in Bambu PLA Basic; the iris adds about 175 g |
 | Electronics | EMONI board on the inside of the front wall, right of the chute; S42B under the iris on the motor; 12 V in at the back |
-| Camera | in the eye above the spout, 58° down, 134 mm to the middle of the bowl; a 75 mm flex reaches J2 (route 72 mm) |
+| Camera | in the eye above the spout, 54° down, 122 mm to the middle of the bowl; a 75 mm flex reaches J2 (route 64 mm) |
 
 ![One turn around the feeder, then one with the side open](images/feeder-orbit.gif)
 
@@ -51,10 +51,10 @@ EHW0014-0011 stands on the inside of the front wall, its **top side towards the 
 
 | | world (x right, z up) | |
 | --- | --- | --- |
-| Red LED D4, green LED D5 | x 79, z 123 and 106 | through the front wall, light tunnels |
-| Button S2 | x 69, z 114 | Ø 4 hole |
-| Camera connector J2 | x 45, z 114 | the flex leaves towards the antenna edge, to the eye at x 14 |
-| USB-C J3 | top edge, z 165 | 16 mm to the deck: room for an angled USB-C plug, for power |
+| Red LED D4, green LED D5 | x 79, z 103 and 86 | through the front wall, light tunnels |
+| Button S2 | x 69, z 95 | Ø 4 hole |
+| Camera connector J2 | x 45, z 95 | the flex leaves towards the antenna edge, to the eye at x 20 |
+| USB-C J3 | top edge, z 145 | 16 mm to the deck: room for an angled USB-C plug, for power |
 | Mounting holes | Ø 5, 94 mm apart, upright | M3 × 8 with washers into the standoffs |
 
 The antenna (ESP32-S3-WROOM-1) sits at the board's edge next to the plastic chute, the motor is 57 mm behind the board.
@@ -65,7 +65,7 @@ The antenna (ESP32-S3-WROOM-1) sits at the board's edge next to the plastic chut
 
 ![What the camera sees](images/camera-view.png)
 
-A 24-pin OV2640 or OV5640 module with a **75 mm flex** (the 21 mm and 40 mm ones do not reach): pushed into the eye's pocket from inside, lens through the window, held with a drop of hot glue. The standard lens (66° diagonal) sees about 137 × 100 mm around the middle of the bowl, the rim is outside the picture. **A 120° lens sees the whole bowl, the spout and the cat's head**, and is the one to buy.
+A 24-pin OV2640 or OV5640 module with a **75 mm flex** (the 21 mm and 40 mm ones do not reach): pushed into the eye's pocket from inside, lens through the window, held with a drop of hot glue. The standard lens (66° diagonal) sees about 124 × 91 mm around the middle of the bowl, the rim is outside the picture. **A 120° lens sees the whole bowl and the cat's head**, and is the one to buy.
 
 ## Files
 
@@ -92,18 +92,18 @@ PLA on the Bambu Lab A1, its **0.20mm Standard** profile as it is (2 wall loops,
 
 | File | Orientation (as exported) | PLA | Notes |
 | --- | --- | ---: | --- |
-| `body.stl` | deck on the bed, upside down | 349 g | no supports: the 59 mm bridge over the chute opening, the lugs and bosses grow up from the deck, the eye's top is 45° |
+| `body.stl` | deck on the bed, upside down | 325 g | no supports: the 59 mm bridge over the chute opening, the lugs and bosses grow up from the deck, the eye's top is 45° |
 | `shell.stl` | hopper seat on the bed | 213 g | ribs and clamps have 45° undersides |
 | `hopper.stl` | spigot on the bed | 158 g | cone 40° from vertical |
 | `hopper_lid.stl` | top on the bed, lip up | 47 g | |
-| `chute.stl` | floor on the bed | 45 g | the floor's bed side is the slide: smooth PEI is best |
+| `chute.stl` | floor on the bed | 40 g | the floor's bed side is the slide: smooth PEI is best |
 | `floor.stl` | as is | 34 g | |
 | `tray.stl` | as is | 29 g | |
-| | | **875 g** | 21.90 at 24.99 a kg (Bambu PLA Basic); plus the iris, about 175 g |
+| | | **846 g** | 21.15 at 24.99 a kg (Bambu PLA Basic); plus the iris, about 175 g |
 
-The grams come from `hardware/filament.py`, which slices the STLs the way that profile does (walls, solid skins, 15 % infill, gap fill); Bambu Studio's own figure differs by a few percent. From the first design (2.4 mm walls, solid floor and tray, 5 mm plates, corner columns) this saves about 400 g, a third.
+The grams come from `hardware/filament.py`, which slices the STLs the way that profile does (walls, solid skins, 15 % infill, gap fill); Bambu Studio's own figure differs by a few percent. From the first design (2.4 mm walls, solid floor and tray, 5 mm plates, corner columns) and the first height (body 182 mm) this saves about 430 g, a third.
 
-Most of what is left is the two wall loops over the large surfaces: body 276 g, shell 162 g, hopper 139 g. One loop (0.87 mm walls) would take another 200 g off but makes floppy panels; not done.
+Most of what is left is the two wall loops over the large surfaces: body 252 g, shell 162 g, hopper 139 g. One loop (0.87 mm walls) would take another 200 g off but makes floppy panels; not done.
 
 PLA softens from about 55 °C: keep the feeder out of the sun and off the radiator. Printed surfaces keep crumbs and fat: wash the hopper and chute now and then, and do not put food straight into a printed bowl.
 
@@ -140,8 +140,8 @@ Plus what the [iris](../iris/README.md#parts) needs.
 ## What is not checked yet
 
 * **Tipping**: the full hopper puts 1 kg about 300 mm up on a 200 × 180 mm foot. The tray helps forwards, a cat pushing the hopper sideways does not meet much. Put ballast on the floor's frame if it wobbles (the bay has room), or stand it against a wall.
-* **The flex**: 72 mm of route on a 75 mm flex. If the module's flex is shorter, a 24-pin FPC extension fits, or move `EYE_X` and `EYE_ABOVE_MOUTH`.
-* **Kibble on the chute**: 35° is a guess for crumbs and fat; if food stops on it, raise `CHUTE_ANGLE` (the body grows taller).
+* **The flex**: 64 mm of route on a 75 mm flex. If the module's flex is shorter, a 24-pin FPC extension fits, or move `EYE_X` and `EYE_ABOVE_MOUTH`.
+* **Kibble on the chute**: 35° is a guess for crumbs and fat; if food stops on it, raise `CHUTE_ANGLE` (the body grows taller). If it slides well below 27° on a PLA strip, 30° takes the body down another 16 mm (to 150), with a new chute and the board moved for the camera flex.
 * **The USB-C plug**: 16 mm from J3 to the deck takes an angled plug. A straight lead needs `USB_ROOM` at about 30, which moves the board, and with it J2, further from the eye.
 
 ## Parameters worth changing
@@ -152,8 +152,8 @@ Plus what the [iris](../iris/README.md#parts) needs.
 | `KIBBLE_DENSITY` | 0.42 | g/ml of your food: weigh a litre |
 | `BOWL_D`, `BOWL_H`, `BOWL_BASE_D` | 150, 45, 120 | your bowl; the spout height and the camera aim follow |
 | `CHUTE_ANGLE` | 35 | slope of the chute; the deck and everything above it move |
-| `SPOUT_ABOVE_RIM`, `NOSE` | 14, 20 | where the food leaves the spout |
-| `EYE_X`, `EYE_ABOVE_MOUTH`, `CAM_FLEX` | 14, 14, 75 | camera position and the flex it must reach with |
+| `SPOUT_ABOVE_RIM`, `NOSE`, `KIBBLE_DROP` | 10, 12, 16 | where the food leaves the spout, and the room under the outlet: together with `CHUTE_ANGLE` they set the body's height |
+| `EYE_X`, `EYE_ABOVE_MOUTH`, `CAM_FLEX` | 20, 8, 75 | camera position and the flex it must reach with |
 | `CAM_HFOV`, `CAM_VFOV` | 54, 41 | the lens, for the view check |
 | `BOARD_GAP`, `BOARD_X0`, `USB_ROOM` | 8, 33.5, 16 | where the board stands |
 | `BED` | 256³ | your printer |
