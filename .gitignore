@@ -43,3 +43,6 @@ firmware/*/.cache/
 firmware/*/main/BUILD_INFO.h
 .simulated-device.json
 .feeder-bridge.json
+
+# detection models, downloaded (Dockerfile, backend/src/core/catDetector.ts)
+backend/models/

@@ -167,7 +167,6 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
                 });
             }
             hub.emit('motionEvent', toMotionEvent(doc));
-            onMovement(deviceId, jpeg, settings.notify);
             log.info('movement', { device: deviceId, moved: `${(doc.peakScore * 100).toFixed(1)}%`, picture: settings.keepPictures ? 'kept' : 'none' });
         }
         if (!current.confirmed) return;
@@ -188,6 +187,8 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
     } else if (s.current && time - s.current.lastMotion > (s.current.confirmed ? EVENT_GAP_MS : UNCONFIRMED_GAP_MS)) {
         await closeEvent(deviceId, s);
     }
+    // while a movement lasts, the still frames too: a cat eating hardly moves (visits.ts)
+    if (s.current?.confirmed) onMovement(deviceId, jpeg, settings.notify);
 }
 
 /* Called with every frame a camera sends; analyses at most MOTION_FPS of them and

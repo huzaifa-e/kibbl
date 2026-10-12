@@ -9,7 +9,7 @@ export default defineConfig({
     platform: 'node',
     target: 'node20',
     outDir: 'dist',
-    // sharp loads a native binary of its own platform, it is installed next to the bundle
-    noExternal: [/^(?!.*(sharp|bufferutil))/],
-    external: ['sharp', 'bufferutil'],
+    // sharp and onnxruntime-node load a native binary of their own platform, they are installed next to the bundle
+    noExternal: [/^(?!.*(sharp|bufferutil|onnxruntime-node))/],
+    external: ['sharp', 'bufferutil', 'onnxruntime-node'],
 });
