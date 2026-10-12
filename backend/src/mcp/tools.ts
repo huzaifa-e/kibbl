@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { productName, roomClimate } from '../../../shared/protocol';
+import { productName, roomClimate, isMirrored, rotationOf } from '../../../shared/protocol';
 import { version } from '../../../shared/version';
 import { Device, HealthLink, Meter, MotionEventModel } from '../core/db';
 import { getLive, summarize } from '../core/devices';
@@ -122,7 +122,7 @@ function deviceInfo(doc: DeviceDoc) {
         firmware: s.fw ?? null,
         capabilities: s.caps,
         motion: s.motion,
-        camera: s.camera ?? null,
+        camera: s.camera ? { ...s.camera, rotation: rotationOf(s.camera, s.turn90), mirror: isMirrored(s.camera) } : null,
         camera_error: s.cameraError ?? null,
         signal_dbm: s.telemetry?.rssi ?? null,
         uptime_s: s.telemetry?.uptime ?? null,

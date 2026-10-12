@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { HeatingCommand } from '../../../shared/heating';
-import { framesizes, lampColors, lampModes, fanModes } from '../../../shared/protocol';
+import { framesizes, lampColors, lampModes, fanModes, isMirrored, rotationCommand, rotationOf } from '../../../shared/protocol';
 import { setNightSchedule } from '../core/air';
 import { applyMotionSettings, runDeviceCommand } from '../core/control';
 import { Device, User } from '../core/db';
@@ -208,7 +208,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
         {
             title: 'Set a camera',
             description:
-                'Changes a kibbl. cam: its white light (0-100), picture (framesize, quality 4-63 lower is better, flips, brightness/contrast/saturation -2..2) and motion detection ' +
+                'Changes a kibbl. cam: its white light (0-100), picture (framesize, quality 4-63 lower is better, rotation clockwise 0/90/180/270 and mirror, brightness/contrast/saturation -2..2) and motion detection ' +
                 '(on/off, sensitivity, quiet hours from-to local time, flashing the light on motion, keeping a picture of each event). Only the fields given change.',
             inputSchema: {
                 camera: z.string().describe('the camera by name or id'),
@@ -216,8 +216,11 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 blink: z.boolean().optional().describe('flash the light to find it'),
                 framesize: z.enum(framesizes).optional(),
                 quality: z.number().int().min(4).max(63).optional(),
-                vflip: z.boolean().optional(),
-                hmirror: z.boolean().optional(),
+                rotation: z
+                    .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+                    .optional()
+                    .describe('turn of the picture, clockwise'),
+                mirror: z.boolean().optional().describe('mirror the picture left to right'),
                 brightness: z.number().int().min(-2).max(2).optional(),
                 contrast: z.number().int().min(-2).max(2).optional(),
                 saturation: z.number().int().min(-2).max(2).optional(),
@@ -243,8 +246,13 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 results.push({ change: 'blink', ok: r.ok, error: r.error });
             }
             const picture: Record<string, unknown> = { cmd: 'camera' };
-            for (const key of ['framesize', 'quality', 'vflip', 'hmirror', 'brightness', 'contrast', 'saturation'] as const) {
+            for (const key of ['framesize', 'quality', 'brightness', 'contrast', 'saturation'] as const) {
                 if (args[key] !== undefined) picture[key] = args[key];
+            }
+            // turn and mirror together: the camera flips for 180, the server turns the quarter
+            if (args.rotation !== undefined || args.mirror !== undefined) {
+                const rotation = args.rotation ?? rotationOf(doc.camera, doc.turn90);
+                Object.assign(picture, rotationCommand(rotation, args.mirror ?? isMirrored(doc.camera)));
             }
             if (Object.keys(picture).length > 1) {
                 const r = await runDeviceCommand(doc, picture, who, VIA);
