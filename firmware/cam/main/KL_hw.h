@@ -108,6 +108,10 @@ extern "C" {
  */
 #define CAM_POWER_PIN         10 // CAM_PWR: the P-MOSFET Q1 powers the camera while low
 #define CAM_XCLK_HZ           5000000 // as in the EMONI firmware (ESW0009) on this board
+/* its sensor, a GC2145, has no jpeg encoder: raw frames, encoded in software as ESW0009
+ * does. Raw frames are large (2 bytes a pixel), so the stream stops at SVGA. */
+#define CAM_SOFT_JPEG         1
+#define CAM_MAX_FRAMESIZE     FRAMESIZE_SVGA
 
 #define CAM_PIN_PWDN  -1 // pulled down on the board
 #define CAM_PIN_RESET -1 // pulled up on the board, software reset
@@ -146,6 +150,12 @@ extern "C" {
 
 #ifndef CAM_XCLK_HZ
 #define CAM_XCLK_HZ 20000000
+#endif
+#ifndef CAM_SOFT_JPEG
+#define CAM_SOFT_JPEG 0 // the sensor encodes jpeg itself
+#endif
+#ifndef CAM_MAX_FRAMESIZE
+#define CAM_MAX_FRAMESIZE FRAMESIZE_UXGA
 #endif
 #ifndef KIBBL_FEEDER
 #define KIBBL_FEEDER 0 // a camera only

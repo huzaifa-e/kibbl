@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <stdlib.h>
+
 #include "driver/gpio.h"
+#include "img_converters.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -12,6 +15,9 @@
 
 static SemaphoreHandle_t cam_mutex;
 
+#if CAM_SOFT_JPEG
+static int soft_quality = 80; // frame2jpg's 1-100, higher is better: from the setting's 4-63
+#endif
 static bool ready   = false;
 static bool stopped = false; // camera_stop() was called: nothing starts it again until a restart
 static char sensor_name[16] = "none";
@@ -21,9 +27,9 @@ const char *camera_last_error(void) {
     return last_error;
 }
 
-/* The driver sizes its jpeg frame buffers by the frame size given at init, and a
- * later larger frame size overflows them (FB-OVF). It starts at UXGA, the largest
- * size the settings offer, and camera_apply() sets the size actually streamed. */
+/* The driver sizes its frame buffers by the frame size given at init, and a later
+ * larger frame size overflows them (FB-OVF). It starts at the largest size the board
+ * streams (UXGA, SVGA for raw frames), and camera_apply() sets the size actually streamed. */
 static camera_config_t camera_config = {
     .pin_pwdn     = CAM_PIN_PWDN,
     .pin_reset    = CAM_PIN_RESET,
@@ -48,8 +54,12 @@ static camera_config_t camera_config = {
     .ledc_timer   = CAMERA_TIMER,
     .ledc_channel = CAMERA_CHANNEL,
 
+#if CAM_SOFT_JPEG
+    .pixel_format = PIXFORMAT_YUV422, // the sensor has no jpeg: raw, encoded in camera_take()
+#else
     .pixel_format = PIXFORMAT_JPEG,
-    .frame_size   = FRAMESIZE_UXGA,
+#endif
+    .frame_size   = CAM_MAX_FRAMESIZE,
 
     .jpeg_quality = 12, // 0-63, for OV series camera sensors, lower number means higher quality
     .fb_count     = 2,  // two buffers: the driver fills one while the other is sent
@@ -164,12 +174,24 @@ bool camera_apply(const camera_settings_t *settings) {
     // each setter returns 0 on success
     int failed = 0;
     failed |= sensor->set_framesize(sensor, framesize);
+#if CAM_SOFT_JPEG
+    // the encoder is ours: the setting's 4 (best) to 63 becomes 86 to 27
+    soft_quality = 90 - settings->quality;
+#else
     failed |= sensor->set_quality(sensor, settings->quality);
+#endif
     failed |= sensor->set_vflip(sensor, settings->vflip);
     failed |= sensor->set_hmirror(sensor, settings->hmirror);
+#if CAM_SOFT_JPEG
+    // the GC2145 has none of these three: its driver refuses them, nothing is wrong
+    sensor->set_brightness(sensor, settings->brightness);
+    sensor->set_contrast(sensor, settings->contrast);
+    sensor->set_saturation(sensor, settings->saturation);
+#else
     failed |= sensor->set_brightness(sensor, settings->brightness);
     failed |= sensor->set_contrast(sensor, settings->contrast);
     failed |= sensor->set_saturation(sensor, settings->saturation);
+#endif
 
     xSemaphoreGive(cam_mutex); // Mutex release
 
@@ -192,16 +214,43 @@ camera_fb_t *camera_take(void) {
         strlcpy(last_error, "no frame", sizeof(last_error));
         return NULL;
     }
+#if CAM_SOFT_JPEG
+    /* a jpeg copy of the raw frame, the raw one goes straight back to the driver. The
+     * copy is ours (its buffer from frame2jpg): camera_return() frees both. */
+    camera_fb_t *jpeg = calloc(1, sizeof(camera_fb_t));
+    if (jpeg != NULL) {
+        *jpeg = *fb;
+        jpeg->buf    = NULL;
+        jpeg->len    = 0;
+        jpeg->format = PIXFORMAT_JPEG;
+        if (!frame2jpg(fb, soft_quality, &jpeg->buf, &jpeg->len)) {
+            free(jpeg);
+            jpeg = NULL;
+        }
+    }
+    esp_camera_fb_return(fb);
+    if (jpeg == NULL) {
+        strlcpy(last_error, "no jpeg", sizeof(last_error));
+    }
+    return jpeg;
+#else
     if (fb->format != PIXFORMAT_JPEG) {
         esp_camera_fb_return(fb);
         strlcpy(last_error, "not jpeg", sizeof(last_error));
         return NULL;
     }
     return fb;
+#endif
 }
 
 void camera_return(camera_fb_t *fb) {
-    if (fb != NULL) {
-        esp_camera_fb_return(fb);
+    if (fb == NULL) {
+        return;
     }
+#if CAM_SOFT_JPEG
+    free(fb->buf);
+    free(fb);
+#else
+    esp_camera_fb_return(fb);
+#endif
 }
