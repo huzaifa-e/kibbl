@@ -36,10 +36,10 @@ Unchanged:
 | Function | Pin | |
 | --- | --- | --- |
 | Camera power | IO10 (CAM_PWR) | low: on (P-MOSFET Q1) |
-| Camera | XCLK 11, SDA 1, SCL 2, D0–D7 21 48 38 47 14 12 39 40, VSYNC 42, HREF 41, PCLK 13 | 5 MHz XCLK, as in the EMONI firmware (ESW0009). The sensor is a GC2145, which has no jpeg encoder: the firmware takes grayscale frames (the Y of its YUV, as ESW0009) and encodes them itself (`CAM_SOFT_JPEG`). Always 800 × 600: the driver halves the 1600 × 1200 sensor, the whole field of view; smaller sizes would crop its middle. Turned 180° by default (`CAM_ROTATE_180`), the app can change it. Quality is the encoder's; contrast, brightness and saturation do nothing. PSRAM runs at 80 MHz: at 40 the raw frames arrive cut short |
+| Camera | XCLK 11, SDA 1, SCL 2, D0–D7 21 48 38 47 14 12 39 40, VSYNC 42, HREF 41, PCLK 13 | The sensor is a GC2145, which has no jpeg encoder: the driver keeps the Y of its YUV (grayscale, as ESW0009) and the firmware encodes it with Espressif's `esp_new_jpeg` (`CAM_SOFT_JPEG`). Always 800 × 600, the whole field of view (the driver halves the 1600 × 1200 sensor; smaller sizes crop its middle). About 4 fps: a frame every ~250 ms at 10 MHz XCLK, encoding (~120 ms) overlaps. 16 and 20 MHz cut frames short (the driver copies them with the CPU), and the driver's PSRAM DMA (`CAMERA_PSRAM_DMA`) garbles raw frames in esp32-camera 2.1.8. Flipped vertically by default (`CAM_DEFAULT_VFLIP`). Quality is the encoder's; contrast, brightness and saturation do nothing. PSRAM at 80 MHz, 32 KB instruction and 64 KB data cache, QIO flash |
 | Status LED | IO17 (LED.1, green D5) | low: on |
 | Red LED | IO18 (LED.2, D4) | kept off |
-| Illuminator | IO19 (LED.0, FLASH) | low: on, PWM |
+| Illuminator | IO19 (LED.0, FLASH) | low: on, PWM. **Turns on by itself** when something comes close (`CAM_AUTO_LIGHT`, `KL_light.c`): the middle of the frame darker than 50 of 255 for 3 frames. Every 8 s it looks with the light off for half a second (those frames are not streamed); no longer dark: off. Still dark with the light on: nothing close (night), off until the scene was brighter. On in the app stays on; off in the app keeps it out for a minute. It works while frames are taken (someone watching) |
 | STEP, DIR, EN | IO15, IO9, IO8 | see the wiring above |
 | Free | IO4–IO7, IO20 (the buzzer's, not fitted), IO16 (button) | IO4–IO7 only on the module's own pads |
 
