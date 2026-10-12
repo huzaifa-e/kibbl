@@ -204,9 +204,9 @@ function renderMotion() {
         <div class="form-hint mb-2">Off: only when and how much something moved is logged, no picture is stored.</div>
         <label class="form-check form-switch mb-1">
             <input class="form-check-input" type="checkbox" id="motion-notify" ${m.notify ? 'checked' : ''} />
-            <span class="form-check-label">${device!.caps.includes('feeder') ? 'E-mail me when the cat comes to eat' : 'E-mail me when something comes'}</span>
+            <span class="form-check-label">${device!.caps.includes('feeder') ? 'E-mail me when the cat comes to eat' : 'E-mail me when a cat comes'}</span>
         </label>
-        <div class="form-hint mb-3">One e-mail a visit, with the picture. With an Anthropic API key on the server, only a cat counts.</div>
+        <div class="form-hint mb-3">One e-mail a visit, with the picture. Only a cat counts: the server looks for one in what moves.</div>
         <div class="d-flex align-items-center gap-2 mb-3 small" id="saved-pictures"></div>
         <div class="mb-3">
             <label class="form-label">Sensitivity</label>
