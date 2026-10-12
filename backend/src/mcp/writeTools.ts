@@ -230,7 +230,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 quiet_to: hour.optional(),
                 motion_blink: z.boolean().optional(),
                 keep_pictures: z.boolean().optional(),
-                email_on_visit: z.boolean().optional().describe('e-mail the owner when something comes (at a feeder: the cat), once a visit, with the picture'),
+                email_on_visit: z.boolean().optional().describe('e-mail the owner when a cat comes (the server detects it in the picture), once a visit, with the picture'),
             },
             annotations: writes,
         },
