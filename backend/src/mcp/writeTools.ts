@@ -209,7 +209,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             title: 'Set a camera',
             description:
                 'Changes a kibbl. cam: its white light (0-100), picture (framesize, quality 4-63 lower is better, rotation clockwise 0/90/180/270 and mirror, brightness/contrast/saturation -2..2) and motion detection ' +
-                '(on/off, sensitivity, quiet hours from-to local time, flashing the light on motion, keeping a picture of each event). Only the fields given change.',
+                '(on/off, sensitivity, quiet hours from-to local time, flashing the light on motion, keeping a picture of each event, an e-mail on each visit). Only the fields given change.',
             inputSchema: {
                 camera: z.string().describe('the camera by name or id'),
                 light: z.number().int().min(0).max(100).optional(),
@@ -230,6 +230,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 quiet_to: hour.optional(),
                 motion_blink: z.boolean().optional(),
                 keep_pictures: z.boolean().optional(),
+                email_on_visit: z.boolean().optional().describe('e-mail the owner when something comes (at a feeder: the cat), once a visit, with the picture'),
             },
             annotations: writes,
         },
@@ -265,6 +266,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 quietTo: args.quiet_to,
                 blink: args.motion_blink,
                 keepPictures: args.keep_pictures,
+                notify: args.email_on_visit,
             };
             if (Object.values(motion).some((v) => v !== undefined)) {
                 const m = await applyMotionSettings(doc, motion, who, VIA);
