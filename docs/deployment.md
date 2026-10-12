@@ -149,7 +149,7 @@ A meter is one of the source's configured devices, by its uuid: in `.env` as `ME
 
 The camera opens the connection itself, so the server only has to be **reachable from the home network**. 10.0.1.99 is the office LAN and is not. Choose one:
 
-1. **Cloudflare named tunnel** (recommended): a fixed `https://home.<your-domain>`; with `DEVICE_BASE_URL=https://home.<your-domain>` the app's USB setup writes `wss://home.<your-domain>/device/socket` into every camera. Setup over USB also needs the app itself on https (Web Serial), which the tunnel gives. The certificate is checked against the ESP-IDF bundle. Set `DEVICE_BASE_URL` to the same https origin and `COOKIE_SECURE=true`.
+1. **Cloudflare named tunnel** (recommended): a fixed `https://home.<your-domain>`; with `DEVICE_BASE_URL=https://home.<your-domain>` the app's USB setup writes `wss://home.<your-domain>/device/socket` into every camera. Setup over USB also needs the app itself on https (Web Serial), which the tunnel gives. The certificate is checked against the ESP-IDF bundle. Set `DEVICE_BASE_URL` to the same https origin and `COOKIE_SECURE=true`. The `cloudflare` service runs it: create the tunnel in the Cloudflare dashboard (Zero Trust, Networks, Tunnels, type cloudflared), give it the public hostname with service `http://app:8790`, put its token in `.env` as `CLOUDFLARE_TUNNEL_TOKEN` and start it with `docker compose --profile cloudflare up -d cloudflare`.
 2. **Port forward** of the office router to 10.0.1.99:8790, best with a reverse proxy doing TLS in front.
 3. **Testing at home**: run the server on the laptop (`npm run build`, then `node backend/dist/app.js` with a `backend/.env`) and point the camera at `ws://<laptop-ip>:8790/device/socket`.
 

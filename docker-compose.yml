@@ -44,6 +44,21 @@ services:
         logging: *logging
         depends_on:
             - app
+    # the public https address of kibbl. on its own domain: a Cloudflare named tunnel, its public
+    # hostnames (https://kibbl.uk -> http://app:8790) set in the Cloudflare dashboard. Not started
+    # by deploy.sh; CLOUDFLARE_TUNNEL_TOKEN in .env:
+    # docker compose --profile cloudflare up -d cloudflare
+    cloudflare:
+        image: cloudflare/cloudflared:latest
+        container_name: kibbl-cloudflare
+        profiles: ['cloudflare']
+        restart: unless-stopped
+        command: tunnel --no-autoupdate run
+        environment:
+            - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+        logging: *logging
+        depends_on:
+            - app
     # the fixed public https address of kibbl.: its own device on the tailnet,
     # https://kibbl.<tailnet>.ts.net, with Tailscale Funnel on 443 (deploy/tailscale/serve.json):
     # the app, the devices' socket, the MCP endpoint and its OAuth. Not started by deploy.sh; the
