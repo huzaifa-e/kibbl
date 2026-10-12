@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { HeatingCommand } from '../../../shared/heating';
-import { framesizes, lampColors, lampModes, fanModes, isMirrored, rotationCommand, rotationOf } from '../../../shared/protocol';
+import { framesizes, lampColors, lampModes, fanModes, isMirrored, rotationCommand, rotationOf, ZOOM_MAX } from '../../../shared/protocol';
 import { setNightSchedule } from '../core/air';
 import { applyMotionSettings, runDeviceCommand } from '../core/control';
 import { Device, User } from '../core/db';
@@ -208,7 +208,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
         {
             title: 'Set a camera',
             description:
-                'Changes a kibbl. cam: its white light (0-100), picture (framesize, quality 4-63 lower is better, rotation clockwise 0/90/180/270 and mirror, brightness/contrast/saturation -2..2) and motion detection ' +
+                'Changes a kibbl. cam: its white light (0-100), picture (framesize, quality 4-63 lower is better, rotation clockwise 0/90/180/270 and mirror, zoom into the middle, brightness/contrast/saturation -2..2) and motion detection ' +
                 '(on/off, sensitivity, quiet hours from-to local time, flashing the light on motion, keeping a picture of each event, an e-mail on each visit). Only the fields given change.',
             inputSchema: {
                 camera: z.string().describe('the camera by name or id'),
@@ -221,6 +221,9 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                     .optional()
                     .describe('turn of the picture, clockwise'),
                 mirror: z.boolean().optional().describe('mirror the picture left to right'),
+                zoom: z.number().min(1).max(ZOOM_MAX).optional().describe('show only the middle of the picture, 1 (all) to 2.5; cut out on the server'),
+                zoom_x: z.number().min(0).max(1).optional().describe('the middle of the zoomed part, left 0 to right 1'),
+                zoom_y: z.number().min(0).max(1).optional().describe('the middle of the zoomed part, top 0 to bottom 1'),
                 brightness: z.number().int().min(-2).max(2).optional(),
                 contrast: z.number().int().min(-2).max(2).optional(),
                 saturation: z.number().int().min(-2).max(2).optional(),
@@ -230,7 +233,10 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 quiet_to: hour.optional(),
                 motion_blink: z.boolean().optional(),
                 keep_pictures: z.boolean().optional(),
-                email_on_visit: z.boolean().optional().describe('e-mail the owner when a cat comes (the server detects it in the picture), once a visit, with the picture'),
+                email_on_visit: z
+                    .boolean()
+                    .optional()
+                    .describe('e-mail the owner when a cat comes (the server detects it in the picture), once a visit, with the picture'),
             },
             annotations: writes,
         },
@@ -254,6 +260,10 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             if (args.rotation !== undefined || args.mirror !== undefined) {
                 const rotation = args.rotation ?? rotationOf(doc.camera, doc.turn90);
                 Object.assign(picture, rotationCommand(rotation, args.mirror ?? isMirrored(doc.camera)));
+            }
+            if (args.zoom !== undefined || args.zoom_x !== undefined || args.zoom_y !== undefined) {
+                const view = doc.view ?? { zoom: 1, x: 0.5, y: 0.5 };
+                picture.view = { zoom: args.zoom ?? view.zoom, x: args.zoom_x ?? view.x, y: args.zoom_y ?? view.y };
             }
             if (Object.keys(picture).length > 1) {
                 const r = await runDeviceCommand(doc, picture, who, VIA);

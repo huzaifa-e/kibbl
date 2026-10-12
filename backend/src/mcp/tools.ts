@@ -122,7 +122,9 @@ function deviceInfo(doc: DeviceDoc) {
         firmware: s.fw ?? null,
         capabilities: s.caps,
         motion: s.motion,
-        camera: s.camera ? { ...s.camera, rotation: rotationOf(s.camera, s.turn90), mirror: isMirrored(s.camera) } : null,
+        camera: s.camera
+            ? { ...s.camera, rotation: rotationOf(s.camera, s.turn90), mirror: isMirrored(s.camera), zoom: s.view ?? { zoom: 1, x: 0.5, y: 0.5 } }
+            : null,
         camera_error: s.cameraError ?? null,
         signal_dbm: s.telemetry?.rssi ?? null,
         uptime_s: s.telemetry?.uptime ?? null,
