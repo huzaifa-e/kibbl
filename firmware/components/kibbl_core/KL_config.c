@@ -18,6 +18,9 @@
 #define NVS_LOCAL_KEY     "LOCAL_KEY"
 #define NVS_CLAIM_CODE    "CLAIM_CODE"
 
+#define OLD_SERVER_URL    "wss://kibbl.tail529b44.ts.net/device/socket"
+#define NEW_SERVER_URL    "wss://kibbl.uk/device/socket"
+
 // no 0/O, 1/I/L, 5/S, 8/B: read from a phone screen and typed in elsewhere
 static const char claim_alphabet[] = "ACDEFGHJKMNPQRTUVWXYZ234679";
 
@@ -115,6 +118,13 @@ void config_load(void) {
         strlcpy(server_url, CONFIG_KIBBL_SERVER_URL, sizeof(server_url));
     }
 
+    // the server moved from the tailnet's funnel to kibbl.uk: a device set up for the old address
+    // stores the new one, any other stored address stays as it was set
+    if (strcmp(server_url, OLD_SERVER_URL) == 0) {
+        strlcpy(server_url, NEW_SERVER_URL, sizeof(server_url));
+        nvs_queue_job(NVS_SERVER_URL, server_url, 0, STRING, WRITE);
+        DEBUG_F("server url moved to %s\n", server_url);
+    }
 }
 
 void config_reset(void) {
