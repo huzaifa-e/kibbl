@@ -6,3 +6,9 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 # CONFIG_KIBBL_BOARD_FREENOVE_S3 is not set
 CONFIG_KIBBL_BOARD_EMONI=y
+# the jpeg encoder reads the frame from PSRAM and runs from flash: the larger caches and
+# quad flash the module has (the smallest ones halve its speed)
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

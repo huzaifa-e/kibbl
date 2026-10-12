@@ -36,6 +36,8 @@ bool camera_apply(const camera_settings_t *settings);
  * with camera_return() */
 camera_fb_t *camera_take(void);
 void camera_return(camera_fb_t *fb);
+// the mean brightness (0-255) of the middle of the last frame, on a board with raw frames
+uint8_t camera_center_luma(void);
 
 // the step the last failed camera_init or camera_take stopped at, for the hello message
 const char *camera_last_error(void);

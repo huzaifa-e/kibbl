@@ -20,8 +20,8 @@ static camera_settings_t camera_settings;
 static const camera_settings_t camera_defaults = {
     .framesize  = FRAMESIZE_VGA,
     .quality    = 12,
-    .vflip      = CAM_ROTATE_180,
-    .hmirror    = CAM_ROTATE_180,
+    .vflip      = CAM_DEFAULT_VFLIP,
+    .hmirror    = false,
     .brightness = 0,
     .contrast   = 0,
     .saturation = 0,

@@ -6,7 +6,8 @@
 #include <stdlib.h>
 
 #include "driver/gpio.h"
-#include "img_converters.h"
+#include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -16,7 +17,7 @@
 static SemaphoreHandle_t cam_mutex;
 
 #if CAM_SOFT_JPEG
-static int soft_quality = 80; // frame2jpg's 1-100, higher is better: from the setting's 4-63
+static int soft_quality = 80; // the encoder's 1-100, higher is better: from the setting's 4-63
 #endif
 static bool ready   = false;
 static bool stopped = false; // camera_stop() was called: nothing starts it again until a restart
@@ -68,13 +69,8 @@ static camera_config_t camera_config = {
 
     .jpeg_quality = 12, // 0-63, for OV series camera sensors, lower number means higher quality
     .fb_location  = CAMERA_FB_IN_PSRAM,
-#if CAM_SOFT_JPEG
-    .fb_count     = 1, // as ESW0009 on this sensor: one raw frame at a time, taken when asked for
-    .grab_mode    = CAMERA_GRAB_WHEN_EMPTY,
-#else
-    .fb_count     = 2,  // two buffers: the driver fills one while the other is sent
+    .fb_count     = 2,  // two buffers: the driver fills one while the other is sent (or encoded)
     .grab_mode    = CAMERA_GRAB_LATEST, // a slow consumer gets the newest frame, not a queued one
-#endif
 };
 
 // a board that switches the camera's supply: on, and time for its regulators to settle
@@ -215,12 +211,102 @@ bool camera_apply(const camera_settings_t *settings) {
     return !failed;
 }
 
+#if CAM_SOFT_JPEG
+#include "esp_jpeg_enc.h"
+
+#define JPEG_OUT_MAX (256 * 1024) // a grayscale SVGA frame is 40-80 kB
+
+static jpeg_enc_handle_t encoder;
+static uint8_t *enc_block, *enc_out; // 16-byte aligned, as the S3 encoder needs
+static int enc_block_size;
+static int enc_quality;
+static volatile uint8_t center_luma;
+
+uint8_t camera_center_luma(void) {
+    return center_luma;
+}
+
+// the mean brightness of the middle quarter of a grayscale frame, every 4th pixel
+static uint8_t middle_luma(const camera_fb_t *fb) {
+    uint32_t sum = 0, n = 0;
+    for (size_t y = fb->height / 4; y < fb->height * 3 / 4; y += 4) {
+        const uint8_t *row = fb->buf + y * fb->width;
+        for (size_t x = fb->width / 4; x < fb->width * 3 / 4; x += 4) {
+            sum += row[x];
+            n++;
+        }
+    }
+    return n ? sum / n : 0;
+}
+
+/* The frame as jpeg with Espressif's encoder (esp_new_jpeg, SIMD on the S3), into a buffer
+ * of our own: camera_return() frees it. It takes the frame a strip of rows at a time, each
+ * copied into internal RAM first. */
+static camera_fb_t *soft_encode(const camera_fb_t *fb) {
+    if (encoder == NULL || enc_quality != soft_quality) {
+        if (encoder != NULL) {
+            jpeg_enc_close(encoder);
+            encoder = NULL;
+        }
+        jpeg_enc_config_t cfg = DEFAULT_JPEG_ENC_CONFIG();
+        cfg.width       = fb->width;
+        cfg.height      = fb->height;
+        cfg.src_type    = JPEG_PIXEL_FORMAT_GRAY;
+        cfg.subsampling = JPEG_SUBSAMPLE_GRAY;
+        cfg.quality     = soft_quality;
+        if (jpeg_enc_open(&cfg, &encoder) != JPEG_ERR_OK) {
+            encoder = NULL;
+            return NULL;
+        }
+        enc_quality = soft_quality;
+        int block   = jpeg_enc_get_block_size(encoder);
+        if (block != enc_block_size) {
+            heap_caps_free(enc_block);
+            enc_block      = heap_caps_aligned_alloc(16, block, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            enc_block_size = enc_block ? block : 0;
+        }
+    }
+    if (enc_out == NULL) {
+        enc_out = jpeg_calloc_align(JPEG_OUT_MAX, 16);
+    }
+    if (enc_block == NULL || enc_out == NULL || fb->len % enc_block_size != 0) {
+        return NULL;
+    }
+    int out_len = 0;
+    for (size_t at = 0; at < fb->len; at += enc_block_size) {
+        memcpy(enc_block, fb->buf + at, enc_block_size);
+        if (jpeg_enc_process_with_block(encoder, enc_block, enc_block_size, enc_out, JPEG_OUT_MAX, &out_len) < JPEG_ERR_OK) {
+            return NULL;
+        }
+    }
+    if (out_len <= 0) {
+        return NULL;
+    }
+    camera_fb_t *jpeg = calloc(1, sizeof(camera_fb_t));
+    uint8_t *buf      = malloc(out_len);
+    if (jpeg == NULL || buf == NULL) {
+        free(jpeg);
+        free(buf);
+        return NULL;
+    }
+    memcpy(buf, enc_out, out_len);
+    *jpeg        = *fb;
+    jpeg->buf    = buf;
+    jpeg->len    = out_len;
+    jpeg->format = PIXFORMAT_JPEG;
+    return jpeg;
+}
+#endif
+
 camera_fb_t *camera_take(void) {
     if (!ready) {
         return NULL;
     }
 
     xSemaphoreTake(cam_mutex, portMAX_DELAY); // Mutex block
+#if CAM_SOFT_JPEG
+    int64_t t0 = esp_timer_get_time();
+#endif
     camera_fb_t *fb = esp_camera_fb_get();
     xSemaphoreGive(cam_mutex); // Mutex release
 
@@ -229,22 +315,23 @@ camera_fb_t *camera_take(void) {
         return NULL;
     }
 #if CAM_SOFT_JPEG
-    /* a jpeg copy of the raw frame, the raw one goes straight back to the driver. The
-     * copy is ours (its buffer from frame2jpg): camera_return() frees both. */
-    camera_fb_t *jpeg = calloc(1, sizeof(camera_fb_t));
-    if (jpeg != NULL) {
-        *jpeg = *fb;
-        jpeg->buf    = NULL;
-        jpeg->len    = 0;
-        jpeg->format = PIXFORMAT_JPEG;
-        if (!frame2jpg(fb, soft_quality, &jpeg->buf, &jpeg->len)) {
-            free(jpeg);
-            jpeg = NULL;
-        }
-    }
+    static int64_t grab_us, encode_us;
+    static uint32_t timed, luma_sum;
+    int64_t t1 = esp_timer_get_time();
+    center_luma = middle_luma(fb);
+    camera_fb_t *jpeg = soft_encode(fb);
     esp_camera_fb_return(fb);
     if (jpeg == NULL) {
         strlcpy(last_error, "no jpeg", sizeof(last_error));
+    }
+    encode_us += esp_timer_get_time() - t1;
+    grab_us += t1 - t0;
+    luma_sum += center_luma;
+    if (++timed == 50) {
+        DEBUG("camera: 50 frames, each %lld ms waiting, %lld ms encoding; the middle at %lu of 255\n", grab_us / 50000,
+              encode_us / 50000, luma_sum / 50);
+        grab_us = encode_us = 0;
+        timed = luma_sum = 0;
     }
     return jpeg;
 #else

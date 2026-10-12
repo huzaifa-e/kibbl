@@ -10,6 +10,8 @@
 #include "freertos/task.h"
 
 #include "KL_camera.h"
+#include "KL_hw.h"
+#include "KL_light.h"
 #include "KL_serial.h"
 #include "KL_stream.h"
 #include "KL_time.h"
@@ -88,6 +90,12 @@ static void camera_task(void *pvParams) {
             delay_ms(100);
             continue;
         }
+#if CAM_AUTO_LIGHT
+        if (!light_auto(camera_center_luma())) {
+            camera_return(fb); // taken with the light off for a moment: not shown
+            continue;
+        }
+#endif
 
         xSemaphoreTake(frame_mutex, portMAX_DELAY);
         if (grow(&latest, fb->len)) {

@@ -92,10 +92,121 @@ bool light_available(void) {
     return available;
 }
 
+/* ----------------------------------------------------------------------- */
+/* The light by itself. Something very close covers the camera: the middle of the frame goes
+ * dark, the light goes on. Lit, a close thing is bright; the light reaches nothing far, so a
+ * middle still dark with it on means nothing is close (night): off, and it waits until the
+ * scene was brighter again. Every few seconds it looks with the light off for a moment: the
+ * middle no longer dark means the thing is gone. A level set in the app wins: on stays on,
+ * off keeps the automatic out for a minute. */
+
+#if CAM_AUTO_LIGHT
+#define AUTO_LEVEL       100
+#define AUTO_DARK        CAM_AUTO_LIGHT_DARK
+#define AUTO_SETTLE_MS   1500  // exposure follows the light
+#define AUTO_CHECK_EVERY 8000
+#define AUTO_CHECK_MS    500   // the light off this long before it looks
+#define AUTO_QUIET_MS    60000 // after the light was switched off in the app
+
+typedef enum { AUTO_WATCHING = 0, AUTO_LIT, AUTO_CHECKING, AUTO_RESTING } auto_state_t;
+
+static auto_state_t auto_state = AUTO_WATCHING;
+static bool manual_on          = false;
+static uint8_t auto_count      = 0;
+static int64_t auto_since_ms, auto_next_check_ms, auto_quiet_until_ms;
+
+static int64_t now_ms(void) {
+    return esp_timer_get_time() / 1000;
+}
+
+static void auto_level(uint8_t level) {
+    write_level(level);
+    level_now = level;
+}
+
+#endif
+
+bool light_auto(uint8_t luma) {
+#if CAM_AUTO_LIGHT
+    if (!available || manual_on || blink_steps > 0) {
+        return true;
+    }
+    int64_t now = now_ms();
+    switch (auto_state) {
+    case AUTO_WATCHING:
+        if (now < auto_quiet_until_ms) {
+            return true;
+        }
+        auto_count = luma < AUTO_DARK ? auto_count + 1 : 0;
+        if (auto_count >= 3) {
+            auto_level(AUTO_LEVEL);
+            auto_state         = AUTO_LIT;
+            auto_since_ms      = now;
+            auto_next_check_ms = now + AUTO_CHECK_EVERY;
+            auto_count         = 0;
+            DEBUG("light: on by itself, something close (middle %u)\n", luma);
+        }
+        return true;
+    case AUTO_LIT:
+        if (now - auto_since_ms < AUTO_SETTLE_MS) {
+            return true;
+        }
+        auto_count = luma < AUTO_DARK + 10 ? auto_count + 1 : 0;
+        if (auto_count >= 6) {
+            auto_level(0);
+            auto_state = AUTO_RESTING;
+            auto_count = 0;
+            DEBUG("light: off, it lights nothing close (middle %u)\n", luma);
+        } else if (now >= auto_next_check_ms) {
+            auto_level(0);
+            auto_state    = AUTO_CHECKING;
+            auto_since_ms = now;
+        }
+        return true;
+    case AUTO_CHECKING:
+        if (now - auto_since_ms < AUTO_CHECK_MS) {
+            return false;
+        }
+        if (luma >= AUTO_DARK + 15) {
+            auto_state = AUTO_WATCHING;
+            auto_count = 0;
+            DEBUG("light: off, nothing close any more (middle %u)\n", luma);
+        } else {
+            auto_level(AUTO_LEVEL);
+            auto_state         = AUTO_LIT;
+            auto_since_ms      = now;
+            auto_next_check_ms = now + AUTO_CHECK_EVERY;
+        }
+        return false;
+    case AUTO_RESTING:
+        if (luma >= AUTO_DARK + 25) {
+            auto_state = AUTO_WATCHING;
+            auto_count = 0;
+        }
+        return true;
+    }
+#else
+    (void)luma;
+#endif
+    return true;
+}
+
+/* ----------------------------------------------------------------------- */
+
 void light_set(uint8_t level) {
     if (!available) {
         return;
     }
+#if CAM_AUTO_LIGHT
+    // set in the app: on stays on, off keeps the automatic out for a while
+    bool was_auto = auto_state == AUTO_LIT || auto_state == AUTO_CHECKING;
+    manual_on     = level > 0;
+    auto_state    = AUTO_WATCHING;
+    auto_count    = 0;
+    if (level == 0 && was_auto) {
+        auto_quiet_until_ms = now_ms() + AUTO_QUIET_MS;
+    }
+#endif
     if (level > 100) {
         level = 100;
     }

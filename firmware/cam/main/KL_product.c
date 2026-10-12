@@ -95,6 +95,7 @@ static const char *cmd_camera(const cJSON *req, cJSON *resp) {
     if (!config_set_camera_settings(&settings)) {
         return "settings applied, not stored";
     }
+    config_camera_settings(&settings); // as they are in use: a board with one frame size keeps it
     config_camera_to_json(&settings, cJSON_AddObjectToObject(resp, "camera"));
     return NULL;
 }
