@@ -2,6 +2,7 @@ import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_MOVE_MAX, FEEDER_SPE
 import { setNightOverride } from './air';
 import { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
+import { setTurn90 } from './frames';
 import { logger } from './logger';
 import { invalidateMotionSettings } from './motion';
 
@@ -211,6 +212,12 @@ export async function runDeviceCommand(doc: DeviceDoc, command: Record<string, u
     const clean = cleanCommand(command);
     if (doc.status !== 'approved' || !clean || !commandAllowed(doc, clean.cmd as string)) {
         return { ok: false, error: 'command not allowed for this device' };
+    }
+    // the quarter turn of a camera is the server's: stored and applied to its frames, not sent
+    if (clean.cmd === 'camera' && typeof command.turn90 === 'boolean' && command.turn90 !== !!doc.turn90) {
+        await Device.updateOne({ _id: doc._id }, { turn90: command.turn90 });
+        setTurn90(doc._id, command.turn90);
+        await publishDevice(doc._id);
     }
     // a scan holds the radio for a few seconds, longer than other commands
     const resp = await sendCommand(doc._id, clean, clean.cmd === 'wifi_scan' ? 15000 : undefined);

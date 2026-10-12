@@ -1,4 +1,6 @@
 import express from 'express';
+import sharp from 'sharp';
+import { Device } from './db';
 import { changeSnapshotWaiters, changeViewers } from './devices';
 import { logger } from './logger';
 
@@ -23,11 +25,47 @@ function isJpeg(buf: Buffer) {
     return buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8;
 }
 
+/* A camera turned by a quarter (DeviceDoc.turn90): its sensor only flips, so the server turns
+ * every frame, once, before the viewers, snapshots, motion and its pictures see it. A frame
+ * arriving while the one before is still being turned is dropped: the camera waits for nothing. */
+const turned = new Map<string, boolean>();
+const turning = new Set<string>();
+
+export function setTurn90(deviceId: string, on: boolean) {
+    turned.set(deviceId, on);
+}
+
 export function onFrame(deviceId: string, jpeg: Buffer) {
     if (!isJpeg(jpeg)) {
         log.warn('binary message without jpeg header dropped', { device: deviceId, bytes: jpeg.length });
         return;
     }
+    const turn = turned.get(deviceId);
+    if (turn === undefined) {
+        turned.set(deviceId, false); // until the database answers
+        Device.findById(deviceId, { turn90: 1 })
+            .lean()
+            .then((doc) => doc?.turn90 && turned.set(deviceId, true))
+            .catch(() => undefined);
+    }
+    if (!turn) {
+        deliver(deviceId, jpeg);
+        return;
+    }
+    if (turning.has(deviceId)) {
+        return;
+    }
+    turning.add(deviceId);
+    sharp(jpeg)
+        .rotate(90)
+        .jpeg({ quality: 85 })
+        .toBuffer()
+        .then((out) => deliver(deviceId, out))
+        .catch((err) => log.warn('frame not turned', { device: deviceId, error: String(err) }))
+        .finally(() => turning.delete(deviceId));
+}
+
+function deliver(deviceId: string, jpeg: Buffer) {
     const frame = { jpeg, time: Date.now() };
     latest.set(deviceId, frame);
 

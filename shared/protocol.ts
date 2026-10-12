@@ -280,6 +280,24 @@ export interface SmokeDay {
     auto: number;
 }
 
+/* The turn of a camera's picture, clockwise: 180 is the camera's two flips (vflip on, hmirror
+ * as vflip unless mirrored), the quarter on top of it the server's (turn90). */
+export type Rotation = 0 | 90 | 180 | 270;
+
+export function rotationOf(camera: CameraSettings | undefined, turn90: boolean | undefined): Rotation {
+    return (((camera?.vflip ? 180 : 0) + (turn90 ? 90 : 0)) % 360) as Rotation;
+}
+
+export function isMirrored(camera: CameraSettings | undefined) {
+    return !!camera && camera.hmirror !== camera.vflip;
+}
+
+// the camera command and the server's quarter for a turn and a mirror
+export function rotationCommand(rotation: Rotation, mirror: boolean) {
+    const half = rotation >= 180;
+    return { vflip: half, hmirror: half !== mirror, turn90: rotation % 180 === 90 };
+}
+
 export interface DeviceSummary {
     _id: string;
     name: string;
@@ -295,6 +313,7 @@ export interface DeviceSummary {
     hostname?: string;
     caps: string[];
     camera?: CameraSettings;
+    turn90?: boolean; // the picture turned a quarter more on the server; the camera's flips do 180 (rotation())
     cameraError?: string;
     wifiChangeFailed?: string; // the network a change from the app could not join; the device went back
     light?: number;

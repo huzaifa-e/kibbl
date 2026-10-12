@@ -34,6 +34,8 @@ declare global {
         fw?: string;
         caps: string[];
         camera?: CameraSettings;
+        // the picture turned a quarter more than the camera turns it (its flips do 180): turned on the server (frames.ts)
+        turn90?: boolean;
         motion: MotionSettings;
         // kibbl. air: the settings the device reported, the night schedule the server keeps
         air?: AirSettings;

@@ -61,6 +61,7 @@ async function init() {
         fw: String,
         caps: { type: [String], default: [] },
         camera: { type: Schema.Types.Mixed },
+        turn90: Boolean,
         motion: {
             enabled: { type: Boolean, default: motionDefaults.enabled },
             sensitivity: { type: String, enum: ['low', 'medium', 'high'], default: motionDefaults.sensitivity },
