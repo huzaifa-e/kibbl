@@ -36,7 +36,7 @@ Unchanged:
 | Function | Pin | |
 | --- | --- | --- |
 | Camera power | IO10 (CAM_PWR) | low: on (P-MOSFET Q1) |
-| Camera | XCLK 11, SDA 1, SCL 2, D0–D7 21 48 38 47 14 12 39 40, VSYNC 42, HREF 41, PCLK 13 | 5 MHz XCLK, as in the EMONI firmware (ESW0009). The sensor is a GC2145, which has no jpeg encoder: the firmware takes raw YUV frames and encodes them itself (`CAM_SOFT_JPEG`), up to SVGA; quality is the encoder's, contrast, brightness and saturation do nothing |
+| Camera | XCLK 11, SDA 1, SCL 2, D0–D7 21 48 38 47 14 12 39 40, VSYNC 42, HREF 41, PCLK 13 | 5 MHz XCLK, as in the EMONI firmware (ESW0009). The sensor is a GC2145, which has no jpeg encoder: the firmware takes grayscale frames (the Y of its YUV, as ESW0009) and encodes them itself (`CAM_SOFT_JPEG`). Always 800 × 600: the driver halves the 1600 × 1200 sensor, the whole field of view; smaller sizes would crop its middle. Turned 180° by default (`CAM_ROTATE_180`), the app can change it. Quality is the encoder's; contrast, brightness and saturation do nothing. PSRAM runs at 80 MHz: at 40 the raw frames arrive cut short |
 | Status LED | IO17 (LED.1, green D5) | low: on |
 | Red LED | IO18 (LED.2, D4) | kept off |
 | Illuminator | IO19 (LED.0, FLASH) | low: on, PWM |
