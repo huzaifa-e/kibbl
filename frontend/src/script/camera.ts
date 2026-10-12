@@ -2,7 +2,11 @@ import './main';
 import type ApexCharts from 'apexcharts';
 import {
     framesizes,
+    isMirrored,
     productName,
+    rotationCommand,
+    rotationOf,
+    type Rotation,
     type ActivityBucket,
     type CameraSettings,
     type DeviceSummary,
@@ -17,6 +21,12 @@ import { bindUpdateInstall, updateNoticeHtml } from './updateNotice';
 import { byId, cameraProblem, emptyState, errorAlert, escapeHtml, formatBytes, formatUptime, signalQuality, successAlert, timeAgo } from './utils';
 
 const deviceId = window.location.pathname.split('/')[2]?.toUpperCase() ?? '';
+// the size as it is shown: a camera turned by a quarter streams it the other way round
+function sizeLabel(d: DeviceSummary) {
+    const label = framesizeLabels[d.camera!.framesize] ?? d.camera!.framesize;
+    return d.turn90 ? label.split('×').reverse().join('×') : label;
+}
+
 const framesizeLabels: Record<string, string> = {
     QVGA: '320×240',
     CIF: '400×296',
@@ -139,7 +149,7 @@ function renderBadges() {
         : cameraProblem(d.cameraError)
           ? '<span class="badge badge-overlay">no picture</span>'
           : `<span class="badge badge-live">LIVE</span>
-           ${d.camera ? `<span class="badge badge-overlay">${framesizeLabels[d.camera.framesize] ?? d.camera.framesize}</span>` : ''}
+           ${d.camera ? `<span class="badge badge-overlay">${sizeLabel(d)}</span>` : ''}
            ${t ? `<span class="badge badge-overlay">${t.fps} fps</span>` : ''}
            ${d.viewers > 1 ? `<span class="badge badge-overlay"><i class="ti ti-eye"></i> ${d.viewers}</span>` : ''}`;
 }
@@ -266,6 +276,7 @@ function renderPicture() {
         byId('picture').innerHTML = '<div class="text-secondary">The camera reports its settings when it is online.</div>';
         return;
     }
+    let rotation = rotationOf(c, d.turn90);
     const level = (id: string, label: string, value: number) => `<div class="col-4">
         <label class="form-label small">${label}</label>
         <select class="form-select form-select-sm" id="${id}">${[-2, -1, 0, 1, 2].map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${v > 0 ? '+' : ''}${v}</option>`).join('')}</select>
@@ -289,13 +300,32 @@ function renderPicture() {
             ${level('cam-saturation', 'Saturation', c.saturation)}
         </div>
         <div class="mb-3">
-            <label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cam-rotate" ${c.vflip ? 'checked' : ''} /><span class="form-check-label">Rotate 180°</span></label>
-            <label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cam-mirror" ${c.hmirror !== c.vflip ? 'checked' : ''} /><span class="form-check-label">Mirror</span></label>
-            <div class="form-hint">Rotate 180° for a camera mounted upside down.</div>
+            <label class="form-label">Orientation</label>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn" id="cam-rotate" ${d.online ? '' : 'disabled'}><i class="ti ti-rotate-clockwise-2 me-1"></i> Rotate 90°</button>
+                <span class="text-secondary" id="cam-rotation">${rotation}°</span>
+                <label class="form-check form-check-inline ms-auto mb-0"><input class="form-check-input" type="checkbox" id="cam-mirror" ${isMirrored(c) ? 'checked' : ''} /><span class="form-check-label">Mirror</span></label>
+            </div>
+            <div class="form-hint">Each tap turns the picture a quarter clockwise, at once.</div>
         </div>
         <button class="btn btn-primary w-100" id="cam-apply" ${d.online ? '' : 'disabled'}><i class="ti ti-check me-1"></i> Apply</button>
         <div id="cam-result" class="mt-2"></div>`;
 
+    byId('cam-rotate').addEventListener('click', async () => {
+        const button = byId<HTMLButtonElement>('cam-rotate');
+        const next = ((rotation + 90) % 360) as Rotation;
+        button.classList.add('btn-loading');
+        const resp = await request<{ ok: boolean; error?: string }>('deviceCommand', deviceId, {
+            cmd: 'camera',
+            ...rotationCommand(next, byId<HTMLInputElement>('cam-mirror').checked),
+        });
+        button.classList.remove('btn-loading');
+        if (resp.ok) {
+            rotation = next;
+            byId('cam-rotation').textContent = `${rotation}°`;
+        }
+        byId('cam-result').innerHTML = resp.ok ? '' : errorAlert(resp.error ?? 'Not turned.');
+    });
     byId('cam-quality').addEventListener('input', () => {
         byId('cam-quality-value').textContent = byId<HTMLInputElement>('cam-quality').value;
     });
@@ -309,9 +339,7 @@ function renderPicture() {
             brightness: Number(byId<HTMLSelectElement>('cam-brightness').value),
             contrast: Number(byId<HTMLSelectElement>('cam-contrast').value),
             saturation: Number(byId<HTMLSelectElement>('cam-saturation').value),
-            // a turn by 180° is both flips; mirror on top of it undoes the horizontal one
-            vflip: byId<HTMLInputElement>('cam-rotate').checked,
-            hmirror: byId<HTMLInputElement>('cam-rotate').checked !== byId<HTMLInputElement>('cam-mirror').checked,
+            ...rotationCommand(rotation, byId<HTMLInputElement>('cam-mirror').checked),
         });
         button.classList.remove('btn-loading');
         byId('cam-result').innerHTML = resp.ok ? successAlert('Applied.') : errorAlert(resp.error ?? 'Not applied.');
