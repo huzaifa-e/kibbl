@@ -9,6 +9,7 @@ import { logger } from './logger';
 const log = logger('motion');
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, MotionDetector, inQuietHours } from './motionDetector';
 import { deleteSnapshot, saveSnapshot } from './storage';
+import { onMovement } from './visits';
 
 const EVENT_GAP_MS = 10_000; // calm this long ends an event
 const EVENT_MAX_MS = 10 * 60_000; // a longer visit is split into several events on the timeline
@@ -166,6 +167,7 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
                 });
             }
             hub.emit('motionEvent', toMotionEvent(doc));
+            onMovement(deviceId, jpeg, settings.notify);
             log.info('movement', { device: deviceId, moved: `${(doc.peakScore * 100).toFixed(1)}%`, picture: settings.keepPictures ? 'kept' : 'none' });
         }
         if (!current.confirmed) return;

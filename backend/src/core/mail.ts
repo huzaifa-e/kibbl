@@ -33,8 +33,15 @@ function transporter() {
     return transport;
 }
 
-export async function sendMail(to: string, subject: string, text: string, html: string) {
+// a picture shown in the html as <img src="cid:CID">
+export interface MailPicture {
+    cid: string;
+    jpeg: Buffer;
+}
+
+export async function sendMail(to: string, subject: string, text: string, html: string, pictures: MailPicture[] = []) {
     const from = process.env.MAIL_FROM || process.env.SMTP_USER;
-    await transporter().sendMail({ from: from ? `kibbl. <${from.replace(/^.*<|>.*$/g, '')}>` : undefined, to, subject, text, html });
+    const attachments = pictures.map((p) => ({ filename: `${p.cid}.jpg`, content: p.jpeg, contentType: 'image/jpeg', cid: p.cid }));
+    await transporter().sendMail({ from: from ? `kibbl. <${from.replace(/^.*<|>.*$/g, '')}>` : undefined, to, subject, text, html, attachments });
     log.info('sent', { to, subject });
 }

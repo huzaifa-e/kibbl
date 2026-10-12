@@ -17,6 +17,8 @@ export interface Alert {
     urgent?: boolean;
     email?: boolean; // also by e-mail, else only the push message
     path?: string; // the page of the app it is about
+    picture?: Buffer; // a jpeg shown in the e-mail
+    tag?: string; // the emoji of the push message (ntfy tag), e.g. cat
 }
 
 function escapeHtml(s: string) {
@@ -31,7 +33,7 @@ async function sendNtfy(alert: Alert) {
         // header values are latin-1 only: the title goes as RFC 2047
         Title: `=?UTF-8?B?${Buffer.from(alert.title).toString('base64')}?=`,
         Priority: alert.urgent ? '5' : '3',
-        Tags: alert.urgent ? 'rotating_light' : 'window',
+        Tags: alert.tag ?? (alert.urgent ? 'rotating_light' : 'window'),
     };
     if (link) headers.Click = link;
     if (process.env.NTFY_TOKEN) headers.Authorization = `Bearer ${process.env.NTFY_TOKEN}`;
@@ -45,8 +47,10 @@ async function sendEmail(ownerID: string, alert: Alert) {
     if (!user) return;
     const link = appUrl() && alert.path ? `${appUrl()}${alert.path}` : undefined;
     const text = link ? `${alert.text}\n\n${link}` : alert.text;
-    const html = `<p>${escapeHtml(alert.text)}</p>${link ? `<p><a href="${escapeHtml(link)}">Open kibbl.</a></p>` : ''}`;
-    await sendMail(user.email, `${alert.urgent ? '⚠ ' : ''}${alert.title}`, text, html);
+    const picture = alert.picture ? '<p><img src="cid:picture" alt="" style="max-width:100%;border-radius:8px" /></p>' : '';
+    const html = `<p>${escapeHtml(alert.text)}</p>${picture}${link ? `<p><a href="${escapeHtml(link)}">Open kibbl.</a></p>` : ''}`;
+    const pictures = alert.picture ? [{ cid: 'picture', jpeg: alert.picture }] : [];
+    await sendMail(user.email, `${alert.urgent ? '⚠ ' : ''}${alert.title}`, text, html, pictures);
 }
 
 // to the owner of the device, on every channel that is set up; a failing one does not stop the others

@@ -75,6 +75,9 @@ export interface MotionSettings {
     blink: boolean; // flash the white light when something moves (devices with the blink capability)
     // keep a picture of each movement; off, a movement is logged as activity only and no frame is stored
     keepPictures: boolean;
+    /* e-mail the owner when something comes, once a visit (core/visits.ts); with ANTHROPIC_API_KEY on the
+     * server Claude looks at the picture first and only a cat counts */
+    notify: boolean;
 }
 
 /* ----------------------------------------------------------------------- */

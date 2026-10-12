@@ -238,6 +238,7 @@ export async function applyMotionSettings(doc: DeviceDoc, settings: Partial<Moti
     if (hour(settings?.quietTo)) motion.quietTo = settings!.quietTo as number;
     if (typeof settings?.blink === 'boolean') motion.blink = settings.blink;
     if (typeof settings?.keepPictures === 'boolean') motion.keepPictures = settings.keepPictures;
+    if (typeof settings?.notify === 'boolean') motion.notify = settings.notify;
     await Device.updateOne({ _id: doc._id }, { motion });
     log.info('motion settings changed', {
         device: doc._id,
@@ -245,6 +246,7 @@ export async function applyMotionSettings(doc: DeviceDoc, settings: Partial<Moti
         sensitivity: motion.sensitivity,
         quiet: motion.quietFrom === motion.quietTo ? 'off' : `${motion.quietFrom}-${motion.quietTo}h`,
         pictures: motion.keepPictures ? 'kept' : 'none',
+        email: motion.notify ? 'on' : 'off',
         user: who,
         via,
     });
