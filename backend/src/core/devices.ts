@@ -110,6 +110,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         caps: doc.caps ?? [],
         camera: doc.camera,
         turn90: doc.turn90 || undefined,
+        view: doc.view && doc.view.zoom > 1 ? doc.view : undefined,
         cameraError: str('cameraError'),
         wifiChangeFailed: str('wifiChangeFailed'),
         light: typeof info.light === 'number' ? info.light : undefined,

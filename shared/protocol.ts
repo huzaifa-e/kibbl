@@ -300,6 +300,30 @@ export function rotationCommand(rotation: Rotation, mirror: boolean) {
     return { vflip: half, hmirror: half !== mirror, turn90: rotation % 180 === 90 };
 }
 
+/* The part of a camera's picture that is shown, cut out on the server after its turn (frames.ts):
+ * zoom 1 (all of it) to ZOOM_MAX, the middle of the part as fractions of the turned picture. */
+export interface CameraView {
+    zoom: number;
+    x: number;
+    y: number;
+}
+
+export const ZOOM_MAX = 2.5;
+
+// the rectangle of a picture of width x height that a view shows, in whole pixels, inside the picture
+export function viewRect(width: number, height: number, view: CameraView) {
+    const zoom = Math.min(Math.max(view.zoom, 1), ZOOM_MAX);
+    const w = Math.max(1, Math.round(width / zoom));
+    const h = Math.max(1, Math.round(height / zoom));
+    const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max);
+    return {
+        left: clamp(Math.round(view.x * width - w / 2), width - w),
+        top: clamp(Math.round(view.y * height - h / 2), height - h),
+        width: w,
+        height: h,
+    };
+}
+
 export interface DeviceSummary {
     _id: string;
     name: string;
@@ -316,6 +340,7 @@ export interface DeviceSummary {
     caps: string[];
     camera?: CameraSettings;
     turn90?: boolean; // the picture turned a quarter more on the server; the camera's flips do 180 (rotation())
+    view?: CameraView; // the part of the picture shown, cut out on the server
     cameraError?: string;
     wifiChangeFailed?: string; // the network a change from the app could not join; the device went back
     light?: number;

@@ -1,4 +1,4 @@
-import type { AirSettings, CameraSettings, FanSettings, LampSettings, MotionSettings, NightSchedule } from '../../shared/protocol';
+import type { AirSettings, CameraSettings, CameraView, FanSettings, LampSettings, MotionSettings, NightSchedule } from '../../shared/protocol';
 import type express from 'express';
 import type { HomeLocation } from '../../shared/climate';
 import type { HeatReportData } from '../../shared/heat';
@@ -36,6 +36,8 @@ declare global {
         camera?: CameraSettings;
         // the picture turned a quarter more than the camera turns it (its flips do 180): turned on the server (frames.ts)
         turn90?: boolean;
+        // the part of the (turned) picture shown, cut out on the server (frames.ts)
+        view?: CameraView;
         motion: MotionSettings;
         // kibbl. air: the settings the device reported, the night schedule the server keeps
         air?: AirSettings;

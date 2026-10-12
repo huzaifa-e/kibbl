@@ -62,6 +62,7 @@ async function init() {
         caps: { type: [String], default: [] },
         camera: { type: Schema.Types.Mixed },
         turn90: Boolean,
+        view: { type: Schema.Types.Mixed },
         motion: {
             enabled: { type: Boolean, default: motionDefaults.enabled },
             sensitivity: { type: String, enum: ['low', 'medium', 'high'], default: motionDefaults.sensitivity },

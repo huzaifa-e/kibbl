@@ -1,8 +1,8 @@
-import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_MOVE_MAX, FEEDER_SPEED, fanModes, framesizes, lampColors, lampModes, type MotionSettings } from '../../../shared/protocol';
+import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_MOVE_MAX, FEEDER_SPEED, fanModes, framesizes, lampColors, lampModes, ZOOM_MAX, type CameraView, type MotionSettings } from '../../../shared/protocol';
 import { setNightOverride } from './air';
 import { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
-import { setTurn90 } from './frames';
+import { setFrameTransform } from './frames';
 import { logger } from './logger';
 import { invalidateMotionSettings } from './motion';
 
@@ -208,16 +208,33 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
 
 /* One command to a device of the person: checked, allowed by the device's capabilities, sent,
  * its result stored. via names who asked in the log ("app" or the assistant). */
+// a zoom from the app: 1 to ZOOM_MAX, its middle inside the picture
+function cleanView(v: unknown): CameraView | undefined {
+    if (typeof v !== 'object' || v === null) return undefined;
+    const { zoom, x, y } = v as Record<string, unknown>;
+    const num = (n: unknown, min: number, max: number) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
+    if (!num(zoom, 1, ZOOM_MAX) || !num(x, 0, 1) || !num(y, 0, 1)) return undefined;
+    const round = (n: number) => Math.round(n * 100) / 100;
+    return { zoom: round(zoom as number), x: round(x as number), y: round(y as number) };
+}
+
 export async function runDeviceCommand(doc: DeviceDoc, command: Record<string, unknown>, who: string, via = 'app'): Promise<DeviceResponse> {
     const clean = cleanCommand(command);
     if (doc.status !== 'approved' || !clean || !commandAllowed(doc, clean.cmd as string)) {
         return { ok: false, error: 'command not allowed for this device' };
     }
-    // the quarter turn of a camera is the server's: stored and applied to its frames, not sent
-    if (clean.cmd === 'camera' && typeof command.turn90 === 'boolean' && command.turn90 !== !!doc.turn90) {
-        await Device.updateOne({ _id: doc._id }, { turn90: command.turn90 });
-        setTurn90(doc._id, command.turn90);
-        await publishDevice(doc._id);
+    // the quarter turn and the zoom of a camera are the server's: stored and applied to its frames, not sent
+    if (clean.cmd === 'camera') {
+        const turn90 = typeof command.turn90 === 'boolean' ? command.turn90 : !!doc.turn90;
+        const view = command.view === undefined ? doc.view : cleanView(command.view);
+        if (command.view !== undefined && !view) return { ok: false, error: 'invalid view' };
+        if (turn90 !== !!doc.turn90 || view !== doc.view) {
+            await Device.updateOne({ _id: doc._id }, { turn90, view });
+            setFrameTransform(doc._id, { turn90, view });
+            await publishDevice(doc._id);
+        }
+        // nothing for the camera itself
+        if (Object.keys(clean).length === 1 && (command.turn90 !== undefined || command.view !== undefined)) return { ok: true };
     }
     // a scan holds the radio for a few seconds, longer than other commands
     const resp = await sendCommand(doc._id, clean, clean.cmd === 'wifi_scan' ? 15000 : undefined);

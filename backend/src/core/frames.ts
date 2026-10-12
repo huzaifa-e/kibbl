@@ -1,5 +1,6 @@
 import express from 'express';
 import sharp from 'sharp';
+import { viewRect, type CameraView } from '../../../shared/protocol';
 import { Device } from './db';
 import { changeSnapshotWaiters, changeViewers } from './devices';
 import { logger } from './logger';
@@ -25,14 +26,21 @@ function isJpeg(buf: Buffer) {
     return buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8;
 }
 
-/* A camera turned by a quarter (DeviceDoc.turn90): its sensor only flips, so the server turns
- * every frame, once, before the viewers, snapshots, motion and its pictures see it. A frame
- * arriving while the one before is still being turned is dropped: the camera waits for nothing. */
-const turned = new Map<string, boolean>();
-const turning = new Set<string>();
+/* What the server does to a camera's frames before the viewers, snapshots, motion and its
+ * pictures see them: a turn by a quarter (DeviceDoc.turn90: its sensor only flips) and the part
+ * of the picture shown (DeviceDoc.view: a zoom, cut out of the turned picture). Each frame once;
+ * one arriving while the one before is still being worked on is dropped: the camera waits for
+ * nothing. */
+interface Transform {
+    turn90: boolean;
+    view?: CameraView;
+}
 
-export function setTurn90(deviceId: string, on: boolean) {
-    turned.set(deviceId, on);
+const transforms = new Map<string, Transform>();
+const working = new Set<string>();
+
+export function setFrameTransform(deviceId: string, transform: Transform) {
+    transforms.set(deviceId, transform);
 }
 
 export function onFrame(deviceId: string, jpeg: Buffer) {
@@ -40,29 +48,38 @@ export function onFrame(deviceId: string, jpeg: Buffer) {
         log.warn('binary message without jpeg header dropped', { device: deviceId, bytes: jpeg.length });
         return;
     }
-    const turn = turned.get(deviceId);
-    if (turn === undefined) {
-        turned.set(deviceId, false); // until the database answers
-        Device.findById(deviceId, { turn90: 1 })
+    const t = transforms.get(deviceId);
+    if (t === undefined) {
+        transforms.set(deviceId, { turn90: false }); // until the database answers
+        Device.findById(deviceId, { turn90: 1, view: 1 })
             .lean()
-            .then((doc) => doc?.turn90 && turned.set(deviceId, true))
+            .then((doc) => doc && transforms.set(deviceId, { turn90: !!doc.turn90, view: doc.view }))
             .catch(() => undefined);
     }
-    if (!turn) {
+    const zoomed = !!t?.view && t.view.zoom > 1;
+    if (!t?.turn90 && !zoomed) {
         deliver(deviceId, jpeg);
         return;
     }
-    if (turning.has(deviceId)) {
+    if (working.has(deviceId)) {
         return;
     }
-    turning.add(deviceId);
-    sharp(jpeg)
-        .rotate(90)
-        .jpeg({ quality: 85 })
-        .toBuffer()
+    working.add(deviceId);
+    transform(jpeg, t!)
         .then((out) => deliver(deviceId, out))
-        .catch((err) => log.warn('frame not turned', { device: deviceId, error: String(err) }))
-        .finally(() => turning.delete(deviceId));
+        .catch((err) => log.warn('frame not turned or cut', { device: deviceId, error: String(err) }))
+        .finally(() => working.delete(deviceId));
+}
+
+async function transform(jpeg: Buffer, t: Transform) {
+    let img = sharp(jpeg);
+    if (t.turn90) img = img.rotate(90);
+    if (t.view && t.view.zoom > 1) {
+        const meta = await sharp(jpeg).metadata();
+        const [w, h] = t.turn90 ? [meta.height ?? 0, meta.width ?? 0] : [meta.width ?? 0, meta.height ?? 0];
+        img = img.extract(viewRect(w, h, t.view)); // after rotate(): cut out of the turned picture
+    }
+    return img.jpeg({ quality: 85 }).toBuffer();
 }
 
 function deliver(deviceId: string, jpeg: Buffer) {
