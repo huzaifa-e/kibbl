@@ -36,7 +36,7 @@ Unchanged:
 | Function | Pin | |
 | --- | --- | --- |
 | Camera power | IO10 (CAM_PWR) | low: on (P-MOSFET Q1) |
-| Camera | XCLK 11, SDA 1, SCL 2, D0–D7 21 48 38 47 14 12 39 40, VSYNC 42, HREF 41, PCLK 13 | 5 MHz XCLK, as in the EMONI firmware (ESW0009) |
+| Camera | XCLK 11, SDA 1, SCL 2, D0–D7 21 48 38 47 14 12 39 40, VSYNC 42, HREF 41, PCLK 13 | 5 MHz XCLK, as in the EMONI firmware (ESW0009). The sensor is a GC2145, which has no jpeg encoder: the firmware takes raw YUV frames and encodes them itself (`CAM_SOFT_JPEG`), up to SVGA; quality is the encoder's, contrast, brightness and saturation do nothing |
 | Status LED | IO17 (LED.1, green D5) | low: on |
 | Red LED | IO18 (LED.2, D4) | kept off |
 | Illuminator | IO19 (LED.0, FLASH) | low: on, PWM |
