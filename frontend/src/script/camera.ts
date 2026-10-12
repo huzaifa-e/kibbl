@@ -6,6 +6,9 @@ import {
     productName,
     rotationCommand,
     rotationOf,
+    viewRect,
+    ZOOM_MAX,
+    type CameraView,
     type Rotation,
     type ActivityBucket,
     type CameraSettings,
@@ -21,10 +24,15 @@ import { bindUpdateInstall, updateNoticeHtml } from './updateNotice';
 import { byId, cameraProblem, emptyState, errorAlert, escapeHtml, formatBytes, formatUptime, signalQuality, successAlert, timeAgo } from './utils';
 
 const deviceId = window.location.pathname.split('/')[2]?.toUpperCase() ?? '';
-// the size as it is shown: a camera turned by a quarter streams it the other way round
+// the size as it is shown: a camera turned by a quarter streams it the other way round, a zoom shows a part
 function sizeLabel(d: DeviceSummary) {
     const label = framesizeLabels[d.camera!.framesize] ?? d.camera!.framesize;
-    return d.turn90 ? label.split('×').reverse().join('×') : label;
+    const [w, h] = label.split('×').map(Number);
+    if (!w || !h) return label;
+    const [tw, th] = d.turn90 ? [h, w] : [w, h];
+    if (!d.view) return `${tw}×${th}`;
+    const r = viewRect(tw, th, d.view);
+    return `${r.width}×${r.height} · ${d.view.zoom.toFixed(1)}×`;
 }
 
 const framesizeLabels: Record<string, string> = {
@@ -283,6 +291,7 @@ function renderPicture() {
         return;
     }
     let rotation = rotationOf(c, d.turn90);
+    const view: CameraView = d.view ?? { zoom: 1, x: 0.5, y: 0.5 };
     const level = (id: string, label: string, value: number) => `<div class="col-4">
         <label class="form-label small">${label}</label>
         <select class="form-select form-select-sm" id="${id}">${[-2, -1, 0, 1, 2].map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${v > 0 ? '+' : ''}${v}</option>`).join('')}</select>
@@ -314,6 +323,15 @@ function renderPicture() {
             </div>
             <div class="form-hint">Each tap turns the picture a quarter clockwise, at once.</div>
         </div>
+        <div class="mb-3">
+            <label class="form-label d-flex"><span class="flex-fill">Zoom</span><span class="text-secondary" id="cam-zoom-value">${view.zoom.toFixed(1)}×</span></label>
+            <input type="range" class="form-range" id="cam-zoom" min="1" max="${ZOOM_MAX}" step="0.1" value="${view.zoom}" ${d.online ? '' : 'disabled'} />
+            <div class="row g-2 mt-1" id="cam-pan" ${view.zoom > 1 ? '' : 'hidden'}>
+                <div class="col"><label class="form-label small mb-0">Left · right</label><input type="range" class="form-range" id="cam-pan-x" min="0" max="1" step="0.01" value="${view.x}" /></div>
+                <div class="col"><label class="form-label small mb-0">Up · down</label><input type="range" class="form-range" id="cam-pan-y" min="0" max="1" step="0.01" value="${view.y}" /></div>
+            </div>
+            <div class="form-hint">Shows only the middle of the picture, e.g. to hide a housing around the lens. Cut out on the server: the more zoom, the softer.</div>
+        </div>
         <button class="btn btn-primary w-100" id="cam-apply" ${d.online ? '' : 'disabled'}><i class="ti ti-check me-1"></i> Apply</button>
         <div id="cam-result" class="mt-2"></div>`;
 
@@ -332,6 +350,23 @@ function renderPicture() {
         }
         byId('cam-result').innerHTML = resp.ok ? '' : errorAlert(resp.error ?? 'Not turned.');
     });
+    const readView = (): CameraView => ({
+        zoom: Number(byId<HTMLInputElement>('cam-zoom').value),
+        x: Number(byId<HTMLInputElement>('cam-pan-x').value),
+        y: Number(byId<HTMLInputElement>('cam-pan-y').value),
+    });
+    byId('cam-zoom').addEventListener('input', () => {
+        const zoom = Number(byId<HTMLInputElement>('cam-zoom').value);
+        byId('cam-zoom-value').textContent = `${zoom.toFixed(1)}×`;
+        byId('cam-pan').hidden = zoom <= 1;
+    });
+    // applied when the slider is let go: the server cuts the frames from the next one on
+    for (const id of ['cam-zoom', 'cam-pan-x', 'cam-pan-y']) {
+        byId(id).addEventListener('change', async () => {
+            const resp = await request<{ ok: boolean; error?: string }>('deviceCommand', deviceId, { cmd: 'camera', view: readView() });
+            byId('cam-result').innerHTML = resp.ok ? '' : errorAlert(resp.error ?? 'Not zoomed.');
+        });
+    }
     byId('cam-quality').addEventListener('input', () => {
         byId('cam-quality-value').textContent = byId<HTMLInputElement>('cam-quality').value;
     });
