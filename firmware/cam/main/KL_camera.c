@@ -27,9 +27,10 @@ const char *camera_last_error(void) {
     return last_error;
 }
 
-/* The driver sizes its frame buffers by the frame size given at init, and a later
- * larger frame size overflows them (FB-OVF). It starts at the largest size the board
- * streams (UXGA, SVGA for raw frames), and camera_apply() sets the size actually streamed. */
+/* The driver sizes its jpeg frame buffers by the frame size given at init, and a later
+ * larger frame size overflows them (FB-OVF). It starts at UXGA, the largest size the
+ * settings offer, and camera_apply() sets the size actually streamed. A board with raw
+ * frames streams one size only, the one it starts with (CAM_FIXED_FRAMESIZE). */
 static camera_config_t camera_config = {
     .pin_pwdn     = CAM_PIN_PWDN,
     .pin_reset    = CAM_PIN_RESET,
@@ -55,16 +56,25 @@ static camera_config_t camera_config = {
     .ledc_channel = CAMERA_CHANNEL,
 
 #if CAM_SOFT_JPEG
-    .pixel_format = PIXFORMAT_YUV422, // the sensor has no jpeg: raw, encoded in camera_take()
+    .pixel_format = PIXFORMAT_GRAYSCALE, // the sensor has no jpeg: raw, encoded in camera_take()
 #else
     .pixel_format = PIXFORMAT_JPEG,
 #endif
-    .frame_size   = CAM_MAX_FRAMESIZE,
+#ifdef CAM_FIXED_FRAMESIZE
+    .frame_size   = CAM_FIXED_FRAMESIZE,
+#else
+    .frame_size   = FRAMESIZE_UXGA,
+#endif
 
     .jpeg_quality = 12, // 0-63, for OV series camera sensors, lower number means higher quality
-    .fb_count     = 2,  // two buffers: the driver fills one while the other is sent
     .fb_location  = CAMERA_FB_IN_PSRAM,
+#if CAM_SOFT_JPEG
+    .fb_count     = 1, // as ESW0009 on this sensor: one raw frame at a time, taken when asked for
+    .grab_mode    = CAMERA_GRAB_WHEN_EMPTY,
+#else
+    .fb_count     = 2,  // two buffers: the driver fills one while the other is sent
     .grab_mode    = CAMERA_GRAB_LATEST, // a slow consumer gets the newest frame, not a queued one
+#endif
 };
 
 // a board that switches the camera's supply: on, and time for its regulators to settle
@@ -173,7 +183,11 @@ bool camera_apply(const camera_settings_t *settings) {
 
     // each setter returns 0 on success
     int failed = 0;
+#ifdef CAM_FIXED_FRAMESIZE
+    (void)framesize; // raw frames must stay the size the driver was started with
+#else
     failed |= sensor->set_framesize(sensor, framesize);
+#endif
 #if CAM_SOFT_JPEG
     // the encoder is ours: the setting's 4 (best) to 63 becomes 86 to 27
     soft_quality = 90 - settings->quality;

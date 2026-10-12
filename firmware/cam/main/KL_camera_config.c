@@ -8,6 +8,7 @@
 #include "freertos/semphr.h"
 
 #include "KL_commands.h"
+#include "KL_hw.h"
 #include "KL_nvs.h"
 
 #define NVS_CAMERA "CAMERA"
@@ -19,8 +20,8 @@ static camera_settings_t camera_settings;
 static const camera_settings_t camera_defaults = {
     .framesize  = FRAMESIZE_VGA,
     .quality    = 12,
-    .vflip      = false,
-    .hmirror    = false,
+    .vflip      = CAM_ROTATE_180,
+    .hmirror    = CAM_ROTATE_180,
     .brightness = 0,
     .contrast   = 0,
     .saturation = 0,
@@ -61,6 +62,9 @@ void config_camera_settings(camera_settings_t *settings) {
     xSemaphoreTake(camera_config_mutex, portMAX_DELAY);
     *settings = camera_settings;
     xSemaphoreGive(camera_config_mutex);
+#ifdef CAM_FIXED_FRAMESIZE
+    settings->framesize = CAM_FIXED_FRAMESIZE; // the one size this board streams, as the app shows it
+#endif
 }
 
 bool config_set_camera_settings(const camera_settings_t *settings) {

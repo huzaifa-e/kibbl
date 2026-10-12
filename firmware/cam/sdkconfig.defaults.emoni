@@ -2,5 +2,7 @@
 # 16 MB flash; the partition table uses the first 4 MB). Built with
 # -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.emoni" and its own sdkconfig
 CONFIG_SPIRAM_MODE_OCT=y
+# raw camera frames go to PSRAM: at 40 MHz they arrive cut short (FB-SIZE), ESW0009 runs it at 80
+CONFIG_SPIRAM_SPEED_80M=y
 # CONFIG_KIBBL_BOARD_FREENOVE_S3 is not set
 CONFIG_KIBBL_BOARD_EMONI=y
