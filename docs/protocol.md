@@ -102,7 +102,7 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `wifi_scan`   | all        | –                                                                            | `networks`: `[{ssid, rssi, secure}]`, strongest first, one per ssid |
 | `wifi`        | all        | `ssid` 1–32, `password` 8–63 or empty                                        | `pending`, `fallbackSeconds`: switches in the background, back to the old network without an ip in 30 s |
 | `stream`      | camera     | `fps` 0–255 (capped by the device, 15 on the ESP32-CAM); 0 stops             | – |
-| `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2. From the app also `turn90`, which the server keeps and never sends (see below) | `camera`: all settings |
+| `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2. From the app also `turn90` and `view` (zoom), which the server keeps and never sends (see below) | `camera`: all settings |
 | `light`       | light      | `level` 0–100                                                                | `light` |
 | `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level (air: `count` only) | – |
 | `ota`         | ota        | `url`: http(s) url of an application image                                   | – (downloads, restarts) |
@@ -140,3 +140,5 @@ The same json, one per line, plus the ones only someone holding the device may s
 ## Turning a camera's picture
 
 The app turns a picture clockwise by 90° a tap (*Rotate 90°*), with *Mirror* on top. A sensor only flips, so the turn is split (`rotationCommand()` in `shared/protocol.ts`): 180° are the camera's two flips (`vflip` on, `hmirror` as `vflip` unless mirrored), the quarter on top of it is the server's. It keeps that as `turn90` on the device and turns every frame of it with sharp as it arrives (`core/frames.ts`), before the viewers, snapshots, motion detection and kept pictures see it; a frame arriving while the one before is still being turned is dropped.
+
+**Zoom** (`view`: `zoom` 1–2.5, `x` and `y` the middle of the part shown, 0–1 of the turned picture): the server cuts that part out of every frame after the turn, e.g. to hide a housing around the lens. It costs detail: at 2× a quarter of the pixels are left. `viewRect()` in `shared/protocol.ts` keeps the part inside the picture.
