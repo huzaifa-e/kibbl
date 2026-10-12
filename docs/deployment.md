@@ -124,7 +124,7 @@ Whatever a tool returns goes to the model provider with the conversation, health
 A hosted assistant connects from the internet and signs in with OAuth: it registers itself, sends you to a kibbl. sign-in page, and gets an access token (1 hour) and a refresh token (60 days, renewed with every use). A password change ends every connector. In the server's `.env`:
 
 ```bash
-MCP_PUBLIC_URL=https://kibbl.tail529b44.ts.net               # where it is reached from the internet
+MCP_PUBLIC_URL=https://kibbl.uk                               # where it is reached from the internet
 MCP_REDIRECT_URIS=https://assistant.example/callback        # the assistant's OAuth callback(s), comma separated
 ```
 
@@ -137,7 +137,7 @@ docker compose logs connector | tail
 
 In the admin console, switch off key expiry for the new `kibbl` device, or the address stops working after 180 days.
 
-The connector is added in the assistant's settings with the url `https://kibbl.tail529b44.ts.net/mcp`. `mcp-token.js list` shows signed-in connectors next to the tokens, `mcp-token.js revoke <name>` ends one.
+The connector is added in the assistant's settings with the url `https://kibbl.uk/mcp`. `mcp-token.js list` shows signed-in connectors next to the tokens, `mcp-token.js revoke <name>` ends one.
 
 ## Meters
 
