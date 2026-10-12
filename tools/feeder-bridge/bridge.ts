@@ -5,7 +5,7 @@
  *   cd tools/feeder-bridge && npm install
  *   npx tsx bridge.ts [ws(s)://server/device/socket] [/dev/cu.usbserial-…]
  *
- * The server url defaults to KIBBL_DEVICE_URL, else wss://kibbl.tail529b44.ts.net/device/socket.
+ * The server url defaults to KIBBL_DEVICE_URL, else wss://kibbl.uk/device/socket.
  * Without a port it takes the only /dev/cu.usbserial-* there is; with several it asks for
  * one, because opening a port resets the board on it (a kibbl. cam too). The feeder is
  * online while the Nano answers: unplugged, the bridge disconnects and waits for it.
@@ -18,7 +18,7 @@ import os from 'node:os';
 import { ReadlineParser, SerialPort } from 'serialport';
 import { WebSocket } from 'ws';
 
-const url = process.argv[2] ?? process.env.KIBBL_DEVICE_URL ?? 'wss://kibbl.tail529b44.ts.net/device/socket';
+const url = process.argv[2] ?? process.env.KIBBL_DEVICE_URL ?? 'wss://kibbl.uk/device/socket';
 const portArg = process.argv[3];
 const identityFile = '.feeder-bridge.json';
 const BAUD = 115200;

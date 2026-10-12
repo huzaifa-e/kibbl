@@ -137,7 +137,7 @@ The Nano has no network: `tools/feeder-bridge` on the computer it is plugged int
 
 ```bash
 cd tools/feeder-bridge && npm install          # once
-npx tsx bridge.ts                              # wss://kibbl.tail529b44.ts.net/device/socket, the only usbserial port
+npx tsx bridge.ts                              # wss://kibbl.uk/device/socket, the only usbserial port
 npx tsx bridge.ts wss://…/device/socket /dev/cu.usbserial-11210
 ```
 

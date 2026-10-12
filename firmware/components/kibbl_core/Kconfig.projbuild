@@ -2,7 +2,7 @@ menu "kibbl. core"
 
     config KIBBL_SERVER_URL
         string "Server websocket url"
-        default "wss://kibbl.tail529b44.ts.net/device/socket"
+        default "wss://kibbl.uk/device/socket"
         help
             Where the device sends its data and takes its commands from. wss:// is
             checked against the ESP-IDF certificate bundle. The serial command
