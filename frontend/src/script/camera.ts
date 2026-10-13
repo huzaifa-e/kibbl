@@ -211,6 +211,11 @@ function renderMotion() {
         </label>
         <div class="form-hint mb-2">Off: only when and how much something moved is logged, no picture is stored.</div>
         <label class="form-check form-switch mb-1">
+            <input class="form-check-input" type="checkbox" id="motion-cat-only" ${m.catOnly ? 'checked' : ''} />
+            <span class="form-check-label">${device!.caps.includes('feeder') ? 'Only count the cat as activity' : 'Only count a cat as activity'}</span>
+        </label>
+        <div class="form-hint mb-3">The server looks for a cat in what moves; a hand, a person or the light changing is ignored.</div>
+        <label class="form-check form-switch mb-1">
             <input class="form-check-input" type="checkbox" id="motion-notify" ${m.notify ? 'checked' : ''} />
             <span class="form-check-label">${device!.caps.includes('feeder') ? 'E-mail me when the cat comes to eat' : 'E-mail me when a cat comes'}</span>
         </label>
@@ -247,6 +252,7 @@ function renderMotion() {
             enabled: byId<HTMLInputElement>('motion-enabled').checked,
             blink: document.querySelector<HTMLInputElement>('#motion-blink')?.checked,
             keepPictures: byId<HTMLInputElement>('motion-pictures').checked,
+            catOnly: byId<HTMLInputElement>('motion-cat-only').checked,
             notify: byId<HTMLInputElement>('motion-notify').checked,
             sensitivity: document.querySelector<HTMLInputElement>('input[name="motion-sensitivity"]:checked')?.value,
             quietFrom: Number(byId<HTMLSelectElement>('quiet-from').value),
