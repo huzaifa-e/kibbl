@@ -5,6 +5,7 @@ import { Device, MotionEventModel } from './db';
 import { motionFps, sendCommand } from './devices';
 import { hub } from './hub';
 import { logger } from './logger';
+import { findCat } from './catDetector';
 
 const log = logger('motion');
 import { ANALYSIS_HEIGHT, ANALYSIS_WIDTH, MotionDetector, inQuietHours } from './motionDetector';
@@ -19,6 +20,7 @@ const EVENT_MIN_FRAMES = 3;
 const UNCONFIRMED_GAP_MS = 3_000; // calm this long drops a movement that is no event yet
 const SNAPSHOT_MIN_GAP_MS = 2000; // the event picture is replaced by a better one at most this often
 const SETTINGS_TTL_MS = 5000; // motion settings are read from the database at most this often
+const CAT_CHECK_GAP_MS = 1000; // with catOnly: a frame goes to the cat detector at most this often per camera
 
 /* The white light flashes once when a movement starts, not again while it goes on. A
  * flash brightens the next frames and the camera's auto exposure takes a moment to
@@ -34,6 +36,9 @@ interface CurrentEvent {
     lastSnapshot: number;
     confirmed: boolean; // EVENT_MIN_FRAMES seen: stored and shown; before, it is dropped when it ends
     firstFrame?: Buffer; // the frame it started with, for its picture once it is confirmed
+    catSeen: boolean; // with catOnly: a cat was found in one of its frames (or no detection model, which never blocks)
+    catChecking: boolean; // a cat check for this event is in flight
+    lastCatCheck: number; // when the last cat check started, to throttle them
 }
 
 interface DeviceMotion {
@@ -111,6 +116,23 @@ async function closeEvent(deviceId: string, s: DeviceMotion) {
     hub.emit('motionEvent', toMotionEvent(current.doc));
 }
 
+/* Ask the cat detector (catDetector.ts, YOLOX on the server) whether this frame holds a cat,
+ * throttled to one check in flight per camera and at most every CAT_CHECK_GAP_MS. A found cat
+ * (or a missing model, which returns undefined) sets catSeen; plain no-cat leaves it. */
+function maybeCheckCat(current: CurrentEvent, jpeg: Buffer, time: number) {
+    if (current.catChecking || time - current.lastCatCheck < CAT_CHECK_GAP_MS) return;
+    current.catChecking = true;
+    current.lastCatCheck = time;
+    findCat(jpeg)
+        .then((cat) => {
+            if (cat !== null) current.catSeen = true; // a cat, or no model (undefined): don't block
+        })
+        .catch((err) => log.debug('cat check failed', { error: String(err) }))
+        .finally(() => {
+            current.catChecking = false;
+        });
+}
+
 async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, time: number) {
     const settings = await settingsOf(deviceId, s);
     if (!settings?.enabled) {
@@ -141,13 +163,22 @@ async function analyzeFrame(deviceId: string, s: DeviceMotion, jpeg: Buffer, tim
                 lastSnapshot: time,
                 confirmed: false,
                 firstFrame: settings.keepPictures ? jpeg : undefined,
+                catSeen: false,
+                catChecking: false,
+                lastCatCheck: 0,
             };
             s.current = current;
         }
         current.lastMotion = time;
         current.doc.frames++;
         current.doc.peakScore = Math.max(current.doc.peakScore, result.score);
-        if (!current.confirmed && current.doc.frames >= EVENT_MIN_FRAMES) {
+        /* catOnly: the movement becomes an event only once the detector finds a cat in one of its
+         * frames. Until then it stays unconfirmed (dropped when it ends). Without a detection model
+         * findCat returns undefined and catSeen is set so the setting never silently logs nothing. */
+        if (settings.catOnly && !current.catSeen && !current.confirmed) {
+            maybeCheckCat(current, jpeg, time);
+        }
+        if (!current.confirmed && current.doc.frames >= EVENT_MIN_FRAMES && (!settings.catOnly || current.catSeen)) {
             const doc = current.doc;
             current.confirmed = true;
             /* A picture only when the camera's settings keep pictures: otherwise the movement

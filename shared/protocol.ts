@@ -77,6 +77,8 @@ export interface MotionSettings {
     keepPictures: boolean;
     // e-mail the owner when a cat comes, once a visit: the server looks for one in the picture (core/visits.ts)
     notify: boolean;
+    // only log a movement as activity when the server sees a cat in it; without a detection model it has no effect
+    catOnly: boolean;
 }
 
 /* ----------------------------------------------------------------------- */

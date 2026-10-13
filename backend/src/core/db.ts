@@ -29,7 +29,7 @@ export let HeatReportModel: Model<HeatReportDoc>;
 
 let isConnected = false;
 
-const motionDefaults: DeviceDoc['motion'] = { enabled: true, sensitivity: 'medium', quietFrom: 0, quietTo: 0, blink: true, keepPictures: false, notify: false };
+const motionDefaults: DeviceDoc['motion'] = { enabled: true, sensitivity: 'medium', quietFrom: 0, quietTo: 0, blink: true, keepPictures: false, notify: false, catOnly: false };
 const nightDefaults: NonNullable<DeviceDoc['night']> = { enabled: false, from: 22, to: 7 };
 
 async function init() {
@@ -71,6 +71,7 @@ async function init() {
             blink: { type: Boolean, default: motionDefaults.blink },
             keepPictures: { type: Boolean, default: motionDefaults.keepPictures },
             notify: { type: Boolean, default: motionDefaults.notify },
+            catOnly: { type: Boolean, default: motionDefaults.catOnly },
         },
         // kibbl. air
         air: { type: Schema.Types.Mixed },
