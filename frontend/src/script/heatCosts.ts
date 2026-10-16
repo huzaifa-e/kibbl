@@ -1,4 +1,4 @@
-import { heatBudget, type HeatCostSettings, type HeatCosts, type HeatStatementItem } from '../../../shared/heat';
+import { advancePaid, heatBudget, type HeatCostSettings, type HeatCosts, type HeatStatementItem } from '../../../shared/heat';
 import ApexCharts from 'apexcharts';
 import { baseOptions } from './activityCharts';
 import { tone } from './healthCharts';
@@ -89,7 +89,7 @@ function itemsChart(el: HTMLElement, items: HeatStatementItem[]) {
         chart: {
             ...baseOptions().chart,
             type: 'donut',
-            height: 340,
+            height: 400,
             events: {
                 // a slice clicked shows its costs below
                 dataPointSelection: (_e: unknown, _c: unknown, o: { dataPointIndex: number }) => {
@@ -113,7 +113,7 @@ function itemsChart(el: HTMLElement, items: HeatStatementItem[]) {
             formatter: (name: string, o: { seriesIndex: number; w: { globals: { series: number[] } } }) =>
                 `${escapeHtml(name)} · ${eur(o.w.globals.series[o.seriesIndex])}`,
         },
-        responsive: [{ breakpoint: 768, options: { legend: { position: 'bottom' }, chart: { height: 460 } } }],
+
         plotOptions: {
             pie: {
                 expandOnClick: true,
@@ -178,6 +178,55 @@ function balanceChart(el: HTMLElement, st: NonNullable<HeatCosts['statement']>, 
     charts.push(chart);
 }
 
+/* The statement's year against this one: the heating this year is its base share and the use up
+ * to the last reading at the report's price, the other costs stay the statement's until the
+ * next one, the advance is what the payments give for this year. */
+function compareChart(el: HTMLElement, items: HeatStatementItem[], total: number, last: string) {
+    const s = costs!.settings;
+    const year = String(new Date().getFullYear());
+    const heat = items.filter((i) => i.heating).reduce((a, i) => a + i.share, 0);
+    const other = total - heat;
+    const used = ctx.used(`${year}-01-01`);
+    const heatNow = s.perUnit ? (s.baseCost ?? 0) + (used?.units ?? 0) * s.perUnit : undefined;
+    const paid = costs!.statement?.advancePaid;
+    const paidNow = advancePaid(s, Number(year));
+    const r2 = (v: number | undefined) => (v === undefined ? null : Math.round(v * 100) / 100);
+    const chart = new ApexCharts(el, {
+        ...baseOptions(),
+        chart: { ...baseOptions().chart, type: 'bar', height: 340 },
+        series: [
+            { name: last, data: [r2(heat), r2(other), r2(total), r2(paid)] },
+            { name: `${year} so far`, data: [r2(heatNow), r2(other), r2(heatNow === undefined ? undefined : heatNow + other), r2(paidNow)] },
+        ],
+        colors: [tone('bark'), tone('pumpkin')],
+        plotOptions: { bar: { columnWidth: '60%', borderRadius: 4, borderRadiusApplication: 'end' } },
+        stroke: { width: 2, colors: ['transparent'] },
+        dataLabels: { enabled: false },
+        legend: { position: 'top', horizontalAlign: 'left' },
+        xaxis: { categories: ['Heating', 'Other costs', 'Total', 'Advance'], axisTicks: { show: false } },
+        yaxis: { min: 0, tickAmount: 4, labels: { formatter: (v: number) => eur(v).replace(/[.,]00/, '') } },
+        tooltip: {
+            ...baseOptions().tooltip,
+            shared: true,
+            intersect: false,
+            y: {
+                formatter: (v: number | null, o: { seriesIndex: number; dataPointIndex: number }) => {
+                    if (v === null) return '–';
+                    const note =
+                        o.seriesIndex === 1 && o.dataPointIndex === 0
+                            ? ` (base share + ${num(used?.units ?? 0)} units${used?.last ? ` up to ${dateText(used.last)}` : ''})`
+                            : o.seriesIndex === 1 && o.dataPointIndex === 1
+                              ? ` (as in ${last}, until the next statement)`
+                              : '';
+                    return `${eur(v)}${note}`;
+                },
+            },
+        },
+    });
+    void chart.render();
+    charts.push(chart);
+}
+
 function renderStatement() {
     const el = document.getElementById('statement');
     const st = costs?.statement;
@@ -204,7 +253,10 @@ function renderStatement() {
             view === 'chart'
                 ? `<div class="card-body"><div class="d-flex flex-wrap gap-3 small text-secondary mb-1">
                     <span class="ms-auto">Your total <strong class="text-body">${eur(total)}</strong>${st.advance !== undefined ? ` · new advance ${eur(st.advance)} a month${st.advanceFrom ? ` from ${dateText(st.advanceFrom)}` : ''}` : ''}</span></div>
-                    <div id="statement-items"></div><div class="small text-secondary mx-auto" style="max-width:360px" id="statement-pick"></div><div class="mt-2" id="statement-balance"></div></div>`
+                    <div class="row g-3"><div class="col-lg-6"><div id="statement-items"></div><div class="small text-secondary mx-auto" style="max-width:360px" id="statement-pick"></div></div>
+                    <div class="col-lg-6"><div class="fw-bold small mb-1">${escapeHtml(year)} against this year</div><div id="statement-compare"></div>
+                        <div class="small text-secondary">This year's heating is its base share and the use up to the last reading; the other costs stay ${escapeHtml(year)}'s until the next statement.</div></div></div>
+                    <div class="mt-2" id="statement-balance"></div></div>`
                 : statementTable(st, items, total)
         }
         ${none.length ? `<div class="card-footer text-secondary small">Nothing for you: ${none.map((i) => escapeHtml(i.name)).join(', ')}.</div>` : ''}
@@ -223,6 +275,7 @@ function renderStatement() {
     );
     if (view === 'chart') {
         itemsChart(byId('statement-items'), items);
+        compareChart(byId('statement-compare'), items, total, year || 'Statement');
         balanceChart(byId('statement-balance'), st, items, total);
     }
 }
