@@ -72,6 +72,30 @@ export interface HeatReportData {
     costPerUnit?: number; // EUR per unit of use
     analysisKWh?: number; // the report's weather corrected consumption of the home
     climateFactor?: number; // the weather correction it used
+    statement?: HeatStatement; // the landlord's statement of the running costs, when the PDF has one
+}
+
+/* The landlord's statement of the running costs (Betriebs-/Nebenkostenabrechnung), read from
+ * the same upload (backend/src/heat/statement.ts): each cost with the building's total and the
+ * home's share, what was paid in advance and the advance from now on. */
+
+export interface HeatStatementItem {
+    name: string;
+    total?: number; // EUR, the building's
+    key?: string; // how it is shared: area, persons, units, use, the heating report
+    share: number; // EUR, the home's
+    heating?: boolean; // the heating costs (the Techem report)
+}
+
+export interface HeatStatement {
+    period?: { from: string; to: string };
+    items: HeatStatementItem[];
+    total?: number; // EUR, the home's share of all
+    advancePaid?: number; // EUR paid in advance over the period
+    balance?: number; // EUR, to pay (Nachzahlung) above 0, back (Guthaben) below
+    advance?: number; // EUR per month from now on
+    previousAdvance?: number; // EUR per month until now
+    advanceFrom?: string; // YYYY-MM-DD the new advance starts
 }
 
 export interface HeatReportSummary {
@@ -131,7 +155,7 @@ export interface HeatInsights {
 
 /* What the heating costs and what the advance payments leave for it (backend/src/heat/costs.ts,
  * frontend heatCosts.ts): the monthly advance for running costs and heating (Vorauszahlung
- * BK/NK/Hzg) pays the other running costs first; what remains pays the heating's base share
+ * BK/NK/Hzg) pays the other running costs first (all defaulting to the latest statement); what remains pays the heating's base share
  * (by the floor area) and then its use, at the report's price per unit. */
 
 export interface HeatCostSettings {
@@ -145,6 +169,7 @@ export interface HeatCostSettings {
 
 export interface HeatCosts {
     settings: HeatCostSettings;
+    statement?: HeatStatement & { reportId: string; fileName: string }; // the latest uploaded
     // from the latest imported report, what the settings default to
     report?: { from?: string; to?: string; units?: number; costs?: number; baseCost?: number; perUnit?: number };
 }

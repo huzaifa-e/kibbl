@@ -1,4 +1,5 @@
 import { REPORT_ROOMS, type HeatReportData, type HeatReportDevice } from '../../../shared/heat';
+import { parseStatement, statementWarnings } from './statement';
 
 /*
  * The values of a heating cost report (Techem's Heizkostenabrechnung and Verbrauchsanalyse)
@@ -91,8 +92,16 @@ export function parseReport(text: string): { data: HeatReportData; warnings: str
     const climate = /(?:Klima\w*\s+|lag\s+dieser\s+bei\s+)(\d[.,]\d{1,3})\b/i.exec(text);
     if (climate) data.climateFactor = germanNumber(climate[1]);
 
-    if (!data.devices.length) warnings.push('No readings of heat cost allocators were found.');
-    if (!data.period) warnings.push('The period of the report was not found.');
-    if (!data.buildingKWh || !data.buildingUnits) warnings.push("The building's energy or units were not found: kWh per unit is unknown.");
+    const statement = parseStatement(text);
+    if (statement) {
+        data.statement = statement;
+        warnings.push(...statementWarnings(statement));
+    }
+    // a statement alone has no heat cost allocators to warn about
+    if (!statement || data.devices.length) {
+        if (!data.devices.length) warnings.push('No readings of heat cost allocators were found.');
+        if (!data.period) warnings.push('The period of the report was not found.');
+        if (!data.buildingKWh || !data.buildingUnits) warnings.push("The building's energy or units were not found: kWh per unit is unknown.");
+    }
     return { data, warnings };
 }

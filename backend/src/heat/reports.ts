@@ -39,7 +39,8 @@ export async function uploadReport(userID: string, fileName: string, pdf: Buffer
     await writeFile(full, pdf);
     const doc: HeatReportDoc = { _id, ownerID: userID, fileName: fileName.slice(0, 120), file, size: pdf.length, uploadedAt: Date.now(), data, warnings };
     await HeatReportModel.create(doc);
-    log.info('report uploaded', { user: userID, company: data.company, devices: data.devices.length, warnings: warnings.length });
+    log.info('report uploaded', { user: userID, company: data.company, devices: data.devices.length, statement: !!data.statement, warnings: warnings.length });
+    if (data.statement) hub.emit('heatUpdate', userID); // its costs and advance show right away
     return summary(doc);
 }
 
