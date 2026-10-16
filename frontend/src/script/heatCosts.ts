@@ -66,48 +66,81 @@ function statementTable(st: NonNullable<HeatCosts['statement']>, items: HeatStat
         </tfoot></table></div>`;
 }
 
-/* Each cost as a bar, the heating in its own color, the home's share or the building's total;
- * the hover tells both, how it is shared and its part of the home's costs. */
-function itemsChart(el: HTMLElement, items: HeatStatementItem[], total: number) {
-    const sorted = [...items].sort((a, b) => (measure === 'share' ? b.share - a.share : (b.total ?? 0) - (a.total ?? 0)));
-    const other = tone('pine');
-    const heating = tone('pumpkin');
+/* The costs as a donut, the home's share or the building's total: the six largest each in a
+ * fixed tone (the heating always pumpkin), the rest folded into one slice; the hover tells
+ * both amounts, how a cost is shared and its part, the middle the sum. */
+const SLICES = 6;
+const TONES = ['pine', 'mustard', 'plum', 'olive', 'rust', 'bark'] as const;
+
+function itemsChart(el: HTMLElement, items: HeatStatementItem[]) {
+    const value = (i: HeatStatementItem) => (measure === 'share' ? i.share : (i.total ?? 0));
+    const sorted = [...items].filter((i) => value(i) > 0).sort((a, b) => value(b) - value(a));
+    const shown = sorted.slice(0, SLICES);
+    const rest = sorted.slice(SLICES);
+    const slices: { name: string; items: HeatStatementItem[]; heating?: boolean }[] = [
+        ...shown.map((i) => ({ name: i.name, items: [i], heating: i.heating })),
+        ...(rest.length ? [{ name: `Other (${rest.length})`, items: rest }] : []),
+    ];
+    const sum = sorted.reduce((a, i) => a + value(i), 0);
+    let t = 0;
+    const colors = slices.map((sl) => (sl.heating ? tone('pumpkin') : sl.items.length > 1 ? '#9a9087' : tone(TONES[t++ % TONES.length])));
     const chart = new ApexCharts(el, {
         ...baseOptions(),
-        chart: { ...baseOptions().chart, type: 'bar', height: Math.max(220, sorted.length * 30 + 40) },
-        series: [
-            {
-                name: measure === 'share' ? 'Yours' : 'Building',
-                data: sorted.map((i) => Math.round((measure === 'share' ? i.share : (i.total ?? 0)) * 100) / 100),
+        chart: {
+            ...baseOptions().chart,
+            type: 'donut',
+            height: 340,
+            events: {
+                // a slice clicked shows its costs below
+                dataPointSelection: (_e: unknown, _c: unknown, o: { dataPointIndex: number }) => {
+                    const sl = slices[o.dataPointIndex];
+                    byId('statement-pick').innerHTML = sl.items
+                        .map(
+                            (i) =>
+                                `<div class="d-flex justify-content-between"><span>${escapeHtml(i.name)}</span><span class="text-nowrap">${eur(value(i))}</span></div>`,
+                        )
+                        .join('');
+                },
             },
-        ],
-        colors: sorted.map((i) => (i.heating ? heating : other)),
-        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '70%', borderRadius: 4, borderRadiusApplication: 'end' } },
-        states: { hover: { filter: { type: 'darken', value: 0.85 } } },
-        dataLabels: {
-            enabled: true,
-            textAnchor: 'start',
-            offsetX: 4,
-            style: { fontWeight: 500, colors: ['var(--tblr-body-color)'] },
-            formatter: (v: number) => eur(v),
         },
-        legend: { show: false },
-        grid: { ...baseOptions().grid, xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } },
-        xaxis: {
-            categories: sorted.map((i) => i.name),
-            labels: { formatter: (v: string) => eur(Number(v)).replace(/[.,]00/, '') },
-            axisTicks: { show: false },
+        series: slices.map((sl) => Math.round(sl.items.reduce((a, i) => a + value(i), 0) * 100) / 100),
+        labels: slices.map((sl) => sl.name),
+        colors,
+        stroke: { width: 2, colors: ['var(--tblr-bg-surface)'] },
+        dataLabels: { enabled: true, formatter: (pct: number) => (pct >= 6 ? `${num(pct, 0)} %` : ''), dropShadow: { enabled: false } },
+        legend: {
+            position: 'right',
+            formatter: (name: string, o: { seriesIndex: number; w: { globals: { series: number[] } } }) =>
+                `${escapeHtml(name)} · ${eur(o.w.globals.series[o.seriesIndex])}`,
         },
-        yaxis: { labels: { maxWidth: 200 } },
+        responsive: [{ breakpoint: 768, options: { legend: { position: 'bottom' }, chart: { height: 460 } } }],
+        plotOptions: {
+            pie: {
+                expandOnClick: true,
+                donut: {
+                    size: '62%',
+                    labels: {
+                        show: true,
+                        value: { formatter: (v: string) => eur(Number(v)) },
+                        total: { show: true, label: measure === 'share' ? 'Yours' : 'Building', formatter: () => eur(sum) },
+                    },
+                },
+            },
+        },
         tooltip: {
             ...baseOptions().tooltip,
-            custom: ({ dataPointIndex }: { dataPointIndex: number }) => {
-                const i = sorted[dataPointIndex];
-                const pct = total ? (i.share / total) * 100 : 0;
-                return `<div class="p-2 small"><div class="fw-bold mb-1">${escapeHtml(i.name)}${i.heating ? ' · heating' : ''}</div>
-                    <div>Yours: <strong>${eur(i.share)}</strong> (${num(pct, 1)} % of your costs)</div>
-                    <div>Building: ${eur(i.total)}${i.total ? `, yours is ${num((i.share / i.total) * 100, 1)} %` : ''}</div>
-                    ${i.key ? `<div class="text-secondary">Shared ${escapeHtml(KEYS[i.key] ?? i.key)}</div>` : ''}</div>`;
+            custom: ({ seriesIndex }: { seriesIndex: number }) => {
+                const sl = slices[seriesIndex];
+                const share = sl.items.reduce((a, i) => a + i.share, 0);
+                const total = sl.items.reduce((a, i) => a + (i.total ?? 0), 0);
+                const v = measure === 'share' ? share : total;
+                const one = sl.items.length === 1 ? sl.items[0] : undefined;
+                return `<div class="p-2 small"><div class="fw-bold mb-1">${escapeHtml(sl.name)}${sl.heating ? ' · heating' : ''}</div>
+                    <div>${num(sum ? (v / sum) * 100 : 0, 1)} % of ${measure === 'share' ? 'your' : "the building's"} costs</div>
+                    <div>Yours: <strong>${eur(share)}</strong></div>
+                    <div>Building: ${eur(total)}${total ? `, yours is ${num((share / total) * 100, 1)} %` : ''}</div>
+                    ${one?.key ? `<div class="text-secondary">Shared ${escapeHtml(KEYS[one.key] ?? one.key)}</div>` : ''}
+                    ${sl.items.length > 1 ? `<div class="text-secondary">${sl.items.map((i) => escapeHtml(i.name)).join(', ')}</div>` : ''}</div>`;
             },
         },
     });
@@ -170,9 +203,8 @@ function renderStatement() {
         ${
             view === 'chart'
                 ? `<div class="card-body"><div class="d-flex flex-wrap gap-3 small text-secondary mb-1">
-                    <span><i class="ti ti-square-filled" style="color:${tone('pumpkin')}"></i> Heating</span><span><i class="ti ti-square-filled" style="color:${tone('pine')}"></i> Other running costs</span>
                     <span class="ms-auto">Your total <strong class="text-body">${eur(total)}</strong>${st.advance !== undefined ? ` · new advance ${eur(st.advance)} a month${st.advanceFrom ? ` from ${dateText(st.advanceFrom)}` : ''}` : ''}</span></div>
-                    <div id="statement-items"></div><div class="mt-2" id="statement-balance"></div></div>`
+                    <div id="statement-items"></div><div class="small text-secondary mx-auto" style="max-width:360px" id="statement-pick"></div><div class="mt-2" id="statement-balance"></div></div>`
                 : statementTable(st, items, total)
         }
         ${none.length ? `<div class="card-footer text-secondary small">Nothing for you: ${none.map((i) => escapeHtml(i.name)).join(', ')}.</div>` : ''}
@@ -190,7 +222,7 @@ function renderStatement() {
         }),
     );
     if (view === 'chart') {
-        itemsChart(byId('statement-items'), items, total);
+        itemsChart(byId('statement-items'), items);
         balanceChart(byId('statement-balance'), st, items, total);
     }
 }
