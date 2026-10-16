@@ -32,7 +32,7 @@ export function openZoom(src: ZoomSource) {
         </div>
         <div class="gym-zoom-bar">
             <div class="btn-group btn-group-sm" role="group" data-group="view">
-                <button class="btn" data-view="front">Front</button><button class="btn" data-view="back">Back</button>
+                <button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button><button class="btn" data-view="back">Back</button>
             </div>
             <div class="btn-group btn-group-sm" role="group" data-group="region">
                 <button class="btn" data-region="upper">Upper</button><button class="btn" data-region="lower">Lower</button><button class="btn" data-region="full">Whole</button>

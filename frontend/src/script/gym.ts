@@ -549,7 +549,7 @@ function exerciseSheet(name: string, back?: () => void) {
     const s = sheet(
         esc(name),
         `<div class="gym-plate gym-hero mb-1" data-zoom="${esc(name)}" role="button" aria-label="Zoom">${figureOf(name)}</div>
-        <div class="small text-secondary text-center mb-3"><i class="ti ti-zoom-in"></i> tap to zoom, front and back</div>
+        <div class="small text-secondary text-center mb-3"><i class="ti ti-zoom-in"></i> tap to zoom: front, side and back</div>
         <div class="mb-2">${x.primary.map((m) => chip(m, true)).join('')}${x.secondary.map((m) => chip(m, false)).join('')}${!x.primary.length ? '<span class="text-secondary small">No muscles set.</span>' : ''}</div>
         ${
             r.e1rm || r.weight
