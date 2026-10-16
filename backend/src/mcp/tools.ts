@@ -867,6 +867,7 @@ export function createMcpServer(session: SessionInfo) {
                         name: w.name,
                         kind: w.kind,
                         source: w.source,
+                        ...(w.detected ? { detected: 'found by the tracker by itself, not counted as a workout' } : {}),
                         start: localTime(w.start),
                         minutes: Math.round(workoutMinutes(w)),
                         ...hrOf(w._id),
