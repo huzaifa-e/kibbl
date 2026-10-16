@@ -24,6 +24,19 @@ import { weatherForUser } from '../core/weather';
 import { listRooms } from '../core/rooms';
 import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
 import { registerWriteTools } from './writeTools';
+import { listWorkouts, lookupFor } from '../gym/service';
+import {
+    GROUPS,
+    GROUP_IDS,
+    WORKOUT_KIND_IDS,
+    exerciseSessions,
+    groupStrengthChange,
+    gymInsights,
+    records,
+    weeklyActivity,
+    weeklyGroups,
+    workoutMinutes,
+} from '../../../shared/gym';
 
 /*
  * What the MCP endpoint offers: every kind of data the app has (cameras, motion,
@@ -190,7 +203,7 @@ export function createMcpServer(session: SessionInfo) {
         {
             instructions:
                 "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), " +
-                'utility meters, the heat used (radiator readings, Techem) and health data from a fitness tracker. ' +
+                'utility meters, the heat used (radiator readings, Techem), health data from a fitness tracker, and the workouts of every kind (gym sets, runs, rides, Pilates; kibbl_gym_workouts, kibbl_gym_progress). ' +
                 "Start with kibbl_overview; kibbl_analysis says what stands out across all of it (alerts, things worth a look, hints). All times are the home's local time; ranges of days include both ends. " +
                 'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise.',
         },
@@ -803,6 +816,101 @@ export function createMcpServer(session: SessionInfo) {
             } catch (err) {
                 return fail(`The tracker data of ${date} could not be read: ${(err as Error).message}`);
             }
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_gym_workouts',
+        {
+            title: 'Workouts',
+            description:
+                'Every workout of a range of days, of every kind (strength, running, cycling, pilates, yoga, hiit, swimming, walking, cardio, sport): ' +
+                'logged in kibbl. or imported from Strong, with exercises and sets (weight kg, reps, seconds, distance km), and the sessions ' +
+                "the fitness tracker recorded (source 'tracker', with heart rate and calories). Use kibbl_gym_progress for the trends.",
+            inputSchema: {
+                from: day.optional().describe('first day; default 30 days ago'),
+                to: day.optional().describe('last day; default today'),
+                kinds: z.array(z.enum(WORKOUT_KIND_IDS as [string, ...string[]])).optional().describe('only these kinds'),
+                sets: z.boolean().default(true).describe('include every set; false gives each exercise as a summary'),
+            },
+            annotations: readOnly,
+        },
+        async ({ from, to, kinds, sets }) => {
+            const range = dayRange(from, to, 30);
+            const all = (await listWorkouts(session.userID, range.start)).filter((w) => w.start < range.end && (!kinds?.length || kinds.includes(w.kind)));
+            return json({
+                from: range.from,
+                to: range.to,
+                workouts: all
+                    .sort((a, b) => a.start - b.start)
+                    .map((w) => ({
+                        name: w.name,
+                        kind: w.kind,
+                        source: w.source,
+                        start: localTime(w.start),
+                        minutes: Math.round(workoutMinutes(w)),
+                        ...(w.notes ? { notes: w.notes } : {}),
+                        ...(w.tracker ? { tracker: { calories: w.tracker.calories, avg_hr: w.tracker.avgHr, active_zone_minutes: w.tracker.azm } } : {}),
+                        exercises: w.exercises.map((e) => {
+                            const done = e.sets.filter((s) => s.done);
+                            if (sets) return { name: e.name, sets: done.map((s) => ({ kind: s.kind, weight: s.weight, reps: s.reps, seconds: s.seconds, distance: s.distance, rpe: s.rpe })), ...(e.notes ? { notes: e.notes } : {}) };
+                            const work = done.filter((s) => s.kind !== 'warmup');
+                            return {
+                                name: e.name,
+                                sets: work.length,
+                                top_kg: Math.max(0, ...work.map((s) => s.weight ?? 0)) || undefined,
+                                reps: work.map((s) => s.reps).filter(Boolean),
+                            };
+                        }),
+                    })),
+            });
+        },
+    );
+
+    server.registerTool(
+        'kibbl_gym_progress',
+        {
+            title: 'Training progress',
+            description:
+                'How the training goes: workouts and minutes per week by kind; hard sets per muscle group per week against the range that grows it; ' +
+                'the change of strength (estimated 1RM) per group over 4 weeks; advice (groups under- or over-trained, stalled lifts, balance); ' +
+                'with `exercise`, its sessions and records.',
+            inputSchema: {
+                weeks: z.number().int().min(2).max(52).default(8).describe('weeks back'),
+                exercise: z.string().optional().describe('an exercise name, e.g. "Bench Press (Barbell)", for its history'),
+            },
+            annotations: readOnly,
+        },
+        async ({ weeks, exercise }) => {
+            const [all, info] = await Promise.all([listWorkouts(session.userID, Date.now() - Math.max(weeks, 13) * 7 * 24 * 3600_000), lookupFor(session.userID)]);
+            const lifts = all.filter((w) => w.source !== 'tracker' && w.end);
+            const r1 = (v: number) => Math.round(v * 10) / 10;
+            const out: Record<string, unknown> = {
+                activity: weeklyActivity(all, weeks).map((w) => ({
+                    week: localDay(w.week),
+                    sessions: w.sessions,
+                    minutes: Math.round(w.minutes),
+                    by_kind: Object.fromEntries(Object.entries(w.byKind).map(([k, v]) => [k, { sessions: v!.sessions, minutes: Math.round(v!.minutes) }])),
+                })),
+                sets_per_week: weeklyGroups(lifts, info, weeks).map((w) => ({ week: localDay(w.week), ...Object.fromEntries(GROUP_IDS.map((g) => [g, r1(w.sets[g])])) })),
+                target_sets_per_week: Object.fromEntries(GROUP_IDS.map((g) => [g, GROUPS[g].sets])),
+                strength_change_4_weeks: Object.fromEntries(
+                    GROUP_IDS.map((g) => [g, groupStrengthChange(lifts, info, g)]).filter(([, c]) => c).map(([g, c]) => [g, { percent: r1((c as { change: number }).change), exercises: (c as { exercises: unknown[] }).exercises.length }]),
+                ),
+                advice: gymInsights(lifts, info),
+            };
+            if (exercise) {
+                const sessions = exerciseSessions(lifts, exercise);
+                out.exercise = {
+                    name: exercise,
+                    muscles: info(exercise),
+                    records: records(sessions),
+                    sessions: sessions.map((s) => ({ day: localDay(s.at), top_kg: s.topWeight, best: s.best && { kg: s.best.weight, reps: s.best.reps, e1rm: r1(s.best.e1rm) }, volume_kg: Math.round(s.volume), sets: s.sets.length })),
+                };
+            }
+            return json(out);
         },
     );
 
