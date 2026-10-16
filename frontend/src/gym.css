@@ -619,3 +619,12 @@ body.gym-logging {
     cursor: pointer;
     border-color: var(--tblr-primary);
 }
+.gym-log-clock.paused {
+    color: var(--tblr-warning);
+    animation: gym-blink 1.2s steps(2) infinite;
+}
+@keyframes gym-blink {
+    50% {
+        opacity: 0.35;
+    }
+}

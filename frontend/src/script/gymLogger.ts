@@ -7,6 +7,7 @@ import {
     exerciseSessions,
     isWorkSet,
     records,
+    restsOf,
     suggestNext,
     type ExerciseInfo,
     type GymExerciseLog,
@@ -67,7 +68,31 @@ function dropBackup() {
     }
 }
 
-const body = () => ({ name: w.name, kind: w.kind, notes: w.notes ?? '', exercises: w.exercises, start: w.start, ...(editing ? { end: w.end } : {}) });
+const body = () => ({
+    name: w.name,
+    kind: w.kind,
+    notes: w.notes ?? '',
+    exercises: w.exercises,
+    start: w.start,
+    pausedMs: w.pausedMs ?? 0,
+    pausedAt: w.pausedAt ?? null,
+    ...(editing ? { end: w.end } : {}),
+});
+
+// the time trained so far, pauses left out
+const elapsed = () => ((w.pausedAt ?? Date.now()) - w.start - (w.pausedMs ?? 0)) / 1000;
+
+function togglePause() {
+    if (w.pausedAt) {
+        w.pausedMs = (w.pausedMs ?? 0) + (Date.now() - w.pausedAt);
+        w.pausedAt = null;
+    } else {
+        w.pausedAt = Date.now();
+        stopRest();
+    }
+    changed();
+    render();
+}
 
 function changed() {
     if (!editing) backup();
@@ -197,6 +222,7 @@ function exerciseCard(e: GymExerciseLog, ei: number) {
             ${e.notes ? `<div class="small text-secondary mb-2 gym-note"><i class="ti ti-note"></i> ${esc(e.notes)}</div>` : ''}
             <div class="gym-set gym-set-head text-secondary" style="--cols:${cols.length}"><span>Set</span><span>Last</span>${cols.map((c) => `<span>${c}</span>`).join('')}<span></span></div>
             <div style="--cols:${cols.length}">${e.sets.map((s, si) => setRow(ei, s, si, x, prevSession?.sets[si] ?? prevSession?.sets[prevSession.sets.length - 1], s.kind === 'warmup' ? 0 : ++normal, e.name)).join('')}</div>
+            ${restsOf(e).length ? `<div class="small text-secondary mt-1"><i class="ti ti-clock-pause"></i> rests ${restsOf(e).map((r) => clock(r)).join(', ')}</div>` : ''}
             ${cardio && cardio.paceSecPerKm ? `<div class="small text-secondary mt-1">${r1(cardio.distance)} km in ${clock(cardio.seconds)} · ${pace(cardio.paceSecPerKm)} · ${r1(cardio.kmh!)} km/h</div>` : ''}
             <button class="btn btn-sm w-100 mt-2" data-act="addset"><i class="ti ti-plus me-1"></i>Add set</button>
         </div>
@@ -213,9 +239,10 @@ function headerHtml() {
         <button class="btn btn-icon btn-ghost-secondary" data-act="minimize" aria-label="Back" title="Back (the workout keeps running)"><i class="ti ti-arrow-left"></i></button>
         ${editing ? '' : '<button class="btn btn-ghost-danger btn-sm" data-act="cancel">Cancel</button>'}
         <div class="flex-fill text-center min-w-0">
-            <div class="gym-log-clock" data-clock>${editing ? minutesText(((w.end ?? w.start) - w.start) / 60_000) : clock((Date.now() - w.start) / 1000)}</div>
-            <div class="small text-secondary" data-status>${editing ? 'editing' : 'saved'}</div>
+            <div class="gym-log-clock${w.pausedAt ? ' paused' : ''}" data-clock>${editing ? minutesText(((w.end ?? w.start) - w.start - (w.pausedMs ?? 0)) / 60_000) : clock(elapsed())}</div>
+            <div class="small text-secondary" data-status>${editing ? 'editing' : w.pausedAt ? 'paused' : 'saved'}</div>
         </div>
+        ${editing ? '' : `<button class="btn btn-icon${w.pausedAt ? ' btn-warning' : ''}" data-act="pause" aria-label="${w.pausedAt ? 'Resume' : 'Pause'}" title="${w.pausedAt ? 'Resume' : 'Pause'}"><i class="ti ti-player-${w.pausedAt ? 'play' : 'pause'}"></i></button>`}
         <button class="btn btn-primary" data-act="finish">${editing ? 'Save' : 'Finish'}</button>
     </div>
     <div class="gym-log-meta">
@@ -340,6 +367,11 @@ async function finish() {
         if (open && !(await ask('Finish the workout?', `${open} set${open === 1 ? ' is' : 's are'} not ticked. They are left out.`, 'Finish'))) return;
         for (const e of w.exercises) e.sets = e.sets.filter((s) => s.done);
         w.exercises = w.exercises.filter((e) => e.sets.length);
+        // finished while paused: the pause ends with it
+        if (w.pausedAt) {
+            w.pausedMs = (w.pausedMs ?? 0) + (Date.now() - w.pausedAt);
+            w.pausedAt = null;
+        }
         w.end = Date.now();
     }
     try {
@@ -416,6 +448,9 @@ async function onClick(ev: Event) {
         case 'finish':
             await finish();
             return;
+        case 'pause':
+            togglePause();
+            return;
         case 'cancel':
             await cancelWorkout(w, () => {
                 clearTimeout(saveTimer);
@@ -457,8 +492,14 @@ async function onClick(ev: Event) {
                     return;
                 }
                 s.done = true;
+                // when it was done: the rests taken and the exercise's time (its heart rate)
+                if (!editing) s.at = Date.now();
+                if (w.pausedAt) togglePause();
                 startRest(e.restSeconds ?? 90);
-            } else s.done = false;
+            } else {
+                s.done = false;
+                delete s.at;
+            }
             changed();
             render();
             return;
@@ -628,7 +669,7 @@ export async function openLogger(workout: GymWorkout, opts: { editing?: boolean;
     if (!editing) {
         clockTimer = window.setInterval(() => {
             const el = root?.querySelector('[data-clock]');
-            if (el) el.textContent = clock((Date.now() - w.start) / 1000);
+            if (el) el.textContent = clock(elapsed());
         }, 1000);
         try {
             wakeLock = await (navigator as unknown as { wakeLock?: { request(t: string): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen') ?? null;

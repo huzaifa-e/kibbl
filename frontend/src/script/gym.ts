@@ -18,6 +18,7 @@ import {
     buildName,
     buildWorkout,
     records,
+    restsOf,
     setsPerGroup,
     setsPerMuscle,
     weekStart,
@@ -38,7 +39,7 @@ import {
     type WorkoutKind,
 } from '../../../shared/gym';
 import { BODY_CSS, bodyMap, bodyMapView, exerciseFigure, placeOf, type Region, type View } from './gymBody';
-import { activityChart, exerciseChart, groupSetsChart, strengthChart } from './gymCharts';
+import { activityChart, exerciseChart, exerciseHrChart, groupSetsChart, strengthChart, workoutHrChart } from './gymCharts';
 import {
     ApiError,
     KIND_COLORS,
@@ -317,6 +318,47 @@ function historyTab() {
         .join('');
 }
 
+/* The heart rate of a workout from the tracker, put into its sheet when it is read. */
+async function loadWorkoutHr(w: GymWorkout, s: { el: HTMLElement }) {
+    const box = s.el.querySelector<HTMLElement>('[data-hr]');
+    if (!box || !w.end) return;
+    box.innerHTML = '<div class="small text-secondary"><span class="spinner-border spinner-border-sm me-1"></span>heart rate</div>';
+    let hr: WorkoutHr;
+    try {
+        hr = await api<WorkoutHr>('GET', `/api/gym/workouts/${encodeURIComponent(w._id)}/heartrate`);
+    } catch {
+        box.innerHTML = '';
+        return;
+    }
+    if (!hr.stats || hr.points.length < 3) {
+        box.innerHTML = '<div class="small text-secondary"><i class="ti ti-heart-off"></i> No heart rate from the tracker for this workout.</div>';
+        return;
+    }
+    const estimated = hr.exercises.some((x) => x.estimated);
+    box.innerHTML = `<div class="card"><div class="card-body p-2">
+        <div class="d-flex flex-wrap gap-3 small mb-1">
+            <span><i class="ti ti-heart text-danger"></i> mean <b>${hr.stats.avg}</b> bpm</span><span>peak <b>${hr.stats.max}</b></span>
+            ${hr.inZones.filter((z) => z.minutes).map((z) => `<span class="text-secondary">${esc(z.zone)} ${z.minutes} min</span>`).join('')}
+        </div>
+        <div data-hrchart></div>
+        ${hr.exercises.length ? `<div class="small text-secondary">The bands are the exercises in their order${estimated ? ', their times estimated (the import has no times of the sets)' : ''}.</div>` : ''}
+    </div></div>`;
+    const chart = workoutHrChart(box.querySelector<HTMLElement>('[data-hrchart]')!, hr.points, hr.zones, hr.exercises);
+    s.el.addEventListener('hidden.bs.modal', () => chart.destroy(), { once: true });
+    hr.exercises.forEach((x, i) => {
+        const el = s.el.querySelector<HTMLElement>(`[data-exrow="${x.index}"] [data-exhr]`);
+        if (el && x.avg) el.innerHTML = `<span class="badge bg-secondary-lt me-1">${i + 1}</span><i class="ti ti-heart text-danger"></i> ${x.avg} bpm, peak ${x.max}${x.estimated ? ' <span class="text-secondary">(estimated)</span>' : ''}`;
+    });
+}
+
+interface WorkoutHr {
+    points: { at: number; bpm: number }[];
+    zones: { zone: string; min: number; max: number }[];
+    stats: { avg: number; max: number; min: number } | null;
+    inZones: { zone: string; minutes: number }[];
+    exercises: { name: string; index: number; from: number; to: number; estimated: boolean; avg?: number; max?: number }[];
+}
+
 function workoutSheet(w: GymWorkout) {
     const st = workoutStats(w);
     const exercises = w.exercises
@@ -335,8 +377,12 @@ function workoutSheet(w: GymWorkout) {
                     return `<div class="d-flex gap-2"><span class="gym-setno small">${label}</span><span>${value}</span></div>`;
                 })
                 .join('');
-            return `<div class="d-flex gap-3 py-2 border-bottom">${thumb(e.name, 56)}<div class="flex-fill min-w-0">
-                <div class="fw-bold" data-ex="${esc(e.name)}" role="button">${esc(e.name)}</div>${sets}${e.notes ? `<div class="small text-secondary">${esc(e.notes)}</div>` : ''}</div></div>`;
+            const rests = restsOf(e);
+            return `<div class="d-flex gap-3 py-2 border-bottom" data-exrow="${w.exercises.indexOf(e)}">${thumb(e.name, 56)}<div class="flex-fill min-w-0">
+                <div class="fw-bold" data-ex="${esc(e.name)}" role="button">${esc(e.name)}</div>${sets}
+                ${rests.length ? `<div class="small text-secondary"><i class="ti ti-clock-pause"></i> rest ${rests.map((r) => clock(r)).join(', ')}</div>` : ''}
+                <div class="small" data-exhr></div>
+                ${e.notes ? `<div class="small text-secondary">${esc(e.notes)}</div>` : ''}</div></div>`;
         })
         .join('');
     const tracker = w.tracker
@@ -349,6 +395,7 @@ function workoutSheet(w: GymWorkout) {
         esc(w.name),
         `<div class="text-secondary mb-2">${dayText(w.start)}, ${timeText(w.start)} · ${minutesText(workoutMinutes(w))}${st.sets ? ` · ${st.sets} sets` : ''}${st.volume ? ` · ${tonnage(st.volume)}` : ''}</div>
         ${tracker}
+        <div data-hr class="mb-2"></div>
         ${w.notes ? `<p>${esc(w.notes)}</p>` : ''}
         ${exercises || (w.source === 'tracker' ? '<p class="text-secondary">Only the tracker saw this one. Add what you did to count its sets.</p>' : '')}`,
         {
@@ -358,6 +405,7 @@ function workoutSheet(w: GymWorkout) {
                     : `<button class="btn" data-a="template"><i class="ti ti-template me-1"></i>Save as template</button><button class="btn btn-primary" data-a="edit"><i class="ti ti-pencil me-1"></i>Edit</button>`,
         },
     );
+    void loadWorkoutHr(w, s);
     s.el.addEventListener('click', async (ev) => {
         const t = ev.target as HTMLElement;
         const ex = t.closest<HTMLElement>('[data-ex]');
@@ -562,7 +610,8 @@ function exerciseSheet(name: string, back?: () => void) {
                 : ''
         }
         ${sessions.length >= 2 ? '<div data-c="ex" class="mb-3"></div>' : sessions.length ? '' : '<p class="text-secondary">Not done yet.</p>'}
-        ${recent ? `<div class="hud-label mb-1">Recent</div>${recent}` : ''}`,
+        ${recent ? `<div class="hud-label mb-1">Recent</div>${recent}` : ''}
+        ${sessions.length ? '<div class="hud-label mt-3 mb-1">Heart rate</div><div data-exhrc class="small text-secondary"><span class="spinner-border spinner-border-sm me-1"></span>reading</div>' : ''}`,
         {
             size: 'lg',
             footer: `<button class="btn" data-a="muscles"><i class="ti ti-adjustments me-1"></i>Muscles &amp; unit</button>`,
@@ -576,6 +625,19 @@ function exerciseSheet(name: string, back?: () => void) {
         () => {
             const el = s.el.querySelector<HTMLElement>('[data-c="ex"]');
             if (el) local.push(exerciseChart(el, sessions, (v) => shown(v, name), unitLabel(name)));
+            const hrEl = s.el.querySelector<HTMLElement>('[data-exhrc]');
+            if (hrEl)
+                void api<{ at: number; avg: number; max: number; estimated: boolean }[]>('GET', `/api/gym/exercises/${encodeURIComponent(name)}/heartrate`)
+                    .then((rows) => {
+                        if (!rows.length) {
+                            hrEl.textContent = 'No heart rate from the tracker for its sessions.';
+                            return;
+                        }
+                        hrEl.className = '';
+                        hrEl.innerHTML = `<div class="small text-secondary mb-1">Mean and peak while doing it, last ${rows.length} sessions with the tracker${rows.some((r) => r.estimated) ? ' (times of imported sessions estimated)' : ''}.</div><div data-c="exhr"></div>`;
+                        if (document.body.contains(hrEl)) local.push(exerciseHrChart(hrEl.querySelector<HTMLElement>('[data-c="exhr"]')!, rows));
+                    })
+                    .catch(() => (hrEl.textContent = ''));
         },
         { once: true },
     );

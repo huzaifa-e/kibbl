@@ -1,6 +1,7 @@
 import ApexCharts from 'apexcharts';
 import { GROUPS, WORKOUT_KINDS, WORKOUT_KIND_IDS, type ActivityWeek, type ExerciseSession, type GroupWeek, type MuscleGroup } from '../../../shared/gym';
 import { baseOptions } from './activityCharts';
+import { heartRateChart, type HrZone } from './hrChart';
 import { KIND_COLORS, r1, shortDay } from './gymCommon';
 import { isDarkMode } from './utils';
 
@@ -119,5 +120,43 @@ export function exerciseChart(el: HTMLElement, sessions: ExerciseSession[], show
         ],
         legend: { position: 'bottom', fontSize: '12px' },
         tooltip: { ...baseOptions().tooltip, shared: true, intersect: false, x: { format: 'd MMM yyyy' } },
+    });
+}
+
+/* A workout's heart rate, in the colours of its zones, each exercise a band behind the line
+ * named at its start (exact from the ticks of its sets, else estimated). */
+export function workoutHrChart(el: HTMLElement, points: { at: number; bpm: number }[], zones: HrZone[], windows: { name: string; from: number; to: number }[]) {
+    const chart = heartRateChart(el, points, zones, 220);
+    void chart.render().then(() => {
+        windows.forEach((w, i) =>
+            chart.addXaxisAnnotation({
+                x: w.from,
+                x2: w.to,
+                fillColor: i % 2 ? '#7b3f61' : '#3d7a73',
+                opacity: 0.08,
+                borderColor: 'transparent',
+                label: { text: String(i + 1), orientation: 'horizontal', position: 'top', borderWidth: 0, style: { background: 'transparent', fontSize: '10px', color: '#888' } },
+            }),
+        );
+    });
+    return chart;
+}
+
+/* An exercise's mean and peak heart rate per session. */
+export function exerciseHrChart(el: HTMLElement, rows: { at: number; avg: number; max: number }[]) {
+    return render(el, {
+        ...baseOptions(),
+        chart: { ...baseOptions().chart, type: 'line', height: 180 },
+        series: [
+            { name: 'Mean', data: rows.map((r) => ({ x: r.at, y: r.avg })) },
+            { name: 'Peak', data: rows.map((r) => ({ x: r.at, y: r.max })) },
+        ],
+        colors: [RED, '#a63d1f'],
+        stroke: { width: [3, 1.5], curve: 'smooth', dashArray: [0, 4] },
+        markers: { size: [3, 0] },
+        xaxis: { type: 'datetime', labels: { datetimeUTC: false, format: 'd MMM' } },
+        yaxis: { labels: { formatter: (v: number) => `${Math.round(v)}` }, title: { text: 'bpm' } },
+        legend: { position: 'bottom', fontSize: '12px' },
+        tooltip: { ...baseOptions().tooltip, shared: true, intersect: false, x: { format: 'd MMM yyyy' }, y: { formatter: (v: number) => `${v} bpm` } },
     });
 }
