@@ -198,7 +198,7 @@ test('rests and the times of the exercises: from the ticks, else shared out', ()
     assert.deepEqual([a.from, a.to, a.estimated], [t0, t0 + 6 * 60_000, false]);
     assert.deepEqual([b.from, b.to], [t0 + 6 * 60_000, t0 + 10 * 60_000]);
     // without times: 30 minutes over 3 sets
-    const bare = { ...w, exercises: w.exercises.map((e) => ({ ...e, sets: e.sets.map(({ at: _at, ...s }) => s) })) };
+    const bare = { ...w, exercises: w.exercises.map((e) => ({ ...e, sets: e.sets.map((s) => ({ ...s, at: undefined })) })) };
     const est = exerciseWindows(bare);
     assert.equal(est[0].to - est[0].from, 20 * 60_000);
     assert.ok(est[1].estimated);
