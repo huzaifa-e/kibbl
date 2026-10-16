@@ -163,7 +163,8 @@ function weekStrip() {
     const cells = days
         .map((d) => {
             const key = d.toDateString();
-            const ws = state.data.workouts.filter((w) => new Date(w.start).toDateString() === key && w.end);
+            // what the tracker only found by itself is no workout
+            const ws = state.data.workouts.filter((w) => new Date(w.start).toDateString() === key && w.end && !w.detected);
             const today = key === new Date().toDateString();
             return `<div class="gym-day${today ? ' today' : ''}">
                 <div class="small text-secondary">${d.toLocaleDateString([], { weekday: 'narrow' })}</div>
@@ -291,10 +292,10 @@ function workoutLine(w: GymWorkout) {
     else if (st.distance) bits.push(`${r1(st.distance)} km`);
     if (w.tracker?.avgHr) bits.push(`<i class="ti ti-heart text-danger"></i> ${w.tracker.avgHr}`);
     if (w.tracker?.calories) bits.push(`${w.tracker.calories} kcal`);
-    return `<button class="list-group-item list-group-item-action d-flex align-items-center gap-3" data-workout="${esc(w._id)}">
+    return `<button class="list-group-item list-group-item-action d-flex align-items-center gap-3${w.detected ? ' gym-detected' : ''}" data-workout="${esc(w._id)}">
         ${kindIcon(w.kind)}
         <div class="flex-fill min-w-0">
-            <div class="fw-bold text-truncate">${esc(w.name)}${w.source === 'tracker' ? ' <span class="badge bg-secondary-lt">tracker</span>' : w.source === 'strong' ? ' <span class="badge bg-secondary-lt">Strong</span>' : ''}</div>
+            <div class="fw-bold text-truncate">${esc(w.name)}${w.detected ? ' <span class="badge bg-secondary-lt" title="Found by the tracker, not started: not counted as a workout">detected</span>' : w.source === 'tracker' ? ' <span class="badge bg-secondary-lt">tracker</span>' : w.source === 'strong' ? ' <span class="badge bg-secondary-lt">Strong</span>' : ''}</div>
             <div class="small text-secondary text-truncate">${dayText(w.start)} · ${bits.join(' · ')}</div>
         </div><i class="ti ti-chevron-right text-secondary"></i></button>`;
 }
@@ -307,11 +308,12 @@ function historyTab() {
     return [...byWeek.entries()]
         .sort((a, b) => b[0] - a[0])
         .map(([week, ws]) => {
-            const minutes = ws.reduce((s, w) => s + workoutMinutes(w), 0);
-            const kinds = WORKOUT_KIND_IDS.filter((k) => ws.some((w) => w.kind === k));
+            const counted = ws.filter((w) => !w.detected);
+            const minutes = counted.reduce((s, w) => s + workoutMinutes(w), 0);
+            const kinds = WORKOUT_KIND_IDS.filter((k) => counted.some((w) => w.kind === k));
             return `<div class="d-flex align-items-baseline justify-content-between mt-3 mb-1 px-1">
                     <div class="fw-bold">Week of ${shortDay(week)}</div>
-                    <div class="small text-secondary">${kinds.map((k) => `<i class="ti ti-${WORKOUT_KINDS[k].icon}" style="color:${KIND_COLORS[k]}"></i>`).join(' ')} ${ws.length} · ${minutesText(minutes)}</div>
+                    <div class="small text-secondary">${kinds.map((k) => `<i class="ti ti-${WORKOUT_KINDS[k].icon}" style="color:${KIND_COLORS[k]}"></i>`).join(' ')} ${counted.length} · ${minutesText(minutes)}</div>
                 </div>
                 <div class="card"><div class="list-group list-group-flush">${ws.sort((a, b) => b.start - a.start).map(workoutLine).join('')}</div></div>`;
         })
@@ -397,7 +399,7 @@ function workoutSheet(w: GymWorkout) {
         ${tracker}
         <div data-hr class="mb-2"></div>
         ${w.notes ? `<p>${esc(w.notes)}</p>` : ''}
-        ${exercises || (w.source === 'tracker' ? '<p class="text-secondary">Only the tracker saw this one. Add what you did to count its sets.</p>' : '')}`,
+        ${exercises || (w.source === 'tracker' ? `<p class="text-secondary">${w.detected ? 'The tracker found this by itself, so it is not counted as a workout. Add details to make it one.' : 'Only the tracker saw this one. Add what you did to count its sets.'}</p>` : '')}`,
         {
             footer:
                 w.source === 'tracker'
@@ -469,7 +471,7 @@ function progressTab() {
     <div class="gym-chips mb-3">${[4, 12, 26, 52].map((n) => `<button class="gym-chip${progressWeeks === n ? ' on' : ''}" data-weeks="${n}">${n} weeks</button>`).join('')}</div>
     <div class="card mb-3"><div class="card-body">
         <div class="hud-label mb-1">Everything you did</div>
-        <div class="text-secondary small mb-2">Minutes a week by kind: the gym, your runs and rides, Pilates, all of it, the tracker's sessions included.</div>
+        <div class="text-secondary small mb-2">Minutes a week by kind: the gym, your runs and rides, Pilates, all of it, with the sessions you started on the tracker (not what it found by itself).</div>
         <div id="chart-activity"></div>
     </div></div>
     <div class="card mb-3"><div class="card-body">

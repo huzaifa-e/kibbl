@@ -628,3 +628,8 @@ body.gym-logging {
         opacity: 0.35;
     }
 }
+
+/* found by the tracker by itself: shown, not counted */
+.gym-detected {
+    opacity: 0.6;
+}
