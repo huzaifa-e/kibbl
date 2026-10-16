@@ -269,11 +269,11 @@ export function sheet(title: string, body: string, opts: { footer?: string; size
 }
 
 // a question with two answers, as a sheet (never the browser's confirm, which blocks the page)
-export function ask(title: string, text: string, yes: string, danger = false): Promise<boolean> {
+export function ask(title: string, text: string, yes: string, danger = false, no = 'Cancel'): Promise<boolean> {
     return new Promise((resolve) => {
         let answered = false;
         const s = sheet(title, `<p class="mb-0">${text}</p>`, {
-            footer: `<button class="btn" data-a="no">Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-a="yes">${yes}</button>`,
+            footer: `<button class="btn" data-a="no">${no}</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-a="yes">${yes}</button>`,
             onClose: () => !answered && resolve(false),
         });
         s.el.querySelector('[data-a="no"]')!.addEventListener('click', () => s.close());

@@ -582,10 +582,13 @@ function close(final = true) {
     document.body.classList.remove('gym-logging');
 }
 
-/* A workout started by mistake goes at once; one with ticked sets only when that is confirmed. */
+/* Cancelling always asks first; with ticked sets it says they go too. */
 export async function cancelWorkout(workout: GymWorkout, done: () => void) {
     const ticked = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0);
-    if (ticked && !(await ask('Cancel this workout?', `${ticked} set${ticked === 1 ? ' is' : 's are'} ticked. Cancelling deletes the workout with them.`, 'Cancel workout', true))) return;
+    const text = ticked
+        ? `${ticked} set${ticked === 1 ? ' is' : 's are'} ticked. Cancelling deletes the workout with them.`
+        : 'The workout is deleted and nothing of it is kept.';
+    if (!(await ask('Are you sure you want to cancel this workout?', text, 'Yes, cancel it', true, 'No, keep it'))) return;
     try {
         await api('DELETE', `/api/gym/workouts/${workout._id}`);
     } catch (err) {
