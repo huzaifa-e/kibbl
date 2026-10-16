@@ -111,7 +111,14 @@ export interface ExerciseInfo {
     kind: ExerciseKind;
     custom?: boolean; // made by the user or found in an import, its muscles guessed or set by hand
     activity?: WorkoutKind; // of a cardio exercise: what kind of workout it makes
+    unit?: WeightUnit; // how its weights are shown and entered (stored in kg); kg when not set
 }
+
+export type WeightUnit = 'kg' | 'lbs';
+export const LB = 0.45359237;
+// a weight in kg as shown in a unit, and back; lbs to 0.1, kg from lbs to 0.01
+export const shownWeight = (kgValue: number, unit: WeightUnit | undefined) => (unit === 'lbs' ? Math.round((kgValue / LB) * 10) / 10 : kgValue);
+export const storedWeight = (value: number, unit: WeightUnit | undefined) => (unit === 'lbs' ? Math.round(value * LB * 100) / 100 : value);
 
 type Row = [string, Muscle[], Muscle[], Equipment, ExerciseKind?, WorkoutKind?];
 
@@ -703,11 +710,18 @@ export interface ExerciseSession {
     reps: number;
 }
 
+/* A set far above an exercise's usual weight (more than 3× its median) is taken for a typo
+ * (1254 for 125.4) and left out, so it never becomes a record. */
 export function exerciseSessions(workouts: GymWorkout[], name: string): ExerciseSession[] {
     const key = exerciseKey(name);
     const out: ExerciseSession[] = [];
+    const weights = workouts
+        .flatMap((w) => w.exercises.filter((e) => exerciseKey(e.name) === key).flatMap((e) => e.sets.filter(isWorkSet).map((x) => x.weight ?? 0)))
+        .filter((v) => v > 0)
+        .sort((a, b) => a - b);
+    const ceiling = weights.length >= 5 ? weights[Math.floor(weights.length / 2)] * 3 : Infinity;
     for (const w of [...workouts].sort((a, b) => a.start - b.start)) {
-        const sets = w.exercises.filter((e) => exerciseKey(e.name) === key).flatMap((e) => e.sets.filter(isWorkSet));
+        const sets = w.exercises.filter((e) => exerciseKey(e.name) === key).flatMap((e) => e.sets.filter((x) => isWorkSet(x) && (x.weight ?? 0) <= ceiling));
         if (!sets.length) continue;
         let best: ExerciseSession['best'] = null;
         for (const s of sets) {
@@ -873,9 +887,13 @@ export function suggestNext(session: ExerciseSession | undefined, info: Exercise
     const atTop = session.sets.filter((s) => (s.weight ?? 0) === top);
     const allHigh = atTop.every((s) => (s.reps ?? 0) >= repsHigh);
     const lower = info.primary.some((m) => LOWER_BODY.includes(groupOf(m)));
-    const step = info.kind === 'bodyweight' && !top ? 0 : lower && ['barbell', 'machine', 'smith'].includes(info.equipment) ? 5 : 2.5;
+    const big = lower && ['barbell', 'machine', 'smith'].includes(info.equipment);
+    // in lbs the steps are 5 and 10 lb, the weight stays in kg
+    const shownStep = info.kind === 'bodyweight' && !top ? 0 : info.unit === 'lbs' ? (big ? 10 : 5) : big ? 5 : 2.5;
+    const step = info.unit === 'lbs' ? shownStep * LB : shownStep;
+    const unit = info.unit === 'lbs' ? 'lb' : 'kg';
     const minReps = Math.min(...atTop.map((s) => s.reps ?? 0));
-    if (allHigh && step) return { weight: top + step, reps: repsLow, why: `all sets reached ${repsHigh} reps: add ${step} kg` };
+    if (allHigh && step) return { weight: top + step, reps: repsLow, why: `all sets reached ${repsHigh} reps: add ${shownStep} ${unit}` };
     if (allHigh) return { weight: top, reps: repsHigh + 1, why: `all sets reached ${repsHigh} reps: one more` };
     const target = Math.min(repsHigh, Math.max(repsLow, minReps + 1));
     return { weight: top, reps: target, why: minReps < repsLow ? `below ${repsLow} reps last time: same weight, aim for ${repsLow}` : `same weight, aim for ${target} reps` };
@@ -1079,4 +1097,435 @@ export function cardioTotals(e: GymExerciseLog) {
     const seconds = sets.reduce((v, s) => v + (s.seconds ?? 0), 0);
     const distance = sets.reduce((v, s) => v + (s.distance ?? 0), 0);
     return { seconds, distance, paceSecPerKm: distance > 0 && seconds > 0 ? seconds / distance : null, kmh: distance > 0 && seconds > 0 ? distance / (seconds / 3600) : null };
+}
+
+/* ----------------------------------------------------------------------- */
+/* Suggested templates                                                      */
+
+export interface TemplateSuggestion {
+    name: string;
+    kind: WorkoutKind;
+    exercises: TemplateExercise[];
+    perWeek: number; // how often it is done (assumed for a new one)
+    sessions: number; // of the history it is made from; 0 for a new one
+    replaces?: string; // the template of the same name
+    changes: string[]; // what differs from the routine as it is done, and why
+}
+
+export interface Suggestions {
+    suggestions: TemplateSuggestion[];
+    before: Record<MuscleGroup, number>; // hard sets a week the routine gives each group
+    after: Record<MuscleGroup, number>;
+    weeks: number; // of history read
+}
+
+// the exercise a group gets when the history has none for it
+const GROUP_PICK: Record<MuscleGroup, string> = {
+    chest: 'Incline Bench Press (Dumbbell)',
+    back: 'Seated Row (Cable)',
+    shoulders: 'Lateral Raise (Dumbbell)',
+    biceps: 'Bicep Curl (Dumbbell)',
+    triceps: 'Triceps Rope Pushdown',
+    forearms: 'Hammer Curl (Dumbbell)',
+    core: 'Cable Crunch',
+    quads: 'Leg Press',
+    hamstrings: 'Seated Leg Curl (Machine)',
+    glutes: 'Hip Thrust (Barbell)',
+    calves: 'Standing Calf Raise (Machine)',
+};
+
+// the groups that go with each other on one day: where an exercise for a group is added
+const GROUP_DAY: Record<MuscleGroup, MuscleGroup[]> = {
+    chest: ['chest', 'triceps', 'shoulders'],
+    triceps: ['triceps', 'chest', 'shoulders'],
+    shoulders: ['shoulders', 'chest', 'triceps', 'back'],
+    back: ['back', 'biceps'],
+    biceps: ['biceps', 'back', 'forearms'],
+    forearms: ['forearms', 'biceps', 'back'],
+    core: [],
+    quads: ['quads', 'glutes', 'hamstrings', 'calves'],
+    hamstrings: ['hamstrings', 'glutes', 'quads'],
+    glutes: ['glutes', 'hamstrings', 'quads'],
+    calves: ['calves', 'quads', 'hamstrings'],
+};
+
+const LEG_GROUPS: MuscleGroup[] = ['quads', 'hamstrings', 'glutes', 'calves'];
+const MAX_SETS = 4; // sets an exercise gets at most where a group is short: past it another exercise
+
+// the groups a day is for, by its name ("Chest/Tri", "Back & Biceps", "Push", "Legs")
+const NAME_GROUPS: [RegExp, MuscleGroup[]][] = [
+    [/chest|pec|push/i, ['chest']],
+    [/tri/i, ['triceps']],
+    [/back|pull|lat/i, ['back']],
+    [/\bbi|bicep/i, ['biceps']],
+    [/shoulder|delt|push/i, ['shoulders']],
+    [/arm/i, ['biceps', 'triceps', 'forearms']],
+    [/leg|lower|quad|ham|glute|squat/i, ['quads', 'hamstrings', 'glutes', 'calves']],
+    [/core|abs/i, ['core']],
+    [/full|total/i, ['chest', 'back', 'shoulders', 'quads', 'hamstrings']],
+];
+
+/* An isolation lift: one joint, one muscle. Its reps stay at 8 or more, heavy low reps belong
+ * to the presses, rows, squats and pulls. */
+export const isIsolation = (x: ExerciseInfo) =>
+    /fly|raise|curl|extension|pushdown|kickback|crossover|pec deck|shrug|crunch|calf|face pull|abduct|adduct|twist|wrist/i.test(x.name) ||
+    x.primary.every((m) => ['biceps', 'triceps', 'forearms', 'core', 'calves'].includes(groupOf(m)));
+
+function credits(x: ExerciseInfo) {
+    const c = new Map<MuscleGroup, number>();
+    if (!countsSets(x)) return c;
+    for (const m of x.secondary) c.set(groupOf(m), Math.max(c.get(groupOf(m)) ?? 0, 0.5));
+    for (const m of x.primary) c.set(groupOf(m), 1);
+    return c;
+}
+
+function quantile(sorted: number[], q: number) {
+    if (!sorted.length) return 0;
+    const i = (sorted.length - 1) * q;
+    const lo = Math.floor(i);
+    return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (i - lo);
+}
+
+/* Templates for the routine as it is done, balanced over the week. Each workout name done three
+ * times or more in the weeks read is a routine: the exercises of most of its last 8 sessions
+ * in their usual order, the sets and the reps they usually get, and how often a week it is
+ * done. From that the hard sets each group gets a week; a group below its range gets sets on
+ * its exercises (up to 5), else an exercise added to the day it goes with (a new leg day when
+ * the legs have none); one far above loses sets; a stalled lift gets the other rep range. */
+export function suggestTemplates(workouts: GymWorkout[], info: ExerciseLookup, templates: GymTemplate[], now = Date.now()): Suggestions {
+    const strength = workouts.filter((w) => w.kind === 'strength' && w.end && w.start <= now && w.source !== 'tracker').sort((a, b) => a.start - b.start);
+    let weeks = 12;
+    let recent = strength.filter((w) => w.start >= now - weeks * WEEK_MS);
+    if (recent.length < 6) {
+        recent = strength;
+        weeks = recent.length ? Math.max(1, (now - recent[0].start) / WEEK_MS) : 1;
+    }
+    const zero = () => Object.fromEntries(GROUP_IDS.map((g) => [g, 0])) as Record<MuscleGroup, number>;
+
+    // the routines
+    const byName = new Map<string, GymWorkout[]>();
+    for (const w of recent) byName.set(w.name.trim(), [...(byName.get(w.name.trim()) ?? []), w]);
+    const used = new Map<string, number>(); // how often each exercise was done, for a pick
+    for (const w of strength) for (const e of w.exercises) if (e.sets.some(isWorkSet)) used.set(e.name, (used.get(e.name) ?? 0) + 1);
+    const counted = [...byName.entries()].filter(([, ws]) => ws.length >= 3);
+    const span = Math.min(weeks, 8);
+
+    const out: TemplateSuggestion[] = counted
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([name, ws]) => {
+            const last = ws.slice(-8);
+            const stats = new Map<string, { n: number; pos: number; sets: number[]; reps: number[]; rest: number[] }>();
+            for (const w of last) {
+                const doneHere = w.exercises.filter((e) => e.sets.some(isWorkSet));
+                doneHere.forEach((e, i) => {
+                    const s = stats.get(e.name) ?? { n: 0, pos: 0, sets: [], reps: [], rest: [] };
+                    s.n++;
+                    s.pos += i / Math.max(1, doneHere.length - 1);
+                    const work = e.sets.filter(isWorkSet);
+                    s.sets.push(work.length);
+                    s.reps.push(...work.map((x) => x.reps ?? 0).filter((r) => r > 0));
+                    if (e.restSeconds) s.rest.push(e.restSeconds);
+                    stats.set(e.name, s);
+                });
+            }
+            const exercises: TemplateExercise[] = [...stats.entries()]
+                .filter(([, s]) => s.n / last.length >= 0.5)
+                .sort((a, b) => a[1].pos / a[1].n - b[1].pos / b[1].n)
+                .map(([n, s]) => {
+                    const reps = [...s.reps].sort((a, b) => a - b);
+                    const sets = [...s.sets].sort((a, b) => a - b);
+                    const low = Math.round(quantile(reps, 0.25));
+                    const high = Math.max(Math.round(quantile(reps, 0.75)), low + 2);
+                    const rest = [...s.rest].sort((a, b) => a - b);
+                    return { name: n, sets: Math.max(1, Math.round(quantile(sets, 0.5))), repsLow: low, repsHigh: reps.length ? high : 0, restSeconds: rest.length ? Math.round(quantile(rest, 0.5)) : 90 };
+                });
+            const inSpan = ws.filter((w) => w.start >= now - span * WEEK_MS).length;
+            return {
+                name,
+                kind: 'strength' as WorkoutKind,
+                exercises,
+                perWeek: Math.round(((inSpan || ws.length) / span) * 10) / 10 || 0.5,
+                sessions: ws.length,
+                replaces: templates.find((t) => t.name.trim().toLowerCase() === name.toLowerCase())?._id,
+                changes: [],
+            };
+        });
+
+    const project = () => {
+        const sets = zero();
+        for (const t of out) for (const e of t.exercises) for (const [g, c] of credits(info(e.name))) sets[g] += e.sets * c * t.perWeek;
+        return sets;
+    };
+    const before = project();
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+
+    const primaryGroup = (n: string) => (info(n).primary[0] ? groupOf(info(n).primary[0]) : null);
+    const trains = (n: string, g: MuscleGroup) => info(n).primary.some((m) => groupOf(m) === g);
+
+    /* the groups each day is for: by its name, else those with a quarter of its sets */
+    const owns = new Map<TemplateSuggestion, Set<MuscleGroup>>();
+    for (const t of out) {
+        const byName = new Set(NAME_GROUPS.filter(([re]) => re.test(t.name)).flatMap(([, gs]) => gs));
+        if (!byName.size) {
+            const total = t.exercises.reduce((v, e) => v + e.sets, 0) || 1;
+            for (const g of GROUP_IDS) if (t.exercises.filter((e) => primaryGroup(e.name) === g).reduce((v, e) => v + e.sets, 0) / total >= 0.25) byName.add(g);
+        }
+        owns.set(t, byName);
+    }
+
+    /* too many exercises for a group: on a day for it the ones done most often stay (4 for chest
+     * and back, 3 for shoulders, 2 for the others); on another day 1 stays, a second session of
+     * it in the week; fewer, harder sets grow as much */
+    const KEEP: Partial<Record<MuscleGroup, number>> = { chest: 4, back: 4, shoulders: 3 };
+    for (const g of GROUP_IDS) {
+        const [, high] = GROUPS[g].sets;
+        if (before[g] <= high * 1.3) continue;
+        for (const t of out) {
+            const mine = t.exercises.filter((e) => primaryGroup(e.name) === g);
+            const keep = owns.get(t)!.has(g) ? (KEEP[g] ?? 2) : 1;
+            if (mine.length <= keep) continue;
+            const rank = (n: string) => recent.filter((w) => w.name.trim() === t.name && w.exercises.some((e) => e.name === n && e.sets.some(isWorkSet))).length;
+            const dropped = [...mine].sort((x, y) => rank(y.name) - rank(x.name) || y.sets - x.sets).slice(keep);
+            t.exercises = t.exercises.filter((e) => !dropped.includes(e));
+            t.changes.push(
+                owns.get(t)!.has(g)
+                    ? `${GROUPS[g].label}: ${mine.length} exercises → ${keep}, dropped ${dropped.map((e) => e.name).join(', ')} (${r1(before[g])} sets a week, ${GROUPS[g].sets.join('–')} grow it: fewer exercises, each set harder)`
+                    : `${GROUPS[g].label} on this day: ${mine.length} exercises → 1, dropped ${dropped.map((e) => e.name).join(', ')} (its own day trains it; one here is its second time in the week)`,
+            );
+        }
+    }
+    // still far above: one set less on the exercises with the most, down to 3
+    for (const g of GROUP_IDS) {
+        const [, high] = GROUPS[g].sets;
+        let guard = 0;
+        while (project()[g] > high * 1.3 && guard++ < 30) {
+            let most: { t: TemplateSuggestion; e: TemplateExercise } | null = null;
+            for (const t of out) for (const e of t.exercises) if (trains(e.name, g) && e.sets > 3 && (!most || e.sets > most.e.sets)) most = { t, e };
+            if (!most) break;
+            most.e.sets--;
+            most.t.changes.push(`${most.e.name}: ${most.e.sets + 1} → ${most.e.sets} sets (${GROUPS[g].label.toLowerCase()} far above ${high} sets a week)`);
+        }
+    }
+
+    /* a day for the legs when the routine hardly trains them: their exercises from the other
+     * days move to it, the groups without one get the one done most (or a standard one) */
+    const legsShort = LEG_GROUPS.filter((g) => before[g] < GROUPS[g].sets[0] * 0.5);
+    if (out.length && legsShort.length >= 3 && !out.some((t) => t.exercises.filter((e) => LEG_GROUPS.includes(primaryGroup(e.name)!)).length >= 3)) {
+        const moved: TemplateExercise[] = [];
+        for (const t of out) {
+            const legs = t.exercises.filter((e) => LEG_GROUPS.includes(primaryGroup(e.name)!));
+            if (!legs.length) continue;
+            t.exercises = t.exercises.filter((e) => !legs.includes(e));
+            t.changes.push(`Moved ${legs.map((e) => e.name).join(', ')} to the leg day`);
+            moved.push(...legs);
+        }
+        // a leg day: 2 exercises for the quads, 2 for the hamstrings (a hinge and a curl), 1 for the
+        // glutes, 1 for the calves; the moved ones first, then the ones done most, then standard ones
+        const SLOTS: [MuscleGroup, number, string[]][] = [
+            ['quads', 2, ['Leg Press', 'Squat (Barbell)', 'Hack Squat', 'Leg Extension (Machine)']],
+            ['hamstrings', 2, ['Romanian Deadlift (Barbell)', 'Seated Leg Curl (Machine)', 'Lying Leg Curl (Machine)']],
+            ['glutes', 1, ['Hip Thrust (Barbell)', 'Hip Thrust (Machine)', 'Bulgarian Split Squat']],
+            ['calves', 1, ['Standing Calf Raise (Machine)', 'Seated Calf Raise (Machine)']],
+        ];
+        const day: TemplateExercise[] = [];
+        const has = (n: string) => day.some((e) => exerciseKey(e.name) === exerciseKey(n));
+        for (const [g, n, fallbacks] of SLOTS) {
+            const candidates = [
+                ...moved.filter((e) => primaryGroup(e.name) === g).map((e) => e.name),
+                ...[...used.entries()].filter(([x]) => primaryGroup(x) === g && countsSets(info(x))).sort((a, b) => b[1] - a[1]).map(([x]) => x),
+                ...fallbacks,
+            ];
+            // two of a kind (two leg presses) count as one choice
+            const kinds = new Set<string>();
+            for (const name of candidates) {
+                if (day.filter((e) => primaryGroup(e.name) === g).length >= n) break;
+                const kindOf = name.replace(/\s*\(.*\)$/, '').replace(/^(seated|standing|lying|iso-lateral)\s+/i, '').toLowerCase();
+                if (has(name) || kinds.has(kindOf)) continue;
+                kinds.add(kindOf);
+                day.push({ name, sets: g === 'calves' || day.length === 0 ? 4 : 3, repsLow: isIsolation(info(name)) ? 10 : 8, repsHigh: isIsolation(info(name)) ? 15 : 12, restSeconds: g === 'calves' ? 60 : 120 });
+            }
+        }
+        out.push({
+            name: 'Legs',
+            kind: 'strength',
+            exercises: day,
+            perWeek: 1,
+            sessions: 0,
+            replaces: templates.find((t) => t.name.trim().toLowerCase() === 'legs')?._id,
+            changes: [
+                `New: the legs get ${LEG_GROUPS.map((g) => `${r1(before[g])} ${GROUPS[g].label.toLowerCase()}`).join(', ')} sets a week. They are about half your muscle; one day a week brings most of them into their range.`,
+            ],
+        });
+    }
+
+    // groups below their range: more sets on their exercises, then an exercise added
+    for (const g of GROUP_IDS) {
+        const [low] = GROUPS[g].sets;
+        if (!low) continue;
+        let sets = project()[g];
+        if (sets >= low) continue;
+        const target = low;
+        let guard = 0;
+        while (sets < target && guard++ < 20) {
+            let best: { t: TemplateSuggestion; e: TemplateExercise } | null = null;
+            for (const t of out)
+                // a new day's exercises take a fifth set before anything is added to it
+                for (const e of t.exercises) if (trains(e.name, g) && e.sets < (t.sessions ? MAX_SETS : MAX_SETS + 1) && (!best || e.sets < best.e.sets || (e.sets === best.e.sets && t.perWeek > best.t.perWeek))) best = { t, e };
+            if (!best) break;
+            best.e.sets++;
+            best.t.changes.push(`${best.e.name}: ${best.e.sets - 1} → ${best.e.sets} sets (${GROUPS[g].label.toLowerCase()} below ${low} sets a week)`);
+            sets = project()[g];
+        }
+        for (let added = 0; sets < target && added < 2; added++) {
+            const fit = (t: TemplateSuggestion) => t.exercises.filter((e) => GROUP_DAY[g].includes(primaryGroup(e.name)!)).length;
+            // the new leg day has its exercises; a day that is done and trains what goes with the
+            // group gets the addition (core: the shortest day), never one where it does not belong
+            const day = [...out]
+                .filter((t) => t.sessions && (GROUP_DAY[g].length === 0 || fit(t) > 0))
+                .sort((a, b) => fit(b) - fit(a) || a.exercises.length - b.exercises.length)[0];
+            if (!day) {
+                const home = out.find((t) => !t.sessions && t.exercises.some((e) => trains(e.name, g)));
+                if (home && !home.changes.some((c) => c.startsWith('A second'))) home.changes.push(`A second ${home.name.toLowerCase()} session in the week would bring every group of it into its range.`);
+                break;
+            }
+            const have = new Set(day.exercises.map((e) => exerciseKey(e.name)));
+            const name =
+                [...used.entries()].filter(([n]) => !have.has(exerciseKey(n)) && trains(n, g) && countsSets(info(n))).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+                (have.has(exerciseKey(GROUP_PICK[g])) ? null : GROUP_PICK[g]);
+            if (!name) break;
+            day.exercises.push({ name, sets: 3, repsLow: 10, repsHigh: 15, restSeconds: 75 });
+            day.changes.push(`Added ${name}, 3 sets: ${GROUPS[g].label.toLowerCase()} got ${r1(sets)} sets a week, ${GROUPS[g].sets.join('–')} grow it`);
+            sets = project()[g];
+        }
+    }
+
+    // the rear delts against all the pressing
+    const rearPerWeek = () => out.reduce((v, t) => v + t.exercises.reduce((s2, e) => s2 + (info(e.name).primary.includes('delts_rear') ? e.sets : info(e.name).secondary.includes('delts_rear') ? e.sets / 2 : 0) * t.perWeek, 0), 0);
+    if (project().chest > 8 && rearPerWeek() < 4) {
+        const day = out.find((t) => t.exercises.some((e) => trains(e.name, 'shoulders'))) ?? out.find((t) => t.exercises.some((e) => trains(e.name, 'back')));
+        if (day && !day.exercises.some((e) => info(e.name).primary.includes('delts_rear'))) {
+            const name = [...used.entries()].filter(([n]) => info(n).primary.includes('delts_rear')).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Face Pull (Cable)';
+            day.exercises.push({ name, sets: 3, repsLow: 12, repsHigh: 15, restSeconds: 60 });
+            day.changes.push(`Added ${name}, 3 sets: the rear delts balance the pressing`);
+        }
+    }
+
+    /* stalled lifts: done 5 times or more in 6 weeks, the last 4 not above the best before them.
+     * Decided once per exercise, the same new range on every day; at most 2 a day, the longest
+     * stalled first; an isolation lift never below 8 reps */
+    const verdict = new Map<string, [number, number] | null>();
+    const stalledRange = (e: TemplateExercise): [number, number] | null => {
+        const key = exerciseKey(e.name);
+        if (verdict.has(key)) return verdict.get(key)!;
+        let range: [number, number] | null = null;
+        const x = info(e.name);
+        if (x.kind === 'weight' && e.repsHigh) {
+            const sv = exerciseSessions(strength, e.name).filter((v) => v.best && v.at >= now - 42 * DAY_MS);
+            if (sv.length >= 5) {
+                const bestBefore = Math.max(...sv.slice(0, -4).map((v) => v.best!.e1rm));
+                const bestLast = Math.max(...sv.slice(-4).map((v) => v.best!.e1rm));
+                if (bestLast <= bestBefore * 1.005) range = isIsolation(x) ? (e.repsHigh >= 13 ? [8, 12] : [12, 15]) : e.repsHigh <= 8 ? [8, 12] : [5, 8];
+            }
+        }
+        verdict.set(key, range);
+        return range;
+    };
+    for (const t of out) {
+        if (!t.sessions) continue;
+        let n = 0;
+        for (const e of t.exercises) {
+            const range = stalledRange(e);
+            if (!range || n >= 2) continue;
+            n++;
+            t.changes.push(`${e.name}: ${e.repsLow}–${e.repsHigh} → ${range[0]}–${range[1]} reps (no better set in its last 4 sessions)`);
+            [e.repsLow, e.repsHigh] = range;
+        }
+    }
+
+    // the same change on one exercise said once, with its last numbers
+    for (const t of out) {
+        const seen = new Map<string, string>();
+        for (const c of t.changes) {
+            const key = c.split(':')[0];
+            seen.set(key, seen.has(key) && /→/.test(c) ? c.replace(/: \d+ → /, `: ${seen.get(key)!.match(/: (\d+) →/)?.[1] ?? ''} → `) : c);
+        }
+        t.changes = [...seen.values()];
+    }
+    const after = project();
+    return {
+        suggestions: out,
+        before: Object.fromEntries(GROUP_IDS.map((g) => [g, r1(before[g])])) as Record<MuscleGroup, number>,
+        after: Object.fromEntries(GROUP_IDS.map((g) => [g, r1(after[g])])) as Record<MuscleGroup, number>,
+        weeks: Math.round(weeks),
+    };
+}
+
+/* ----------------------------------------------------------------------- */
+/* A workout for the muscles chosen                                         */
+
+export type BuildSize = 'short' | 'normal' | 'long';
+const PER_MUSCLE: Record<BuildSize, number> = { short: 1, normal: 2, long: 3 };
+const LARGE: MuscleGroup[] = ['chest', 'back', 'quads', 'hamstrings', 'glutes', 'shoulders'];
+
+/* Exercises for the muscles chosen, for one session: for each muscle the ones that train it
+ * first, those done most in the history before the catalog's, a heavier compound lift before
+ * isolation; 1-3 a muscle by the size asked (a small muscle one less), never one twice. Sets and
+ * reps as they were usually done, else 3 sets of 8-12 (isolation 10-15). Compound lifts first,
+ * the large groups before the small. */
+export function buildWorkout(muscles: Muscle[], workouts: GymWorkout[], info: ExerciseLookup, size: BuildSize = 'normal'): TemplateExercise[] {
+    const done = workouts.filter((w) => w.end && w.source !== 'tracker');
+    const uses = new Map<string, number>();
+    const reps = new Map<string, number[]>();
+    const sets = new Map<string, number[]>();
+    for (const w of done)
+        for (const e of w.exercises) {
+            const work = e.sets.filter(isWorkSet);
+            if (!work.length) continue;
+            // the recent counts more: a year ago is a third of this week
+            const weight = 1 + 2 * Math.max(0, 1 - (Date.now() - w.start) / (365 * DAY_MS));
+            uses.set(e.name, (uses.get(e.name) ?? 0) + weight);
+            reps.set(e.name, [...(reps.get(e.name) ?? []), ...work.map((s) => s.reps ?? 0).filter((r) => r > 0)]);
+            sets.set(e.name, [...(sets.get(e.name) ?? []), work.length]);
+        }
+    const pool = new Map<string, ExerciseInfo>();
+    for (const e of EXERCISES) if (countsSets(e)) pool.set(exerciseKey(e.name), e);
+    for (const n of uses.keys()) pool.set(exerciseKey(n), info(n));
+
+    const chosen: { name: string; x: ExerciseInfo; group: MuscleGroup }[] = [];
+    const has = (n: string) => chosen.some((c) => exerciseKey(c.name) === exerciseKey(n));
+    // the muscles of one group share its exercises: chest upper and mid take 2 together, not 4
+    const unique = [...new Set(muscles)];
+    for (const m of unique) {
+        const g = groupOf(m);
+        const want = Math.max(1, PER_MUSCLE[size] - (LARGE.includes(g) ? 0 : 1)) - (unique.filter((o) => o !== m && groupOf(o) === g).length ? 1 : 0);
+        const candidates = [...pool.values()]
+            .filter((x) => x.primary.includes(m) && (x.kind === 'weight' || x.kind === 'bodyweight' || x.kind === 'assisted' || x.kind === 'duration') && !has(x.name))
+            .sort((a, b) => (uses.get(b.name) ?? 0) - (uses.get(a.name) ?? 0) || Number(isIsolation(a)) - Number(isIsolation(b)) || a.primary.length - b.primary.length);
+        // the most done first, and one compound lift among them when there is one
+        const picked: ExerciseInfo[] = [];
+        const compound = candidates.find((x) => !isIsolation(x));
+        if (compound && !(uses.get(candidates[0]?.name) ?? 0)) picked.push(compound);
+        for (const x of candidates) {
+            if (picked.length >= Math.max(1, want)) break;
+            if (!picked.includes(x)) picked.push(x);
+        }
+        for (const x of picked) if (!has(x.name)) chosen.push({ name: x.name, x, group: g });
+    }
+    const groupRank = (g: MuscleGroup) => (LARGE.includes(g) ? 0 : 1);
+    chosen.sort((a, b) => Number(isIsolation(a.x)) - Number(isIsolation(b.x)) || groupRank(a.group) - groupRank(b.group));
+    return chosen.map(({ name, x }) => {
+        const r = [...(reps.get(name) ?? [])].sort((a, b) => a - b);
+        const s = [...(sets.get(name) ?? [])].sort((a, b) => a - b);
+        const iso = isIsolation(x);
+        const low = r.length ? Math.round(quantile(r, 0.25)) : iso ? 10 : 8;
+        const high = r.length ? Math.max(Math.round(quantile(r, 0.75)), low + 2) : iso ? 15 : 12;
+        if (x.kind === 'duration') return { name, sets: 3, repsLow: 0, repsHigh: 0, restSeconds: 45, seconds: 40 };
+        return { name, sets: s.length ? Math.max(2, Math.min(5, Math.round(quantile(s, 0.5)))) : 3, repsLow: low, repsHigh: high, restSeconds: iso ? 75 : 120 };
+    });
+}
+
+// "Chest + Biceps" for the muscles chosen
+export function buildName(muscles: Muscle[]) {
+    const groups = [...new Set(muscles.map(groupOf))];
+    return groups.length ? groups.map((g) => GROUPS[g].label).join(' + ') : 'Workout';
 }
