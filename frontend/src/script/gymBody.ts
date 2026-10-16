@@ -11,7 +11,7 @@ import { MUSCLES, type Muscle } from '../../../shared/gym';
  * drawing with narrower shoulders, a narrower waist and wider hips (`warp`). */
 
 type Pt = [number, number];
-type View = 'front' | 'back';
+type View = 'front' | 'back' | 'side';
 export type Sex = 'male' | 'female';
 
 const MID = 104; // where the middle of the body is drawn
@@ -72,6 +72,7 @@ const OUTLINE: Pt[] = [
 
 /* gaps that are not the edge of a muscle: the middle line, joints, the fingers */
 const GAPS: Record<View, Pt[][]> = {
+    side: [],
     front: [
         [[0, 92], [0, 254]],
         [[4, 93], [22, 90], [40, 90], [54, 93]], // collar bone
@@ -255,13 +256,93 @@ const BACK: Shape[] = [
     { muscle: null, pts: [[24, 418], [33, 418], [32, 450], [26, 450]] }, // the heel's tendon
 ];
 
-const SHAPES: Record<View, Shape[]> = { front: FRONT, back: BACK };
+/* The side, facing right (x forward from the middle of the body), the arm hanging in front of
+ * the torso: the three heads of the deltoid, both heads of the triceps, the side of the hip and
+ * the thigh. Drawn as it is, not mirrored, at its real depth (the chest a little over a tenth of
+ * the height). */
+const SIDE_BODY: Pt[] = [
+    [10, 66], [10, 80], [20, 98], [30, 112], [32, 132], [26, 152], [24, 170], [24, 198], [26, 222], [26, 248], [26, 270], [25, 300], [20, 330], [14, 352],
+    [12, 368], [12, 400], [8, 430], [7, 452],
+    [-8, 452], [-10, 432], [-20, 410], [-24, 390], [-18, 366], [-12, 352], [-20, 330], [-24, 306], [-31, 290], [-37, 270], [-35, 248], [-26, 232], [-22, 210],
+    [-26, 190], [-29, 160], [-30, 130], [-28, 108], [-20, 92], [-10, 80], [-10, 66],
+];
+const SIDE_ARM: Pt[] = [
+    [-21, 98], [-10, 88], [2, 85], [14, 92], [20, 106], [19, 128], [18, 150], [17, 176], [12, 198], [13, 224], [10, 250], [8, 266],
+    [-6, 266], [-9, 240], [-11, 206], [-15, 188], [-19, 160], [-21, 128],
+];
+const SIDE_TORSO: Shape[] = [
+    { muscle: 'traps', pts: [[-9, 68], [3, 72], [-2, 88], [-18, 98], [-27, 108], [-24, 94], [-13, 80]], fibres: [[[-6, 76], [-20, 98]]] },
+    { muscle: 'upper_back', pts: [[-29, 104], [-20, 104], [-19, 122], [-27, 126]] },
+    {
+        muscle: 'lats',
+        pts: [[-28, 122], [-18, 132], [-8, 160], [-7, 190], [-14, 210], [-23, 206], [-27, 180], [-29, 150]],
+        fibres: [[[-22, 140], [-14, 172], [-16, 200]]],
+    },
+    { muscle: 'lower_back', pts: [[-23, 208], [-14, 212], [-12, 236], [-22, 240], [-27, 226]] },
+    { muscle: 'chest_upper', pts: [[14, 102], [28, 110], [31, 122], [14, 120]] },
+    { muscle: 'chest_mid', pts: [[14, 121], [31, 123], [31, 136], [14, 136]] },
+    { muscle: 'chest_lower', pts: [[14, 137], [31, 137], [26, 151], [15, 148]] },
+    { muscle: null, pts: [[12, 150], [22, 154], [23, 162], [13, 160]] }, // serratus
+    { muscle: null, pts: [[11, 162], [22, 165], [22, 173], [12, 172]] },
+    { muscle: 'abs', pts: [[20, 160], [25, 164], [25, 198], [26, 222], [21, 228], [19, 196]], fibres: [[[20, 180], [25, 180]], [[20, 200], [25, 200]]] },
+    {
+        muscle: 'obliques',
+        pts: [[2, 166], [19, 162], [20, 196], [22, 224], [14, 236], [0, 232], [-4, 210], [-2, 186]],
+        fibres: [[[2, 176], [18, 194]], [[0, 196], [18, 214]], [[2, 216], [14, 230]]],
+    },
+    { muscle: 'abductors', pts: [[-8, 226], [10, 226], [12, 244], [-6, 248], [-16, 238]], fibres: [[[-6, 234], [8, 236]]] },
+    { muscle: 'abductors', pts: [[14, 232], [25, 240], [24, 264], [15, 268], [11, 248]] },
+    {
+        muscle: 'glutes',
+        pts: [[-12, 240], [-27, 236], [-35, 252], [-36, 272], [-29, 290], [-12, 292], [-5, 268]],
+        fibres: [[[-14, 248], [-26, 268], [-28, 286]], [[-22, 244], [-32, 262]]],
+    },
+    {
+        muscle: 'quads',
+        pts: [[-4, 268], [14, 268], [21, 284], [20, 320], [13, 346], [1, 348], [-7, 322], [-8, 292]],
+        fibres: [[[4, 276], [8, 312], [6, 340]]],
+        tendons: [[[2, 340], [12, 340], [12, 352], [3, 352]]],
+    },
+    { muscle: 'quads', pts: [[16, 266], [25, 270], [25, 300], [20, 334], [15, 330], [19, 298]] },
+    { muscle: 'hamstrings', pts: [[-9, 294], [-22, 296], [-27, 318], [-20, 344], [-12, 350], [-10, 322]], fibres: [[[-16, 300], [-17, 342]]] },
+    { muscle: null, pts: [[-7, 294], [-4, 294], [0, 348], [-4, 350]] }, // the band on the outer thigh
+    { muscle: null, pts: [[2, 352], [12, 352], [13, 364], [3, 366]] }, // the knee
+    { muscle: 'calves', pts: [[-6, 362], [-18, 368], [-23, 392], [-17, 414], [-7, 418], [-3, 392]], fibres: [[[-12, 370], [-12, 410]]] },
+    { muscle: 'calves', pts: [[-4, 412], [-15, 418], [-12, 440], [-5, 446], [0, 428]] },
+    { muscle: null, pts: [[3, 366], [11, 368], [11, 400], [7, 436], [3, 440], [1, 400]] }, // the shin
+];
+const SIDE_ARM_SHAPES: Shape[] = [
+    // from the side the cap of the shoulder is mostly the side head, the front and rear heads at its edges
+    { muscle: 'delts_rear', pts: [[-20, 98], [-12, 90], [-10, 112], [-3, 140], [-12, 128], [-20, 112]], fibres: [[[-16, 100], [-11, 124]]] },
+    { muscle: 'delts_side', pts: [[-12, 90], [2, 85], [10, 90], [9, 118], [3, 148], [-3, 140], [-10, 112]], fibres: [[[-4, 92], [-1, 132]], [[4, 92], [4, 134]]] },
+    { muscle: 'delts_front', pts: [[10, 90], [16, 95], [20, 108], [15, 128], [5, 146], [9, 118]], fibres: [[[14, 98], [11, 132]]] },
+    {
+        muscle: 'triceps',
+        pts: [[-19, 128], [-10, 134], [-7, 160], [-9, 188], [-15, 184], [-19, 156]],
+        fibres: [[[-14, 136], [-13, 180]]],
+    },
+    { muscle: 'triceps', pts: [[-8, 136], [1, 150], [1, 178], [-4, 190], [-7, 186], [-6, 160]], fibres: [[[-3, 150], [-3, 182]]], tendons: [[[-14, 186], [-4, 190], [-6, 200], [-12, 198]]] },
+    {
+        muscle: 'biceps',
+        pts: [[6, 148], [15, 146], [18, 162], [16, 186], [10, 196], [3, 182], [3, 160]],
+        fibres: [[[10, 152], [10, 188]]],
+        tendons: [[[6, 190], [12, 190], [11, 200], [7, 200]]],
+    },
+    { muscle: null, pts: [[2, 176], [5, 184], [6, 198], [0, 198], [-2, 190]] }, // brachialis
+    { muscle: 'forearms', pts: [[6, 198], [12, 200], [13, 224], [10, 250], [8, 264], [4, 240], [3, 212]], tendons: [[[5, 248], [9, 248], [8, 264], [5, 264]]] },
+    { muscle: 'forearms', pts: [[-6, 200], [3, 201], [3, 240], [3, 264], [-2, 264], [-4, 236], [-7, 214]], fibres: [[[-1, 206], [0, 250]]] },
+    { muscle: 'forearms', pts: [[-11, 204], [-7, 202], [-6, 240], [-5, 264], [-8, 250], [-10, 222]] },
+];
+// the breast of the female figure from the side
+const SIDE_BREAST: Pt[] = [[16, 118], [34, 132], [30, 148], [18, 152]];
+
+const SHAPES: Record<View, Shape[]> = { front: FRONT, back: BACK, side: [...SIDE_TORSO, ...SIDE_ARM_SHAPES] };
 
 /* the view an exercise is shown in: where the muscle it trains first is seen best */
 const SEEN_FROM: Record<Muscle, View> = {
-    chest_upper: 'front', chest_mid: 'front', chest_lower: 'front', delts_front: 'front', delts_side: 'front', biceps: 'front', forearms: 'front',
-    abs: 'front', obliques: 'front', quads: 'front', adductors: 'front',
-    traps: 'back', lats: 'back', upper_back: 'back', lower_back: 'back', delts_rear: 'back', triceps: 'back', glutes: 'back', abductors: 'back',
+    chest_upper: 'front', chest_mid: 'front', chest_lower: 'front', delts_front: 'front', delts_side: 'side', biceps: 'side', forearms: 'side',
+    abs: 'front', obliques: 'side', quads: 'front', adductors: 'front',
+    traps: 'back', lats: 'back', upper_back: 'back', lower_back: 'back', delts_rear: 'back', triceps: 'side', glutes: 'back', abductors: 'side',
     hamstrings: 'back', calves: 'back',
 };
 
@@ -276,13 +357,52 @@ export interface Shading {
 }
 
 /* One view as svg markup, cropped to viewBox `box` (the whole figure without). */
+/* Without the head, the hands and the feet: the body is cut at the neck, the wrists and the
+ * ankles, straight across as on an anatomy chart. The legs' band stops short of the hands. */
+const NECK = 66;
+const WRIST = 264;
+const ANKLE = 450;
+let clipCount = 0;
+
 function figure(view: View, sex: Sex, shading: Shading, box: [number, number, number, number] | null, label: string) {
     const w = warp(sex);
     const right = (pts: Pt[]): Pt[] => pts.map((p) => w(p)).map(([x, y]) => [MID + x * XS, y]);
     const left = (pts: Pt[]): Pt[] => pts.map((p) => w(p)).map(([x, y]) => [MID - x * XS, y]);
-    const outline = smooth([...right(OUTLINE), ...left(OUTLINE).reverse().slice(1)], true);
     const shapes: string[] = [];
     const over: string[] = []; // fibres and tendons, above every shape
+    const draw = (list: Shape[], side: (pts: Pt[]) => Pt[], into: string[] = shapes, overInto: string[] = over) => {
+        for (const s of list) {
+            const fill = s.muscle ? shading.fill(s.muscle) : null;
+            const stroke = s.muscle && fill ? (shading.stroke?.(s.muscle) ?? null) : null;
+            const title = s.muscle ? `<title>${MUSCLES[s.muscle].label}</title>` : '';
+            into.push(
+                `<path d="${smooth(side(s.pts), true)}" class="gb-m${fill ? ' gb-on' : ''}"${s.muscle ? ` data-muscle="${s.muscle}"` : ''}` +
+                    `${fill ? ` style="fill:${fill}${stroke ? `;stroke:${stroke}` : ''}"` : ''}>${title}</path>`,
+            );
+            for (const l of s.fibres ?? []) overInto.push(`<path d="${smooth(side(l), false)}" class="${fill ? 'gb-fon' : 'gb-f'}"${stroke ? ` style="stroke:${stroke}"` : ''}/>`);
+            for (const t of s.tendons ?? []) overInto.push(`<path d="${smooth(side(t), true)}" class="gb-t"/>`);
+        }
+    };
+    if (view === 'side') {
+        // the female figure: the glutes a little further back, the breast over the chest
+        const at = (pts: Pt[]): Pt[] => pts.map(([px, py]) => [MID + (sex === 'female' && px < -10 && py > 236 && py < 300 ? px * 1.08 : px), py]);
+        const arm: string[] = [];
+        const armOver: string[] = [];
+        draw(SIDE_TORSO, at);
+        draw(SIDE_ARM_SHAPES, at, arm, armOver);
+        if (sex === 'female') over.push(`<path d="${smooth(at(SIDE_BREAST), false)}" class="gb-g gb-soft"/>`);
+        const body = smooth(at(SIDE_BODY), true);
+        const armLine = smooth(at(SIDE_ARM), true);
+        const [x, y, bw, bh] = box ?? SIDE_REGIONS.full;
+        return (
+            `<svg class="gym-body" viewBox="${f(x)} ${f(y)} ${f(bw)} ${f(bh)}" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
+            `<path d="${body}" class="gb-skin"/><g>${shapes.join('')}${over.join('')}</g><path d="${body}" class="gb-line"/>` +
+            // the arm in front of the torso
+            `<path d="${armLine}" class="gb-skin"/><g>${arm.join('')}${armOver.join('')}</g><path d="${armLine}" class="gb-line"/>` +
+            `</svg>`
+        );
+    }
+    const outline = smooth([...right(OUTLINE), ...left(OUTLINE).reverse().slice(1)], true);
     for (const side of [left, right]) {
         for (const s of SHAPES[view]) {
             const fill = s.muscle ? shading.fill(s.muscle) : null;
@@ -299,12 +419,16 @@ function figure(view: View, sex: Sex, shading: Shading, box: [number, number, nu
         if (sex === 'female' && view === 'front') over.push(`<path d="${smooth(side(BREAST), false)}" class="gb-g gb-soft"/>`);
     }
     const [x, y, bw, bh] = box ?? REGIONS.full;
+    const clip = `gbc${++clipCount}`;
+    const legs = 56; // half the width of the legs' band, around the middle
     return (
         `<svg class="gym-body" viewBox="${f(x)} ${f(y)} ${f(bw)} ${f(bh)}" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
+        `<defs><clipPath id="${clip}"><rect x="${MID - 120}" y="${NECK}" width="240" height="${WRIST - NECK}"/><rect x="${MID - legs}" y="${WRIST - 1}" width="${legs * 2}" height="${ANKLE - WRIST + 1}"/></clipPath></defs>` +
+        `<g clip-path="url(#${clip})">` +
         `<path d="${outline}" class="gb-skin"/>` +
         `<g>${shapes.join('')}${over.join('')}</g>` +
         `<path d="${outline}" class="gb-line"/>` +
-        `</svg>`
+        `</g></svg>`
     );
 }
 
@@ -313,9 +437,11 @@ export const RED_DARK = '#a3241b';
 export const RED_LIGHT = '#f0aaa3';
 
 function viewFor(primary: Muscle[]): View {
-    const votes = { front: 0, back: 0 };
+    const votes: Record<View, number> = { front: 0, back: 0, side: 0 };
     for (const m of primary) votes[SEEN_FROM[m]]++;
-    return votes.back > votes.front ? 'back' : votes.front > votes.back ? 'front' : SEEN_FROM[primary[0]];
+    const best = Math.max(votes.front, votes.back, votes.side);
+    // a tie goes to where the first target is seen best
+    return votes[SEEN_FROM[primary[0]]] === best ? SEEN_FROM[primary[0]] : (['front', 'back', 'side'] as View[]).find((v) => votes[v] === best)!;
 }
 
 /* An exercise's drawing: the area around the muscles it trains, those in red, the helpers lighter. */
@@ -324,10 +450,16 @@ export type { View };
 
 // the halves of the body: the head to the hips, the hips to the feet
 const REGIONS: Record<Region, [number, number, number, number]> = {
-    upper: [MID - 92, -8, 184, 274],
-    lower: [MID - 92, 222, 184, 260],
-    full: [MID - 90, -6, 180, 486],
+    upper: [MID - 92, 56, 184, 212],
+    lower: [MID - 58, 222, 116, 236],
+    full: [MID - 90, 58, 180, 398],
 };
+const SIDE_REGIONS: Record<Region, [number, number, number, number]> = {
+    upper: [MID - 48, 60, 96, 206],
+    lower: [MID - 50, 222, 100, 236],
+    full: [MID - 60, 58, 120, 398],
+};
+const regionBox = (view: View, region: Region) => (view === 'side' ? SIDE_REGIONS : REGIONS)[region];
 const LOWER: Muscle[] = ['glutes', 'abductors', 'quads', 'adductors', 'hamstrings', 'calves'];
 
 // where an exercise is seen best: the view and the half of the body of most of its targets
@@ -349,7 +481,7 @@ export function exerciseFigure(primary: Muscle[], secondary: Muscle[], sex: Sex 
     const place = placeOf(primary);
     const view = at.view ?? place.view;
     const region = at.region ?? place.region;
-    return figure(view, sex, exerciseShading(primary, secondary), REGIONS[region], label);
+    return figure(view, sex, exerciseShading(primary, secondary), regionBox(view, region), label);
 }
 
 /* The whole body from the front and the back, each muscle tinted by `level` (0 to 1, null: not trained). */
@@ -372,7 +504,7 @@ export function bodyMap(level: (m: Muscle) => number | null, sex: Sex = 'male') 
 
 // one view and half of a body map, for the zoomed drawing
 export function bodyMapView(level: (m: Muscle) => number | null, sex: Sex, view: View, region: Region) {
-    return figure(view, sex, levelShading(level), REGIONS[region], view === 'front' ? 'Front' : 'Back');
+    return figure(view, sex, levelShading(level), regionBox(view, region), view === 'front' ? 'Front' : view === 'back' ? 'Back' : 'Side');
 }
 
 export const BODY_CSS = `
