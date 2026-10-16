@@ -2,6 +2,7 @@ import type { AirSettings, CameraSettings, CameraView, FanSettings, LampSettings
 import type express from 'express';
 import type { HomeLocation } from '../../shared/climate';
 import type { HeatCostSettings, HeatReportData } from '../../shared/heat';
+import type { GymExerciseLog, Muscle, TemplateExercise, WorkoutKind, Equipment, ExerciseKind } from '../../shared/gym';
 
 declare global {
     interface User {
@@ -13,6 +14,7 @@ declare global {
         tokenVersion: number;
         home?: HomeLocation; // for the weather outside (kibbl. air)
         heatCosts?: HeatCostSettings;
+        gym?: { sex?: 'male' | 'female'; bodyweight?: number | null }; // for the drawings and bodyweight exercises
         createdAt: number;
     }
 
@@ -220,6 +222,43 @@ declare global {
         appliedAt?: number;
         data: HeatReportData;
         warnings: string[];
+    }
+
+    // the gym (gym/): workouts as logged or imported, the templates, exercises of the user's own
+    interface GymWorkoutDoc {
+        _id: string;
+        ownerID: string;
+        name: string;
+        kind: WorkoutKind;
+        templateId?: string | null;
+        start: number;
+        end?: number | null;
+        notes?: string;
+        source: 'app' | 'strong';
+        exercises: GymExerciseLog[];
+        updatedAt: number;
+    }
+
+    interface GymTemplateDoc {
+        _id: string;
+        ownerID: string;
+        name: string;
+        kind: WorkoutKind;
+        exercises: TemplateExercise[];
+        order: number;
+        source?: 'default' | 'strong' | 'app';
+    }
+
+    interface GymExerciseDoc {
+        _id: string;
+        ownerID: string;
+        key: string; // exerciseKey(name)
+        name: string;
+        primary: Muscle[];
+        secondary: Muscle[];
+        equipment: Equipment;
+        kind: ExerciseKind;
+        activity?: WorkoutKind;
     }
 
     interface MeterReadingDoc {

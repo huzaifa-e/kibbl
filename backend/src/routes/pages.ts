@@ -12,6 +12,8 @@ const pages = [
     { name: 'camera', path: 'camera/:deviceID', auth: true },
     { name: 'activity', path: 'activity', auth: true },
     { name: 'health', path: 'health', auth: true },
+    { name: 'gym', path: 'gym', auth: true },
+    { name: 'gym', path: 'gym/:section', auth: true },
     { name: 'meter', path: 'meter/:meterID', auth: true },
     { name: 'heat', path: 'heat', auth: true },
     { name: 'analysis', path: 'analysis', auth: true },

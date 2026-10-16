@@ -26,6 +26,9 @@ export let FirmwareRelease: Model<FirmwareReleaseDoc>;
 export let HeatMeterModel: Model<HeatMeterDoc>;
 export let HeatReadingModel: Model<HeatReadingDoc>;
 export let HeatReportModel: Model<HeatReportDoc>;
+export let GymWorkoutModel: Model<GymWorkoutDoc>;
+export let GymTemplateModel: Model<GymTemplateDoc>;
+export let GymExerciseModel: Model<GymExerciseDoc>;
 
 let isConnected = false;
 
@@ -47,6 +50,8 @@ async function init() {
         home: { latitude: Number, longitude: Number, name: String },
         // what the heating costs and the advance paid for it (heat/costs.ts)
         heatCosts: { advance: Number, previousAdvance: Number, advanceSince: String, otherCosts: Number, baseCost: Number, perUnit: Number },
+        // the gym's drawings (male or female figure) and the weight of bodyweight exercises
+        gym: { sex: String, bodyweight: Number },
         createdAt: { type: Number, required: true },
     });
 
@@ -420,6 +425,58 @@ async function init() {
         { versionKey: false, minimize: false },
     );
     HeatReportModel = model<HeatReportDoc>('HeatReport', heatReportSchema);
+
+    /* The gym (gym/): every workout with its exercises and sets in one document (a workout is
+     * read and written as a whole), the templates, and exercises the catalog does not know. */
+    const gymWorkoutSchema = new Schema<GymWorkoutDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true },
+            name: { type: String, required: true },
+            kind: { type: String, required: true, default: 'strength' },
+            templateId: String,
+            start: { type: Number, required: true },
+            end: Number, // none while it runs
+            notes: String,
+            source: { type: String, required: true, enum: ['app', 'strong'] },
+            exercises: { type: Schema.Types.Mixed, required: true },
+            updatedAt: { type: Number, required: true },
+        },
+        { versionKey: false, minimize: false },
+    );
+    gymWorkoutSchema.index({ ownerID: 1, start: -1 });
+    GymWorkoutModel = model<GymWorkoutDoc>('GymWorkout', gymWorkoutSchema);
+
+    const gymTemplateSchema = new Schema<GymTemplateDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true, index: true },
+            name: { type: String, required: true },
+            kind: { type: String, required: true, default: 'strength' },
+            exercises: { type: Schema.Types.Mixed, required: true },
+            order: { type: Number, required: true },
+            source: String,
+        },
+        { versionKey: false, minimize: false },
+    );
+    GymTemplateModel = model<GymTemplateDoc>('GymTemplate', gymTemplateSchema);
+
+    const gymExerciseSchema = new Schema<GymExerciseDoc>(
+        {
+            _id: { type: String, required: true },
+            ownerID: { type: String, required: true },
+            key: { type: String, required: true },
+            name: { type: String, required: true },
+            primary: { type: [String], default: [] },
+            secondary: { type: [String], default: [] },
+            equipment: { type: String, required: true },
+            kind: { type: String, required: true },
+            activity: String,
+        },
+        { versionKey: false },
+    );
+    gymExerciseSchema.index({ ownerID: 1, key: 1 }, { unique: true });
+    GymExerciseModel = model<GymExerciseDoc>('GymExercise', gymExerciseSchema);
 
     connection.on('connected', () => {
         isConnected = true;
