@@ -4,7 +4,7 @@ import type { HeatMeter, HeatOverview, HeatReading, HeatUnit } from '../../../sh
 import type { HomeRoom } from '../../../shared/heating';
 import { baseOptions } from './activityCharts';
 import { tone, type Tone } from './healthCharts';
-import { costsCard, initCosts, loadCosts } from './heatCosts';
+import { costsCard, initCosts, loadCosts, statementCard } from './heatCosts';
 import { insightsCard, loadInsights } from './heatInsights';
 import { initReports, loadReports, reportsCard } from './heatReports';
 import { socket } from './socket';
@@ -66,6 +66,7 @@ function layout() {
             <div class="card-body"><div id="use-chart"></div><div class="text-secondary small mt-2" id="use-note"></div></div>
         </div>
         ${insightsCard()}
+        ${statementCard()}
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title">Enter readings</h3></div>
             <div class="card-body" id="entry"></div>

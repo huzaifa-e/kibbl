@@ -54,7 +54,8 @@ export function initReports(c: typeof ctx) {
             const form = new FormData();
             form.append('report', file);
             const report = await api<HeatReportSummary>('/api/heat/reports', { method: 'POST', body: form });
-            reviewing = report._id;
+            // a statement alone has nothing to import: its costs show on their own
+            reviewing = report.data.devices.length || !report.data.statement ? report._id : undefined;
             reports = [report, ...reports.filter((r) => r._id !== report._id)];
         } catch (err) {
             message = errorAlert(`The report was not read: ${(err as Error).message}`);
@@ -86,10 +87,10 @@ function render() {
             (r) => `<tr>
             <td><i class="ti ti-file-type-pdf me-1 text-secondary"></i>${escapeHtml(r.fileName)}
                 <div class="text-secondary small">${r.data.company === 'techem' ? 'Techem · ' : ''}${r.data.period ? `${dateText(r.data.period.from)} – ${dateText(r.data.period.to)}` : 'period unknown'}</div></td>
-            <td class="d-none d-md-table-cell">${r.appliedAt ? `<span class="badge bg-green-lt">Imported</span>` : '<span class="badge bg-yellow-lt">To check</span>'}</td>
+            <td class="d-none d-md-table-cell">${r.data.statement ? '<span class="badge bg-blue-lt me-1">Running costs</span>' : ''}${!r.data.devices.length && r.data.statement ? '' : r.appliedAt ? `<span class="badge bg-green-lt">Imported</span>` : '<span class="badge bg-yellow-lt">To check</span>'}</td>
             <td class="text-end text-nowrap">
                 <a class="btn btn-sm btn-ghost-secondary" href="/api/heat/reports/${r._id}/file" target="_blank" rel="noopener" title="Open the PDF"><i class="ti ti-external-link"></i></a>
-                <button class="btn btn-sm${r.appliedAt ? ' btn-ghost-secondary' : ' btn-primary'}" data-review="${r._id}">${reviewing === r._id ? 'Close' : r.appliedAt ? 'Values' : 'Check & import'}</button>
+                ${!r.data.devices.length && r.data.statement ? '' : `<button class="btn btn-sm${r.appliedAt ? ' btn-ghost-secondary' : ' btn-primary'}" data-review="${r._id}">${reviewing === r._id ? 'Close' : r.appliedAt ? 'Values' : 'Check & import'}</button>`}
                 <button class="btn btn-sm btn-ghost-danger" data-drop-report="${r._id}" title="Remove the report"><i class="ti ti-trash"></i></button></td></tr>
             ${reviewing === r._id ? `<tr><td colspan="3" class="p-0">${form(r)}</td></tr>` : ''}`,
         )
@@ -104,8 +105,8 @@ function render() {
             ? `<div class="table-responsive"><table class="table table-vcenter card-table"><tbody>${rows}</tbody></table></div>`
             : uploading
               ? ''
-              : `<div class="card-body text-secondary">Upload the heating cost report (Heizkostenabrechnung) of your meter reading company as PDF, a scan works too.
-                    Its readings become your heat meters, and the building's energy per unit shows your use in kWh.</div>`);
+              : `<div class="card-body text-secondary">Upload the heating cost report (Heizkostenabrechnung) of your meter reading company or your landlord's statement of the running costs (Betriebskostenabrechnung) as PDF, a scan works too.
+                    The heating report's readings become your heat meters, the statement gives the cost breakdown and your advance.</div>`);
 
     el.querySelectorAll<HTMLButtonElement>('[data-review]').forEach((b) =>
         b.addEventListener('click', () => {
