@@ -441,6 +441,8 @@ async function init() {
             source: { type: String, required: true, enum: ['app', 'strong'] },
             exercises: { type: Schema.Types.Mixed, required: true },
             updatedAt: { type: Number, required: true },
+            pausedMs: Number, // paused time, not counted in the duration
+            pausedAt: Number, // paused since, while it is
         },
         { versionKey: false, minimize: false },
     );

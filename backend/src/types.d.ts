@@ -237,6 +237,8 @@ declare global {
         source: 'app' | 'strong';
         exercises: GymExerciseLog[];
         updatedAt: number;
+        pausedMs?: number;
+        pausedAt?: number | null;
     }
 
     interface GymTemplateDoc {

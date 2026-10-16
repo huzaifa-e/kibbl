@@ -20,6 +20,8 @@ import {
     addWorkout,
     getWorkout,
     importStrong,
+    exerciseHeartRate,
+    workoutHeartRate,
     previewStrong,
     learnTemplates,
     suggestions,
@@ -69,6 +71,10 @@ function cleanSet(s: Record<string, unknown>): GymSet {
         if (!inRange(s[k], max)) throw new Bad(`${k}: a number from 0 to ${max}`);
     const out: GymSet = { kind, done: s.done === true };
     for (const k of ['weight', 'reps', 'seconds', 'distance', 'rpe'] as const) if (typeof s[k] === 'number') out[k] = s[k] as number;
+    if (s.at !== undefined && s.at !== null) {
+        if (!isTime(s.at)) throw new Bad('at: when the set was ticked, ms');
+        out.at = s.at;
+    }
     return out;
 }
 
@@ -112,6 +118,14 @@ function cleanWorkout(b: Record<string, unknown>): WorkoutFields {
         f.notes = b.notes;
     }
     if (b.exercises !== undefined) f.exercises = cleanExercises(b.exercises);
+    if (b.pausedMs !== undefined) {
+        if (!inRange(b.pausedMs, 24 * 3600_000)) throw new Bad('pausedMs: up to a day');
+        f.pausedMs = b.pausedMs as number;
+    }
+    if (b.pausedAt !== undefined) {
+        if (b.pausedAt !== null && !isTime(b.pausedAt)) throw new Bad('pausedAt: a time in ms or null');
+        f.pausedAt = b.pausedAt as number | null;
+    }
     return f;
 }
 
@@ -244,7 +258,28 @@ export default function initGymRoutes(app: express.Application) {
         }),
     );
 
-    // any of name, kind, start, end (null: runs again), notes, exercises (all of them)
+    // the heart rate of a workout (also a tracker's session, tracker-<start>) and of its exercises
+    app.get(
+        '/api/gym/workouts/:id/heartrate',
+        auth,
+        handle(async (req, res) => {
+            const r = await workoutHeartRate(user(req), req.params.id);
+            if (!r) res.sendStatus(404);
+            return r;
+        }),
+    );
+
+    // an exercise's mean and peak heart rate in its latest sessions
+    app.get(
+        '/api/gym/exercises/:name/heartrate',
+        auth,
+        handle(async (req) => {
+            if (!isName(req.params.name)) throw new Bad('an exercise name');
+            return exerciseHeartRate(user(req), req.params.name);
+        }),
+    );
+
+    // any of name, kind, start, end (null: runs again), notes, exercises (all of them), pausedMs, pausedAt
     app.patch(
         '/api/gym/workouts/:id',
         auth,

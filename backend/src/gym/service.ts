@@ -3,7 +3,10 @@ import {
     DEFAULT_TEMPLATES,
     catalogExercise,
     exerciseKey,
+    exerciseSessions,
+    exerciseWindows,
     guessExercise,
+    heartRateStats,
     gymInsights,
     suggestTemplates,
     templatesFromHistory,
@@ -19,6 +22,8 @@ import {
 import { GymExerciseModel, GymTemplateModel, GymWorkoutModel, User } from '../core/db';
 import { logger } from '../core/logger';
 import { parseExercise } from '../health/extract';
+import { heartRateBetween } from '../health/service';
+import { storedHeartRateDates } from '../health/store';
 import { loadPoints } from '../health/store';
 import { detectUnits, parseStrongCsv } from './strong';
 
@@ -159,6 +164,8 @@ const toWorkout = (w: GymWorkoutDoc): GymWorkout => ({
     source: w.source,
     exercises: w.exercises,
     updatedAt: w.updatedAt,
+    ...(w.pausedMs ? { pausedMs: w.pausedMs } : {}),
+    ...(w.pausedAt ? { pausedAt: w.pausedAt } : {}),
 });
 
 interface TrackerSession {
@@ -267,6 +274,8 @@ export async function startWorkout(userID: string, templateId: string | null, ki
 }
 
 export interface WorkoutFields {
+    pausedMs?: number;
+    pausedAt?: number | null;
     name?: string;
     kind?: WorkoutKind;
     start?: number;
@@ -301,6 +310,72 @@ export async function addWorkout(userID: string, f: Required<Pick<WorkoutFields,
 
 export async function removeWorkout(userID: string, id: string) {
     return (await GymWorkoutModel.deleteOne({ _id: id, ownerID: userID })).deletedCount > 0;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Heart rate                                                               */
+
+const MAX_HR_SPAN = 12 * 3600_000;
+
+type HrRange = { points: { at: number; bpm: number }[]; zones: { zone: string; min: number; max: number }[] };
+const NO_HR: HrRange = { points: [], zones: [] };
+
+/* The heart rate between two times, only from what the server keeps: a day the tracker has no
+ * heart rate for (an old Strong session, before the tracker) is never asked of Google; today is
+ * read as the health page reads it. Without a link to Google Health nothing is read. */
+async function hrBetween(userID: string, from: number, to: number, stored: Set<string>): Promise<HrRange> {
+    const days = [civilDay(from), civilDay(to)];
+    const today = civilDay(Date.now());
+    if (!days.some((d) => stored.has(d) || d === today)) return NO_HR;
+    try {
+        return (await heartRateBetween(userID, from, to)) as HrRange;
+    } catch {
+        return NO_HR;
+    }
+}
+const storedDays = (userID: string) => storedHeartRateDates(userID);
+
+/* The heart rate of a workout from the fitness tracker (Google Health, per minute or finer):
+ * the curve, the mean and the peak, the minutes in each of Google's zones, and each exercise's
+ * mean and peak over its time (exact from the times its sets were ticked, else estimated). */
+export async function workoutHeartRate(userID: string, id: string) {
+    let w: GymWorkout | null;
+    if (id.startsWith('tracker-')) {
+        const start = Number(id.slice(8));
+        w = (await listWorkouts(userID, start - 60_000)).find((x) => x._id === id) ?? null;
+    } else w = await getWorkout(userID, id);
+    if (!w) return null;
+    const end = w.end ?? Date.now();
+    if (end - w.start > MAX_HR_SPAN || end <= w.start) return { points: [], zones: [], exercises: [], stats: null, inZones: [] };
+    const hr = await hrBetween(userID, w.start, end, await storedDays(userID));
+    const points = hr.points;
+    const step = points.length > 1 ? (points[points.length - 1].at - points[0].at) / (points.length - 1) : 60_000;
+    const inZones = hr.zones.map((z) => ({ zone: z.zone, minutes: Math.round((points.filter((p) => p.bpm >= z.min && p.bpm < z.max).length * step) / 60_000) }));
+    return {
+        points,
+        zones: hr.zones,
+        stats: heartRateStats(points, w.start, end),
+        inZones,
+        exercises: exerciseWindows(w).map((x) => ({ ...x, ...(heartRateStats(points, x.from, x.to) ?? {}) })),
+    };
+}
+
+/* An exercise's heart rate over its sessions: its mean and peak in each of the latest that the
+ * tracker saw. */
+export async function exerciseHeartRate(userID: string, name: string, limit = 15) {
+    const workouts = (await listWorkouts(userID, Date.now() - 365 * DAY_MS, false)).filter((w) => w.end);
+    const sessions = exerciseSessions(workouts, name).slice(-40);
+    const out: { at: number; avg: number; max: number; estimated: boolean }[] = [];
+    const stored = await storedDays(userID);
+    for (const s of sessions) {
+        const w = workouts.find((x) => x._id === s.workoutId)!;
+        const win = exerciseWindows(w).find((x) => exerciseKey(x.name) === exerciseKey(name));
+        if (!win || win.to - win.from > MAX_HR_SPAN) continue;
+        const hr = await hrBetween(userID, win.from, win.to, stored);
+        const st = heartRateStats(hr.points, win.from, win.to);
+        if (st) out.push({ at: s.at, avg: st.avg, max: st.max, estimated: win.estimated });
+    }
+    return out.slice(-limit);
 }
 
 /* ----------------------------------------------------------------------- */
