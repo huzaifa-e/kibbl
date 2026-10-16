@@ -15,6 +15,9 @@ type View = 'front' | 'back';
 export type Sex = 'male' | 'female';
 
 const MID = 104; // where the middle of the body is drawn
+/* the shapes are drawn wide for working on them; drawn at 0.8 of that width the body has a
+ * person's proportions (shoulders about a quarter of the height, the hips a fifth) */
+const XS = 0.8;
 
 /* ----------------------------------------------------------------------- */
 /* Smooth paths through points (Catmull-Rom as cubic Béziers)               */
@@ -275,8 +278,8 @@ export interface Shading {
 /* One view as svg markup, cropped to viewBox `box` (the whole figure without). */
 function figure(view: View, sex: Sex, shading: Shading, box: [number, number, number, number] | null, label: string) {
     const w = warp(sex);
-    const right = (pts: Pt[]): Pt[] => pts.map((p) => w(p)).map(([x, y]) => [MID + x, y]);
-    const left = (pts: Pt[]): Pt[] => pts.map((p) => w(p)).map(([x, y]) => [MID - x, y]);
+    const right = (pts: Pt[]): Pt[] => pts.map((p) => w(p)).map(([x, y]) => [MID + x * XS, y]);
+    const left = (pts: Pt[]): Pt[] => pts.map((p) => w(p)).map(([x, y]) => [MID - x * XS, y]);
     const outline = smooth([...right(OUTLINE), ...left(OUTLINE).reverse().slice(1)], true);
     const shapes: string[] = [];
     const over: string[] = []; // fibres and tendons, above every shape
@@ -295,7 +298,7 @@ function figure(view: View, sex: Sex, shading: Shading, box: [number, number, nu
         for (const l of GAPS[view]) over.push(`<path d="${smooth(side(l), false)}" class="gb-g"/>`);
         if (sex === 'female' && view === 'front') over.push(`<path d="${smooth(side(BREAST), false)}" class="gb-g gb-soft"/>`);
     }
-    const [x, y, bw, bh] = box ?? [MID - 108, -6, 216, 486];
+    const [x, y, bw, bh] = box ?? REGIONS.full;
     return (
         `<svg class="gym-body" viewBox="${f(x)} ${f(y)} ${f(bw)} ${f(bh)}" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
         `<path d="${outline}" class="gb-skin"/>` +
@@ -303,30 +306,6 @@ function figure(view: View, sex: Sex, shading: Shading, box: [number, number, nu
         `<path d="${outline}" class="gb-line"/>` +
         `</svg>`
     );
-}
-
-// the area around some muscles (both halves of those at the middle), widened to a square
-function cropAround(view: View, sex: Sex, muscles: Muscle[]): [number, number, number, number] {
-    const w = warp(sex);
-    const pts = SHAPES[view].filter((s) => s.muscle && muscles.includes(s.muscle)).flatMap((s) => s.pts.map(w));
-    if (!pts.length) return [MID - 108, -6, 216, 486];
-    const xs = pts.map((p) => p[0]);
-    const ys = pts.map((p) => p[1]);
-    const minX = Math.min(...xs);
-    // a muscle at the middle shows both halves; one at the side the body next to it
-    let x0 = MID + (minX < 12 ? -Math.max(...xs) : Math.min(minX, 8));
-    let x1 = MID + Math.max(...xs);
-    let y0 = Math.min(...ys);
-    let y1 = Math.max(...ys);
-    const pad = 26;
-    x0 -= pad;
-    x1 += pad;
-    y0 -= pad;
-    y1 += pad;
-    const size = Math.max(x1 - x0, y1 - y0, 140);
-    const cx = (x0 + x1) / 2;
-    const cy = (y0 + y1) / 2;
-    return [cx - size / 2, cy - size / 2, size, size];
 }
 
 export const RED = '#e2574c';
@@ -340,20 +319,41 @@ function viewFor(primary: Muscle[]): View {
 }
 
 /* An exercise's drawing: the area around the muscles it trains, those in red, the helpers lighter. */
-export function exerciseFigure(primary: Muscle[], secondary: Muscle[], sex: Sex = 'male', label = '') {
-    if (!primary.length) return figure('front', sex, { fill: () => null }, null, label);
-    const view = viewFor(primary);
-    const inView = (m: Muscle) => SHAPES[view].some((s) => s.muscle === m);
-    const shown = primary.filter(inView);
-    const shading: Shading = {
-        fill: (m) => (primary.includes(m) ? RED : secondary.includes(m) ? RED_LIGHT : null),
-        stroke: (m) => (primary.includes(m) ? RED_DARK : secondary.includes(m) ? '#c9675e' : null),
-    };
-    return figure(view, sex, shading, cropAround(view, sex, shown.length ? shown : primary), label);
+export type Region = 'upper' | 'lower' | 'full';
+export type { View };
+
+// the halves of the body: the head to the hips, the hips to the feet
+const REGIONS: Record<Region, [number, number, number, number]> = {
+    upper: [MID - 92, -8, 184, 274],
+    lower: [MID - 92, 222, 184, 260],
+    full: [MID - 90, -6, 180, 486],
+};
+const LOWER: Muscle[] = ['glutes', 'abductors', 'quads', 'adductors', 'hamstrings', 'calves'];
+
+// where an exercise is seen best: the view and the half of the body of most of its targets
+export function placeOf(primary: Muscle[]): { view: View; region: Region } {
+    if (!primary.length) return { view: 'front', region: 'full' };
+    const lower = primary.filter((m) => LOWER.includes(m)).length;
+    return { view: viewFor(primary), region: lower * 2 > primary.length ? 'lower' : lower * 2 === primary.length ? 'full' : 'upper' };
+}
+
+const exerciseShading = (primary: Muscle[], secondary: Muscle[]): Shading => ({
+    fill: (m) => (primary.includes(m) ? RED : secondary.includes(m) ? RED_LIGHT : null),
+    stroke: (m) => (primary.includes(m) ? RED_DARK : secondary.includes(m) ? '#c9675e' : null),
+});
+
+/* An exercise's drawing: the half of the body its targets are in (the whole body when they are
+ * in both), from where they are seen, the targets red, the helpers lighter. A view or a region
+ * asked for (the zoomed drawing) is drawn as asked. */
+export function exerciseFigure(primary: Muscle[], secondary: Muscle[], sex: Sex = 'male', label = '', at: { view?: View; region?: Region } = {}) {
+    const place = placeOf(primary);
+    const view = at.view ?? place.view;
+    const region = at.region ?? place.region;
+    return figure(view, sex, exerciseShading(primary, secondary), REGIONS[region], label);
 }
 
 /* The whole body from the front and the back, each muscle tinted by `level` (0 to 1, null: not trained). */
-export function bodyMap(level: (m: Muscle) => number | null, sex: Sex = 'male') {
+function levelShading(level: (m: Muscle) => number | null): Shading {
     const fill = (m: Muscle) => {
         const v = level(m);
         if (v === null || v <= 0) return null;
@@ -362,8 +362,17 @@ export function bodyMap(level: (m: Muscle) => number | null, sex: Sex = 'male') 
         const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
         return `rgb(${mix(244, 226)}, ${mix(200, 87)}, ${mix(195, 76)})`;
     };
-    const stroke = (m: Muscle) => ((level(m) ?? 0) >= 0.6 ? RED_DARK : '#c9675e');
-    return { front: figure('front', sex, { fill, stroke }, null, 'Front'), back: figure('back', sex, { fill, stroke }, null, 'Back') };
+    return { fill, stroke: (m: Muscle) => ((level(m) ?? 0) >= 0.6 ? RED_DARK : '#c9675e') };
+}
+
+export function bodyMap(level: (m: Muscle) => number | null, sex: Sex = 'male') {
+    const shading = levelShading(level);
+    return { front: figure('front', sex, shading, null, 'Front'), back: figure('back', sex, shading, null, 'Back') };
+}
+
+// one view and half of a body map, for the zoomed drawing
+export function bodyMapView(level: (m: Muscle) => number | null, sex: Sex, view: View, region: Region) {
+    return figure(view, sex, levelShading(level), REGIONS[region], view === 'front' ? 'Front' : 'Back');
 }
 
 export const BODY_CSS = `
@@ -377,4 +386,5 @@ export const BODY_CSS = `
 .gym-body .gb-t{fill:var(--gb-gap,#fff);stroke:none;opacity:.92}
 .gym-body .gb-g{fill:none;stroke:var(--gb-gap,#fff);stroke-width:2;stroke-linecap:round}
 .gym-body .gb-soft{stroke-width:1.4;opacity:.85}
+.gym-body .gb-f,.gym-body .gb-fon,.gym-body .gb-t,.gym-body .gb-g,.gym-body .gb-line{pointer-events:none}
 `;
