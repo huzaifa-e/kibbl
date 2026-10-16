@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    exerciseWindows,
+    heartRateStats,
+    restsOf,
+    workoutMinutes,
     buildName,
     buildWorkout,
     e1rm,
@@ -173,4 +177,32 @@ test('a workout for the muscles chosen: the ones done most, compound first, none
     // as it was done: 4 sets of 12
     assert.deepEqual(ex.find((e) => e.name === 'Lateral Raise (Cable)'), { name: 'Lateral Raise (Cable)', sets: 4, repsLow: 12, repsHigh: 14, restSeconds: 75 });
     assert.equal(buildName(['chest_upper', 'chest_mid', 'biceps']), 'Chest + Biceps');
+});
+
+test('rests and the times of the exercises: from the ticks, else shared out', () => {
+    const t0 = Date.UTC(2026, 9, 10, 17, 0);
+    const w: GymWorkout = {
+        _id: 'w',
+        name: 'A',
+        kind: 'strength',
+        start: t0,
+        end: t0 + 30 * 60_000,
+        source: 'app',
+        exercises: [
+            { name: 'Bench Press (Barbell)', sets: [{ kind: 'normal', weight: 80, reps: 8, done: true, at: t0 + 3 * 60_000 }, { kind: 'normal', weight: 80, reps: 8, done: true, at: t0 + 6 * 60_000 }] },
+            { name: 'Chest Fly (Machine)', sets: [{ kind: 'normal', weight: 40, reps: 12, done: true, at: t0 + 10 * 60_000 }] },
+        ],
+    };
+    assert.deepEqual(restsOf(w.exercises[0]), [180]);
+    const [a, b] = exerciseWindows(w);
+    assert.deepEqual([a.from, a.to, a.estimated], [t0, t0 + 6 * 60_000, false]);
+    assert.deepEqual([b.from, b.to], [t0 + 6 * 60_000, t0 + 10 * 60_000]);
+    // without times: 30 minutes over 3 sets
+    const bare = { ...w, exercises: w.exercises.map((e) => ({ ...e, sets: e.sets.map(({ at: _at, ...s }) => s) })) };
+    const est = exerciseWindows(bare);
+    assert.equal(est[0].to - est[0].from, 20 * 60_000);
+    assert.ok(est[1].estimated);
+    assert.deepEqual(heartRateStats([{ at: t0 + 60_000, bpm: 120 }, { at: t0 + 120_000, bpm: 140 }, { at: t0 + 11 * 60_000, bpm: 100 }], t0, t0 + 6 * 60_000), { avg: 130, max: 140, min: 120, samples: 2 });
+    // a pause is not training time
+    assert.equal(workoutMinutes({ ...w, pausedMs: 10 * 60_000 }), 20);
 });

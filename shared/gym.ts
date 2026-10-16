@@ -508,6 +508,7 @@ export interface GymSet {
     distance?: number | null; // km
     rpe?: number | null;
     done: boolean;
+    at?: number | null; // when it was ticked (ms): the rests between sets, the exercise's time
 }
 
 export interface GymExerciseLog {
@@ -530,6 +531,8 @@ export interface GymWorkout {
     source: 'app' | 'strong' | 'tracker';
     exercises: GymExerciseLog[];
     updatedAt?: number;
+    pausedMs?: number; // the time the workout stood paused, not counted in its duration
+    pausedAt?: number | null; // paused since, while it is
     // a session of the fitness tracker that ran at the same time (Google Health)
     tracker?: { type: string; start: number; end: number; calories: number | null; avgHr: number | null; azm: number | null } | null;
 }
@@ -1059,7 +1062,68 @@ export function templatesFromHistory(workouts: GymWorkout[], min = 2): Omit<GymT
 /* ----------------------------------------------------------------------- */
 /* Everything that was done                                                 */
 
-export const workoutMinutes = (w: GymWorkout) => (w.end && w.end > w.start ? (w.end - w.start) / 60_000 : 0);
+export const workoutMinutes = (w: GymWorkout) => (w.end && w.end > w.start ? Math.max(0, w.end - w.start - (w.pausedMs ?? 0)) / 60_000 : 0);
+
+/* ----------------------------------------------------------------------- */
+/* Times within a workout: rests, each exercise's time, its heart rate      */
+
+// the rests taken between the ticked sets of an exercise, seconds
+export function restsOf(e: GymExerciseLog) {
+    const ticks = e.sets
+        .filter((s) => s.done && s.at)
+        .map((s) => s.at!)
+        .sort((a, b) => a - b);
+    return ticks.slice(1).map((t, i) => Math.round((t - ticks[i]) / 1000));
+}
+
+export interface ExerciseWindow {
+    name: string;
+    index: number; // in the workout
+    from: number;
+    to: number;
+    estimated: boolean; // no times of the sets: the workout's time shared out by its sets
+}
+
+/* When each exercise ran. With the times the sets were ticked: from the tick before its first
+ * set (the end of the exercise before, or the start) to its last tick. Without them (an import
+ * of Strong): the workout's time shared out by the sets in their order. */
+export function exerciseWindows(w: GymWorkout): ExerciseWindow[] {
+    const end = w.end ?? Date.now();
+    const done = w.exercises.map((e, index) => ({ e, index, sets: e.sets.filter((s) => s.done) })).filter((x) => x.sets.length);
+    const timed = done.flatMap((x) => x.sets).filter((s) => s.at).length;
+    const all = done.reduce((n, x) => n + x.sets.length, 0);
+    if (all && timed >= all * 0.8) {
+        const ticks = done.flatMap((x) => x.sets.filter((s) => s.at).map((s) => s.at!)).sort((a, b) => a - b);
+        return done
+            .map(({ e, index, sets }) => {
+                const mine = sets.filter((s) => s.at).map((s) => s.at!).sort((a, b) => a - b);
+                if (!mine.length) return null;
+                const before = ticks.filter((t) => t < mine[0]);
+                const from = before.length ? before[before.length - 1] : w.start;
+                return { name: e.name, index, from, to: mine[mine.length - 1], estimated: false };
+            })
+            .filter((x): x is ExerciseWindow => !!x);
+    }
+    const span = Math.max(0, end - w.start - (w.pausedMs ?? 0));
+    let at = w.start;
+    return done.map(({ e, index, sets }) => {
+        const from = at;
+        at += (span * sets.length) / Math.max(1, all);
+        return { name: e.name, index, from, to: at, estimated: true };
+    });
+}
+
+export interface HeartRatePoint {
+    at: number;
+    bpm: number;
+}
+
+export function heartRateStats(points: HeartRatePoint[], from: number, to: number) {
+    const inside = points.filter((p) => p.at >= from && p.at <= to);
+    if (!inside.length) return null;
+    const bpm = inside.map((p) => p.bpm);
+    return { avg: Math.round(bpm.reduce((a, b) => a + b, 0) / bpm.length), max: Math.max(...bpm), min: Math.min(...bpm), samples: bpm.length };
+}
 
 export interface ActivityWeek {
     week: number;
