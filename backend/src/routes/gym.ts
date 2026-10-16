@@ -20,7 +20,9 @@ import {
     addWorkout,
     getWorkout,
     importStrong,
+    previewStrong,
     learnTemplates,
+    suggestions,
     listTemplates,
     orderTemplates,
     overview,
@@ -154,6 +156,7 @@ function cleanExerciseInfo(b: Record<string, unknown>): ExerciseInfo {
         equipment: b.equipment as Equipment,
         kind: b.kind as ExerciseKind,
         ...(isWorkoutKind(b.activity) ? { activity: b.activity } : {}),
+        ...(b.unit === 'kg' || b.unit === 'lbs' ? { unit: b.unit } : {}),
     };
 }
 
@@ -206,7 +209,7 @@ export default function initGymRoutes(app: express.Application) {
         handle(async (req) => ({ workout: await activeWorkout(user(req)) })),
     );
 
-    // { templateId } or { kind, name }: starts a workout (or returns the one that runs)
+    // { templateId } or { kind, name, exercises? }: starts a workout (or returns the one that runs)
     app.post(
         '/api/gym/workouts/start',
         auth,
@@ -215,7 +218,8 @@ export default function initGymRoutes(app: express.Application) {
             if (b.templateId !== undefined && b.templateId !== null && !isId(b.templateId)) throw new Bad('no such template');
             if (b.kind !== undefined && !isWorkoutKind(b.kind)) throw new Bad('an unknown kind of workout');
             if (b.name !== undefined && !isName(b.name)) throw new Bad(`a name of 1 to ${NAME_MAX} characters`);
-            return startWorkout(user(req), (b.templateId as string) ?? null, b.kind as never, b.name as string | undefined);
+            const planned = b.exercises !== undefined ? cleanTemplateExercises(b.exercises) : undefined;
+            return startWorkout(user(req), (b.templateId as string) ?? null, b.kind as never, b.name as string | undefined, planned);
         }),
     );
 
@@ -297,6 +301,13 @@ export default function initGymRoutes(app: express.Application) {
         }),
     );
 
+    // templates suggested from the routine, balanced over the week; the page saves the one taken
+    app.get(
+        '/api/gym/suggestions',
+        auth,
+        handle(async (req) => suggestions(user(req))),
+    );
+
     // templates from the workouts done twice or more
     app.post(
         '/api/gym/templates/learn',
@@ -323,7 +334,30 @@ export default function initGymRoutes(app: express.Application) {
 
     /* -- Strong -- */
 
-    // multipart: file (the CSV of Strong's export), unit kg or lbs (when the file does not say)
+    const fileOf = (req: RequestWithSessionInfo) => {
+        const file = (req as unknown as { file?: Express.Multer.File }).file;
+        if (!file) throw new Bad('no file');
+        return file.buffer.toString('utf-8');
+    };
+    const withUpload: express.RequestHandler = (req, res, next) => {
+        upload(req, res, (err: unknown) => {
+            if (err) {
+                res.status(400).send(err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE' ? 'the file is larger than 20 MB' : 'the upload failed');
+                return;
+            }
+            next();
+        });
+    };
+
+    // multipart: file; what it holds, each exercise with its unit where the file proves it
+    app.post(
+        '/api/gym/import/strong/preview',
+        auth,
+        withUpload,
+        handle(async (req) => previewStrong(user(req), fileOf(req))),
+    );
+
+    // multipart: file (the CSV of Strong's export), unit kg or lbs (the default), units: JSON {exercise name: kg or lbs}
     app.post('/api/gym/import/strong', auth, (req, res, next) => {
         upload(req, res, (err: unknown) => {
             if (err) {
@@ -336,6 +370,17 @@ export default function initGymRoutes(app: express.Application) {
         const file = (req as unknown as { file?: Express.Multer.File }).file;
         if (!file) throw new Bad('no file');
         const unit = req.body?.unit === 'lbs' ? 'lbs' : 'kg';
-        return importStrong(user(req), file.buffer.toString('utf-8'), unit);
+        let units: Record<string, 'kg' | 'lbs'> = {};
+        if (req.body?.units) {
+            try {
+                const parsed = JSON.parse(String(req.body.units)) as Record<string, unknown>;
+                if (Object.keys(parsed).length > 2000) throw new Bad('too many units');
+                units = Object.fromEntries(Object.entries(parsed).filter(([k, v]) => isName(k) && (v === 'kg' || v === 'lbs'))) as Record<string, 'kg' | 'lbs'>;
+            } catch (e) {
+                if (e instanceof Bad) throw e;
+                throw new Bad('units: JSON of exercise names to kg or lbs');
+            }
+        }
+        return importStrong(user(req), file.buffer.toString('utf-8'), unit, units);
     }));
 }

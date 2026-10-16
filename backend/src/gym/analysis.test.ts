@@ -1,13 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    buildName,
+    buildWorkout,
     e1rm,
     exerciseSessions,
     guessExercise,
     gymInsights,
+    isIsolation,
     records,
     setsPerGroup,
     suggestNext,
+    suggestTemplates,
     templatesFromHistory,
     trackerKind,
     weeklyActivity,
@@ -116,4 +120,57 @@ test('templates learned from history keep the latest session', () => {
     assert.equal(rest.length, 0);
     assert.equal(tpl.name, 'Back & Biceps');
     assert.deepEqual(tpl.exercises[0], { name: 'Lat Pulldown (Cable)', sets: 3, repsLow: 8, repsHigh: 10, restSeconds: 90 });
+});
+
+test('a typo far above the usual weight is no record', () => {
+    const t = Date.now() - 20 * DAY;
+    const ws = [0, 1, 2, 3, 4].map((i) => workout(t + i * DAY, 'B', [['Face Pull (Cable)', [set(110, 10), set(i === 4 ? 1254 : 115, 10)]]]));
+    assert.equal(records(exerciseSessions(ws, 'Face Pull (Cable)')).weight!.value, 115);
+});
+
+test('suggested templates: the routine, focused days, a leg day', () => {
+    const now = Date.now();
+    const ws: GymWorkout[] = [];
+    const push: [string, GymSet[]][] = ['Bench Press (Barbell)', 'Incline Bench Press (Dumbbell)', 'Chest Press (Machine)', 'Chest Fly (Machine)', 'Pec Deck (Machine)', 'Cable Crossover', 'Lat Pulldown (Cable)', 'Seated Row (Cable)', 'Triceps Rope Pushdown'].map((n) => [n, [set(50, 10), set(50, 10), set(50, 10), set(50, 10)]]);
+    const pull: [string, GymSet[]][] = ['Lat Pulldown (Cable)', 'Seated Row (Cable)', 'Bent Over Row (Barbell)', 'Pull Up (Assisted)', 'T Bar Row', 'Bicep Curl (Cable)', 'Chest Fly (Machine)', 'Pec Deck (Machine)'].map((n) => [n, [set(50, 10), set(50, 10), set(50, 10), set(50, 10)]]);
+    for (let i = 0; i < 10; i++) {
+        ws.push(workout(now - (70 - i * 7) * DAY, 'Chest/Tri', push));
+        ws.push(workout(now - (68 - i * 7) * DAY, 'Back/Biceps', pull));
+    }
+    const r = suggestTemplates(ws, guessExercise, [], now);
+    const names = r.suggestions.map((s) => s.name);
+    assert.deepEqual(names, ['Chest/Tri', 'Back/Biceps', 'Legs']);
+    const chest = r.suggestions[0];
+    assert.equal(chest.exercises.filter((e) => guessExercise(e.name).primary.some((m) => m.startsWith('chest'))).length, 4);
+    assert.equal(chest.exercises.filter((e) => ['Lat Pulldown (Cable)', 'Seated Row (Cable)'].includes(e.name)).length, 1); // back on the chest day: one
+    const back = r.suggestions[1];
+    assert.equal(back.exercises.filter((e) => ['Chest Fly (Machine)', 'Pec Deck (Machine)'].includes(e.name)).length, 1);
+    const legs = r.suggestions[2];
+    assert.equal(legs.sessions, 0);
+    for (const g of ['quads', 'hamstrings', 'glutes', 'calves'] as const) assert.ok(r.after[g] > r.before[g], g);
+    assert.ok(r.after.chest < r.before.chest);
+    assert.ok(chest.changes.length > 0);
+});
+
+test('isolation lifts', () => {
+    assert.ok(isIsolation(guessExercise('Lateral Raise (Machine)')));
+    assert.ok(isIsolation(guessExercise('Bicep Curl (Cable)')));
+    assert.ok(!isIsolation(guessExercise('Bench Press (Barbell)')));
+    assert.ok(!isIsolation(guessExercise('Squat (Barbell)')));
+});
+
+test('a workout for the muscles chosen: the ones done most, compound first, none twice', () => {
+    const t = Date.now() - 10 * DAY;
+    const ws = [0, 1, 2].map((i) => workout(t + i * DAY, 'X', [['Lateral Raise (Cable)', [set(10, 12), set(10, 12), set(10, 12), set(10, 12)]], ['Incline Bench Press (Dumbbell)', [set(20, 8), set(20, 9)]]]));
+    const ex = buildWorkout(['chest_upper', 'delts_side', 'biceps'], ws, guessExercise, 'normal');
+    const names = ex.map((e) => e.name);
+    assert.equal(new Set(names).size, names.length);
+    assert.ok(names.includes('Incline Bench Press (Dumbbell)'));
+    assert.ok(names.includes('Lateral Raise (Cable)'));
+    assert.ok(names.some((n) => guessExercise(n).primary.includes('biceps')));
+    // compound before isolation
+    assert.ok(names.indexOf('Incline Bench Press (Dumbbell)') < names.indexOf('Lateral Raise (Cable)'));
+    // as it was done: 4 sets of 12
+    assert.deepEqual(ex.find((e) => e.name === 'Lateral Raise (Cable)'), { name: 'Lateral Raise (Cable)', sets: 4, repsLow: 12, repsHigh: 14, restSeconds: 75 });
+    assert.equal(buildName(['chest_upper', 'chest_mid', 'biceps']), 'Chest + Biceps');
 });

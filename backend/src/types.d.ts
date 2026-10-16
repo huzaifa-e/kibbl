@@ -259,6 +259,7 @@ declare global {
         equipment: Equipment;
         kind: ExerciseKind;
         activity?: WorkoutKind;
+        unit?: 'kg' | 'lbs';
     }
 
     interface MeterReadingDoc {

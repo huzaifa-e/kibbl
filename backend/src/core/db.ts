@@ -472,6 +472,7 @@ async function init() {
             equipment: { type: String, required: true },
             kind: { type: String, required: true },
             activity: String,
+            unit: String, // kg or lbs: how its weights are shown and entered
         },
         { versionKey: false },
     );

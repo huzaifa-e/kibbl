@@ -1,22 +1,26 @@
 import { randomUUID } from 'node:crypto';
 import {
     DEFAULT_TEMPLATES,
+    catalogExercise,
     exerciseKey,
     guessExercise,
     gymInsights,
+    suggestTemplates,
     templatesFromHistory,
     trackerKind,
     type ExerciseInfo,
     type GymExerciseLog,
     type GymTemplate,
     type GymWorkout,
+    type TemplateExercise,
+    type WeightUnit,
     type WorkoutKind,
 } from '../../../shared/gym';
 import { GymExerciseModel, GymTemplateModel, GymWorkoutModel, User } from '../core/db';
 import { logger } from '../core/logger';
 import { parseExercise } from '../health/extract';
 import { loadPoints } from '../health/store';
-import { parseStrongCsv } from './strong';
+import { detectUnits, parseStrongCsv } from './strong';
 
 /*
  * The gym: workouts as they are logged in the app or imported from Strong, the templates they
@@ -39,7 +43,17 @@ const civilDay = (t: number) => new Intl.DateTimeFormat('en-CA').format(new Date
 
 export async function customExercises(userID: string): Promise<ExerciseInfo[]> {
     const rows = await GymExerciseModel.find({ ownerID: userID }).lean();
-    return rows.map((r) => ({ name: r.name, primary: r.primary, secondary: r.secondary, equipment: r.equipment, kind: r.kind, custom: true, ...(r.activity ? { activity: r.activity } : {}) }));
+    // a catalog exercise kept only for its unit stays a catalog one
+    return rows.map((r) => ({
+        name: r.name,
+        primary: r.primary,
+        secondary: r.secondary,
+        equipment: r.equipment,
+        kind: r.kind,
+        custom: !catalogExercise(r.name),
+        ...(r.activity ? { activity: r.activity } : {}),
+        ...(r.unit ? { unit: r.unit } : {}),
+    }));
 }
 
 // how an exercise is looked up for this user: their own first, then the catalog, then a guess
@@ -53,11 +67,24 @@ export async function saveExercise(userID: string, e: ExerciseInfo) {
     await GymExerciseModel.updateOne(
         { ownerID: userID, key },
         {
-            $set: { name: e.name.trim(), primary: e.primary, secondary: e.secondary, equipment: e.equipment, kind: e.kind, activity: e.activity },
+            $set: { name: e.name.trim(), primary: e.primary, secondary: e.secondary, equipment: e.equipment, kind: e.kind, activity: e.activity, ...(e.unit ? { unit: e.unit } : {}) },
             $setOnInsert: { _id: randomUUID() },
         },
         { upsert: true },
     );
+}
+
+/* The unit an exercise's weights are shown and entered in; the exercise becomes one of the
+ * user's (with the catalog's muscles) when it was not. */
+export async function setUnits(userID: string, units: Record<string, WeightUnit>) {
+    const own = new Map((await customExercises(userID)).map((e) => [exerciseKey(e.name), e]));
+    for (const [name, unit] of Object.entries(units)) {
+        const mine = own.get(exerciseKey(name));
+        // kg is what an exercise is in without a word: a catalog one is not copied for it
+        if (!mine && unit === 'kg') continue;
+        if (mine?.unit === unit) continue;
+        await saveExercise(userID, { ...(mine ?? guessExercise(name)), name, unit });
+    }
 }
 
 export async function removeExercise(userID: string, name: string) {
@@ -206,18 +233,23 @@ export async function activeWorkout(userID: string) {
 
 /* A new workout, from a template (its exercises with empty sets, last time's numbers filled in
  * by the page) or empty; one that still runs is returned instead of a second. */
-export async function startWorkout(userID: string, templateId: string | null, kind?: WorkoutKind, name?: string) {
+export async function startWorkout(userID: string, templateId: string | null, kind?: WorkoutKind, name?: string, planned?: TemplateExercise[]) {
     const running = await activeWorkout(userID);
     if (running) return running;
     let exercises: GymExerciseLog[] = [];
     let title = name?.trim() || 'Workout';
     let k: WorkoutKind = kind ?? 'strength';
+    // a template's exercises, or those planned for this one session (built for chosen muscles)
+    let plan = planned ?? [];
     if (templateId) {
         const t = await GymTemplateModel.findOne({ _id: templateId, ownerID: userID }).lean();
         if (!t) throw new GymError('no such template');
         title = t.name;
         k = t.kind ?? 'strength';
-        exercises = t.exercises.map((e) => ({
+        plan = t.exercises;
+    }
+    {
+        exercises = plan.map((e) => ({
             name: e.name,
             restSeconds: e.restSeconds,
             sets: Array.from({ length: Math.max(1, e.sets) }, () => ({
@@ -277,10 +309,32 @@ export async function removeWorkout(userID: string, id: string) {
 /* An export of the Strong app: its workouts replace those of an earlier import at the same
  * start (an import twice is never doubled), the ones logged in the app stay. Exercises the
  * catalog does not know are kept as the user's own, their muscles guessed from the name. */
-export async function importStrong(userID: string, csv: string, unit: 'kg' | 'lbs') {
+/* What an export holds before it is imported: its exercises with their weights and the unit
+ * each is in where the file proves it, or as the user set it before. */
+export async function previewStrong(userID: string, csv: string) {
+    let units;
     let parsed;
     try {
-        parsed = parseStrongCsv(csv, unit);
+        units = detectUnits(csv);
+        parsed = parseStrongCsv(csv);
+    } catch (e) {
+        throw new GymError((e as Error).message);
+    }
+    const info = await lookupFor(userID);
+    const starts = parsed.workouts.map((w) => w.start);
+    return {
+        workouts: parsed.workouts.length,
+        from: starts[0] ?? null,
+        to: starts[starts.length - 1] ?? null,
+        exercises: units.map((u) => ({ ...u, saved: info(u.name).unit ?? null, known: !info(u.name).custom })),
+        corrected: parsed.corrected,
+    };
+}
+
+export async function importStrong(userID: string, csv: string, unit: WeightUnit, units: Record<string, WeightUnit> = {}) {
+    let parsed;
+    try {
+        parsed = parseStrongCsv(csv, unit, Object.fromEntries(Object.entries(units).map(([k, v]) => [exerciseKey(k), v])));
     } catch (e) {
         throw new GymError((e as Error).message);
     }
@@ -293,7 +347,9 @@ export async function importStrong(userID: string, csv: string, unit: 'kg' | 'lb
     );
     const own = new Set((await customExercises(userID)).map((e) => exerciseKey(e.name)));
     const unknown = parsed.exercises.map((n) => guessExercise(n)).filter((e) => e.custom && !own.has(exerciseKey(e.name)));
-    for (const e of unknown) await saveExercise(userID, e);
+    for (const e of unknown) await saveExercise(userID, { ...e, ...(units[e.name] ? { unit: units[e.name] } : {}) });
+    // the units chosen stay with the exercises: the app shows and takes their weights in them
+    await setUnits(userID, units);
     log.info('strong import', { userID, workouts: parsed.workouts.length, replaced, unknown: unknown.length });
     return {
         workouts: parsed.workouts.length,
@@ -304,6 +360,7 @@ export async function importStrong(userID: string, csv: string, unit: 'kg' | 'lb
         to: starts[starts.length - 1],
         exercises: parsed.exercises.length,
         guessed: unknown.map((e) => ({ name: e.name, primary: e.primary })),
+        corrected: parsed.corrected,
     };
 }
 
@@ -333,6 +390,13 @@ export async function overview(userID: string, days = 365) {
     const from = Date.now() - days * DAY_MS;
     const [workouts, templates, exercises, me] = await Promise.all([listWorkouts(userID, from), listTemplates(userID), customExercises(userID), profile(userID)]);
     return { workouts, templates, exercises, profile: me, oldest: (await GymWorkoutModel.findOne({ ownerID: userID }).sort({ start: 1 }).lean())?.start ?? null };
+}
+
+/* Templates suggested from the routine as it is done (shared/gym.ts suggestTemplates), with the
+ * weekly sets each group gets before and after. */
+export async function suggestions(userID: string) {
+    const [workouts, info, templates] = await Promise.all([listWorkouts(userID, Date.now() - 365 * DAY_MS, false), lookupFor(userID), listTemplates(userID)]);
+    return suggestTemplates(workouts, info, templates);
 }
 
 // for the assistant: the advice of the last weeks

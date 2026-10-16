@@ -1,4 +1,4 @@
-import { guessExercise, trackerKind, type GymExerciseLog, type GymSet, type SetKind, type WorkoutKind } from '../../../shared/gym';
+import { exerciseKey, guessExercise, trackerKind, type GymExerciseLog, type GymSet, type SetKind, type WeightUnit, type WorkoutKind } from '../../../shared/gym';
 
 /*
  * The export of the Strong app (Settings → Export Strong Data, a CSV file): one row per set, the
@@ -7,6 +7,11 @@ import { guessExercise, trackerKind, type GymExerciseLog, type GymSet, type SetK
  *   old  Date;Workout Name;Exercise Name;Set Order;Weight;Weight Unit;Reps;RPE;Distance;Distance Unit;Seconds;Notes;Workout Notes;Workout Duration
  * The columns are found by their names, so their order does not matter. Set Order is a number,
  * or W (warm-up), D (drop set), F (to failure); a "Rest Timer" row is the rest after a set.
+ *
+ * The new layout has no unit: Strong writes each exercise in the unit set for it, kg for one,
+ * lbs for another. So the units are given per exercise (`units`, by exerciseKey), else `unit`.
+ * `detectUnits` finds what the file proves: a set logged before the exercise's unit changed
+ * comes out odd in the new one (25 kg as 55.12 lbs, 40 lb as 18.14 kg).
  */
 
 export interface ImportedWorkout {
@@ -22,11 +27,49 @@ export interface StrongImport {
     workouts: ImportedWorkout[];
     rows: number;
     skipped: number;
-    unit: 'kg' | 'lbs';
+    unit: WeightUnit;
     exercises: string[]; // every exercise name met
+    corrected: { name: string; from: number; to: number; sets: number }[]; // typos of a decimal point
 }
 
-const LB = 0.45359237;
+/* A weight about ten times an exercise's usual one, whose tenth is usual, is a decimal point
+ * missed (1254 for 125.4); Strong copies a session's numbers into the next, so one typo can stand
+ * in dozens of sessions. Such sets get the tenth. */
+function fixDecimalTypos(workouts: ImportedWorkout[]) {
+    const weights = new Map<string, number[]>();
+    for (const w of workouts) for (const e of w.exercises) for (const s of e.sets) if (s.weight) weights.set(e.name, [...(weights.get(e.name) ?? []), s.weight]);
+    const fixes = new Map<string, { name: string; from: number; to: number; sets: number }>();
+    for (const [name, ws] of weights) {
+        const sorted = [...ws].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        if (sorted.length < 5 || !median) continue;
+        for (const w of workouts)
+            for (const e of w.exercises) {
+                if (e.name !== name) continue;
+                for (const s of e.sets) {
+                    if (!s.weight || s.weight < median * 4) continue;
+                    const tenth = Math.round(s.weight) / 10;
+                    if (tenth < median * 0.4 || tenth > median * 2.5) continue;
+                    const key = `${name}|${s.weight}`;
+                    const f = fixes.get(key) ?? { name, from: s.weight, to: tenth, sets: 0 };
+                    f.sets++;
+                    fixes.set(key, f);
+                    s.weight = tenth;
+                }
+            }
+    }
+    return [...fixes.values()];
+}
+
+export interface ExerciseUnits {
+    name: string;
+    sets: number;
+    weights: number[]; // the values as written, the most frequent first
+    detected: WeightUnit | null; // what the file proves, null where every value is round
+    evidence: number[];
+}
+
+const LB = 0.45359237; // as in shared/gym.ts
 const MILE = 1.609344;
 
 // fields of one CSV line, with quotes ("" inside a quoted field is a quote)
@@ -99,7 +142,13 @@ function kindOf(name: string, exercises: GymExerciseLog[]): WorkoutKind {
     return k && k !== 'cardio' && k !== 'strength' && infos.every((i) => i.kind === 'cardio') ? k : 'strength';
 }
 
-export function parseStrongCsv(text: string, unit: 'kg' | 'lbs' = 'kg'): StrongImport {
+export function parseStrongCsv(text: string, unit: WeightUnit = 'kg', units: Record<string, WeightUnit> = {}): StrongImport {
+    const { rows, c, num } = readTable(text);
+    return build(rows, c, num, unit, units);
+}
+
+// the rows and the columns by name; numbers as the layout writes them
+function readTable(text: string) {
     const body = text.replace(/^\uFEFF/, '');
     const head = body.slice(0, body.search(/\r?\n/) >>> 0);
     const sep = (head.match(/;/g)?.length ?? 0) > (head.match(/,/g)?.length ?? 0) ? ';' : ',';
@@ -133,7 +182,46 @@ export function parseStrongCsv(text: string, unit: 'kg' | 'lbs' = 'kg'): StrongI
         const n = Number(t);
         return Number.isFinite(n) ? n : null;
     };
+    return { rows, c, num };
+}
 
+type Table = ReturnType<typeof readTable>;
+
+const isRound = (v: number, step: number) => Math.abs(v / step - Math.round(v / step)) < 0.02;
+
+/* Each exercise's weights, and its unit where the file proves it: a value that is not round
+ * but is a round weight of the other unit (55.12 = 25 kg in lbs: the exercise is in lbs; 18.14 =
+ * 40 lb in kg: it is in kg). With a unit column the column says it. */
+export function detectUnits(text: string): ExerciseUnits[] {
+    const { rows, c, num } = readTable(text);
+    type Seen = { name: string; sets: number; values: Map<number, number>; lbs: number[]; kg: number[]; column?: WeightUnit };
+    const by = new Map<string, Seen>();
+    for (const r of rows.slice(1)) {
+        const name = (r[c.exercise] ?? '').trim();
+        const w = num(r[c.weight]);
+        if (!name) continue;
+        const e: Seen = by.get(exerciseKey(name)) ?? { name, sets: 0, values: new Map(), lbs: [], kg: [] };
+        by.set(exerciseKey(name), e);
+        e.sets++;
+        if (c.weightUnit >= 0) e.column = /lb/i.test(r[c.weightUnit] ?? '') ? 'lbs' : 'kg';
+        if (!w || w <= 0) continue;
+        e.values.set(w, (e.values.get(w) ?? 0) + 1);
+        if (isRound(w, 0.25)) continue;
+        if (isRound(w * LB, 0.25)) e.lbs.push(w);
+        else if (isRound(w / LB, 0.5)) e.kg.push(w);
+    }
+    return [...by.values()]
+        .map((e) => ({
+            name: e.name,
+            sets: e.sets,
+            weights: [...e.values.entries()].sort((a, b) => b[1] - a[1]).map(([v]) => v).slice(0, 8),
+            detected: e.column ?? (e.lbs.length > e.kg.length ? 'lbs' : e.kg.length > e.lbs.length ? 'kg' : null),
+            evidence: [...new Set(e.lbs.length >= e.kg.length ? e.lbs : e.kg)].slice(0, 4),
+        }))
+        .sort((a, b) => b.sets - a.sets);
+}
+
+function build(rows: Table['rows'], c: Table['c'], num: Table['num'], unit: WeightUnit, units: Record<string, WeightUnit>): StrongImport {
     const byStart = new Map<string, ImportedWorkout & { exerciseIndex: Map<string, GymExerciseLog> }>();
     const names = new Set<string>();
     let skipped = 0;
@@ -169,7 +257,7 @@ export function parseStrongCsv(text: string, unit: 'kg' | 'lbs' = 'kg'): StrongI
         const note = c.notes >= 0 ? (r[c.notes] ?? '').trim() : '';
         if (note && !e.notes) e.notes = note;
         const kind: SetKind = /^w/i.test(order) ? 'warmup' : /^d/i.test(order) ? 'drop' : /^f/i.test(order) ? 'failure' : 'normal';
-        const rowUnit = c.weightUnit >= 0 ? (r[c.weightUnit] ?? '').trim().toLowerCase() : unit;
+        const rowUnit = c.weightUnit >= 0 ? (r[c.weightUnit] ?? '').trim().toLowerCase() : (units[exerciseKey(exercise)] ?? unit);
         let weight = num(r[c.weight]);
         if (weight !== null && /lb/.test(rowUnit)) weight = Math.round(weight * LB * 100) / 100;
         let distance = c.distance >= 0 ? num(r[c.distance]) : null;
@@ -192,5 +280,6 @@ export function parseStrongCsv(text: string, unit: 'kg' | 'lbs' = 'kg'): StrongI
         .filter((w) => w.exercises.length)
         .map((w) => ({ ...w, kind: kindOf(w.name, w.exercises) }))
         .sort((a, b) => a.start - b.start);
-    return { workouts, rows: rows.length - 1, skipped, unit, exercises: [...names].sort() };
+    const corrected = fixDecimalTypos(workouts);
+    return { workouts, rows: rows.length - 1, skipped, unit, exercises: [...names].sort(), corrected };
 }

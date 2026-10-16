@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDuration, parseStrongCsv } from './strong';
+import { detectUnits, parseDuration, parseStrongCsv } from './strong';
 
 const NEW = `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE
 2026-10-13 17:30:12,"Chest & Triceps",1h 5m,"Bench Press (Barbell)",W,40,10,0,0,"","",
@@ -51,4 +51,30 @@ test('durations', () => {
 
 test('not a Strong file', () => {
     assert.throws(() => parseStrongCsv('a,b\n1,2\n'), /not a Strong export/);
+});
+
+test('units per exercise: what the file proves, then as given', () => {
+    const csv = `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE
+2025-03-03 18:00:00,"A",1h,"Chest Press (Machine)",1,55.12,10,0,0,"","",
+2025-03-10 18:00:00,"A",1h,"Chest Press (Machine)",1,120,10,0,0,"","",
+2025-03-03 18:00:00,"A",1h,"Lat Pulldown (Machine)",1,18.14,10,0,0,"","",
+2025-03-10 18:00:00,"A",1h,"Lat Pulldown (Machine)",1,30,10,0,0,"","",
+2025-03-10 18:00:00,"A",1h,"Chest Fly",1,175,10,0,0,"","",
+`;
+    const d = Object.fromEntries(detectUnits(csv).map((u) => [u.name, u.detected]));
+    assert.deepEqual(d, { 'Chest Press (Machine)': 'lbs', 'Lat Pulldown (Machine)': 'kg', 'Chest Fly': null });
+    const r = parseStrongCsv(csv, 'kg', { 'chest press (machine)': 'lbs', 'chest fly': 'lbs' });
+    const w = (name: string, i: number) => r.workouts[i].exercises.find((e) => e.name === name)!.sets[0].weight;
+    assert.equal(w('Chest Press (Machine)', 0), 25);
+    assert.equal(w('Chest Press (Machine)', 1), 54.43);
+    assert.equal(w('Lat Pulldown (Machine)', 0), 18.14);
+    assert.equal(w('Chest Fly', 1), 79.38);
+});
+
+test('a missed decimal point carried through sessions is corrected', () => {
+    const rows = ['Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE'];
+    for (let d = 1; d <= 9; d++) rows.push(`2025-03-0${d} 18:00:00,"A",1h,"Face Pull (Cable)",1,${d > 6 ? 1254 : 110},10,0,0,"","",`);
+    const r = parseStrongCsv(rows.join('\n') + '\n');
+    assert.deepEqual(r.corrected, [{ name: 'Face Pull (Cable)', from: 1254, to: 125.4, sets: 3 }]);
+    assert.equal(r.workouts[8].exercises[0].sets[0].weight, 125.4);
 });
