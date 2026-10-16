@@ -1,0 +1,510 @@
+/* The gym page: made for a phone held in one hand between sets. Large targets, a tab bar at the
+ * bottom within reach of the thumb, the workout full screen. The drawings of the muscles sit on
+ * a plate of their own, in the colours of an anatomy chart in either theme. */
+
+:root,
+[data-bs-theme='light'] {
+    --gym-plate: #ffffff;
+    --gb-skin: #d6d7d9;
+    --gb-edge: #c3c4c7;
+    --gb-gap: #ffffff;
+    --gym-red: #d4372a;
+}
+
+/* at night the chart stays a light chart, a little dimmed: the drawings read as they do by day */
+[data-bs-theme='dark'] {
+    --gym-plate: #e6e1d9;
+    --gb-skin: #c6c2bd;
+    --gb-edge: #b3aea8;
+    --gb-gap: #e6e1d9;
+    --gym-red: #e2574c;
+}
+
+.gym-page {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+    max-width: 920px;
+    margin: 0 auto;
+}
+
+/* the tab bar */
+.gym-tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1030;
+    display: flex;
+    background: var(--tblr-bg-surface);
+    border-top: var(--kb-border, 2px solid rgba(0, 0, 0, 0.15));
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.gym-tabs a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 0 6px;
+    color: var(--tblr-secondary);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 600;
+}
+.gym-tabs a i {
+    font-size: 24px;
+}
+.gym-tabs a.active {
+    color: var(--tblr-primary);
+}
+@media (min-width: 992px) {
+    /* beside the side menu */
+    .gym-tabs {
+        left: 15rem;
+    }
+}
+body.gym-logging .gym-tabs {
+    display: none;
+}
+
+/* chips */
+.gym-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    flex-wrap: nowrap;
+}
+.gym-chips::-webkit-scrollbar {
+    display: none;
+}
+.modal .gym-chips,
+#gym-sheet .gym-chips {
+    flex-wrap: wrap;
+}
+.gym-chip {
+    flex: 0 0 auto;
+    border: 1.5px solid var(--tblr-border-color);
+    background: var(--tblr-bg-surface);
+    color: inherit;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    margin: 0 4px 4px 0;
+}
+.gym-chip.on {
+    background: var(--tblr-primary);
+    border-color: var(--tblr-primary);
+    color: var(--tblr-primary-fg, #fff);
+}
+.gym-chip.red {
+    background: var(--gym-red);
+    border-color: var(--gym-red);
+    color: #fff;
+}
+.gym-chip.pink {
+    background: #f0aaa3;
+    border-color: #e58c83;
+    color: #5b1610;
+}
+
+/* kinds */
+.gym-kind {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--k) 18%, transparent);
+    color: var(--k);
+    font-size: 22px;
+}
+.gym-kpill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--k);
+    background: color-mix(in srgb, var(--k) 14%, transparent);
+}
+
+/* the week */
+.gym-week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    text-align: center;
+}
+.gym-day {
+    padding: 6px 0;
+    border-radius: 10px;
+}
+.gym-day.today {
+    background: color-mix(in srgb, var(--tblr-primary) 12%, transparent);
+}
+.gym-day-dots {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 4px;
+    min-height: 12px;
+}
+.gym-day-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+.gym-day-dots span.none {
+    background: var(--tblr-border-color);
+    width: 6px;
+    height: 6px;
+    margin-top: 2px;
+}
+
+/* the drawings */
+.gym-plate {
+    background: var(--gym-plate);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.gym-thumb {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.gym-thumb .gym-body {
+    width: 100%;
+    height: 100%;
+}
+.gym-noimg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    background: var(--tblr-bg-surface-secondary);
+    color: var(--tblr-secondary);
+    font-size: 22px;
+}
+.gym-hero {
+    max-width: 340px;
+    margin: 0 auto;
+    aspect-ratio: 1;
+}
+.gym-bodymap {
+    max-width: 300px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    padding: 6px;
+}
+.gym-tpl-map {
+    flex: 0 0 auto;
+    width: 92px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    padding: 4px;
+    align-self: flex-start;
+}
+.gym-tpls {
+    display: grid;
+    gap: 12px;
+}
+@media (min-width: 768px) {
+    .gym-tpls {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+.gym-tpl-list {
+    line-height: 1.45;
+}
+
+.gym-active {
+    background: var(--tblr-primary);
+    color: var(--tblr-primary-fg, #fff);
+    cursor: pointer;
+}
+
+/* the groups against their range */
+.gym-gbars {
+    display: grid;
+    gap: 6px;
+}
+.gym-gbar {
+    display: grid;
+    grid-template-columns: 84px 1fr 36px 52px;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 0;
+    padding: 2px 0;
+    color: inherit;
+    text-align: left;
+    font-size: 13px;
+}
+.gym-gbar-head {
+    font-size: 11px;
+}
+.gym-gbar-track {
+    position: relative;
+    height: 12px;
+    border-radius: 6px;
+    background: var(--tblr-bg-surface-secondary);
+    overflow: hidden;
+}
+.gym-gbar-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(127, 154, 46, 0.35);
+}
+.gym-gbar-fill {
+    position: absolute;
+    left: 0;
+    top: 3px;
+    bottom: 3px;
+    border-radius: 3px;
+    background: var(--gym-red);
+}
+.gym-gbar-fill.low {
+    background: #b0574a;
+    opacity: 0.7;
+}
+.gym-gbar-fill.near {
+    background: #e0a526;
+}
+.gym-gbar-fill.high {
+    background: #7b3f61;
+}
+.gym-gbar-val {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    font-weight: 700;
+}
+.gym-gbar-chg {
+    font-size: 11px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--tblr-secondary);
+}
+.gym-gbar-chg.up {
+    color: var(--tblr-success);
+}
+.gym-gbar-chg.down {
+    color: var(--tblr-danger);
+}
+
+.gym-badge-red {
+    background: var(--gym-red);
+    color: #fff;
+}
+.gym-badge-pink {
+    background: #f0aaa3;
+    color: #5b1610;
+}
+.gym-record {
+    border-radius: 10px;
+    padding: 8px 10px;
+    background: var(--tblr-bg-surface-secondary);
+    height: 100%;
+}
+.gym-tracker {
+    background: var(--tblr-bg-surface-secondary);
+}
+
+/* the workout, full screen */
+.gym-logger {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: var(--tblr-body-bg);
+    display: flex;
+    flex-direction: column;
+}
+body.gym-logging {
+    overflow: hidden;
+}
+.gym-log-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+    background: var(--tblr-bg-surface);
+    border-bottom: 1px solid var(--tblr-border-color);
+}
+.gym-log-clock {
+    font-size: 20px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.gym-log-meta {
+    padding: 10px 12px 0;
+}
+.gym-log-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 12px calc(96px + env(safe-area-inset-bottom));
+}
+.gym-log-body,
+.gym-log-meta {
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+}
+.gym-ex {
+    margin-bottom: 12px;
+}
+.gym-set {
+    display: grid;
+    grid-template-columns: 34px minmax(56px, 1fr) repeat(var(--cols, 2), minmax(52px, 1fr)) 44px;
+    gap: 6px;
+    align-items: center;
+    padding: 3px 0;
+}
+.gym-set-head {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: center;
+}
+.gym-set .form-control {
+    text-align: center;
+    font-weight: 700;
+    font-size: 16px; /* no zoom on focus in iOS */
+    padding: 6px 4px;
+    min-height: 40px;
+}
+.gym-setno {
+    border: 0;
+    background: var(--tblr-bg-surface-secondary);
+    border-radius: 8px;
+    font-weight: 800;
+    height: 36px;
+    min-width: 30px;
+    color: inherit;
+}
+.k-warmup .gym-setno {
+    color: #c98d12;
+}
+.k-drop .gym-setno {
+    color: #7b3f61;
+}
+.k-failure .gym-setno {
+    color: var(--gym-red);
+}
+.gym-prev {
+    font-size: 12px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.gym-tick {
+    border: 1.5px solid var(--tblr-border-color);
+    background: var(--tblr-bg-surface);
+    border-radius: 10px;
+    height: 40px;
+    font-size: 20px;
+    color: var(--tblr-secondary);
+}
+.gym-set.done {
+    background: color-mix(in srgb, var(--tblr-success) 14%, transparent);
+    border-radius: 10px;
+}
+.gym-set.done .gym-tick {
+    background: var(--tblr-success);
+    border-color: var(--tblr-success);
+    color: #fff;
+}
+.gym-set.done .form-control {
+    background: transparent;
+    border-color: transparent;
+}
+
+/* the rest timer, over the bottom of the workout */
+.gym-rest {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--tblr-bg-surface);
+    border-top: var(--kb-border, 2px solid rgba(0, 0, 0, 0.15));
+    overflow: hidden;
+}
+.gym-rest[hidden] {
+    display: none;
+}
+.gym-rest-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 4px;
+    background: var(--tblr-primary);
+    transition: width 0.25s linear;
+}
+.gym-rest-clock {
+    font-size: 26px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.gym-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    transform: translate(-50%, 20px);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2000;
+    background: var(--tblr-bg-surface);
+    border: var(--kb-border, 2px solid rgba(0, 0, 0, 0.2));
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-weight: 600;
+    max-width: calc(100vw - 32px);
+    transition:
+        opacity 0.2s,
+        transform 0.2s;
+}
+.gym-toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+.gym-toast.error {
+    border-color: var(--tblr-danger);
+    color: var(--tblr-danger);
+}
+
+.gym-sheet .list-group-item {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+.min-w-0 {
+    min-width: 0;
+}
+/* last time's numbers stand in the empty fields as a hint, not as an entry */
+.gym-set .form-control::placeholder {
+    color: var(--tblr-secondary);
+    opacity: 0.45;
+    font-weight: 500;
+}
+.gym-active .gym-kind {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
