@@ -1,15 +1,18 @@
 import { MUSCLES, type Muscle } from '../../../shared/gym';
 import type { Region, View } from './gymBody';
 import { esc, openLayer } from './gymCommon';
+import { angleDots, turntable, viewOf, type Angle } from './gymTurn';
 
-/* A drawing of the muscles full screen: front or back, the upper or lower body or all of it,
- * zoomed with two fingers, the wheel, a double tap or the buttons, moved by dragging. A muscle
- * tapped says its name. */
+/* A drawing of the muscles full screen, on a turntable: swiped (or the arrows) it turns from the
+ * front to the side, the back and the other side; the upper or lower body or all of it; zoomed
+ * with two fingers, the wheel, a double tap or the buttons, moved by dragging once zoomed. A
+ * muscle tapped says its name. */
 
 export interface ZoomSource {
     title: string;
     render: (view: View, region: Region) => string;
     view: View;
+    angle?: Angle; // where the drawing it was opened from stood
     region: Region;
     legend?: string; // under the drawing
 }
@@ -18,7 +21,6 @@ const MIN = 1;
 const MAX = 6;
 
 export function openZoom(src: ZoomSource) {
-    let view = src.view;
     let region = src.region;
     let scale = 1;
     let tx = 0;
@@ -31,14 +33,16 @@ export function openZoom(src: ZoomSource) {
             <div class="fw-bold text-truncate flex-fill">${esc(src.title)}</div>
         </div>
         <div class="gym-zoom-bar">
-            <div class="btn-group btn-group-sm" role="group" data-group="view">
-                <button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button><button class="btn" data-view="back">Back</button>
+            <div class="d-flex align-items-center gap-1">
+                <button class="btn btn-icon btn-sm" data-z="left" aria-label="Turn left"><i class="ti ti-rotate-2"></i></button>
+                <span data-dots></span>
+                <button class="btn btn-icon btn-sm" data-z="right" aria-label="Turn right"><i class="ti ti-rotate-clockwise-2"></i></button>
             </div>
             <div class="btn-group btn-group-sm" role="group" data-group="region">
                 <button class="btn" data-region="upper">Upper</button><button class="btn" data-region="lower">Lower</button><button class="btn" data-region="full">Whole</button>
             </div>
         </div>
-        <div class="gym-zoom-stage gym-plate"><div class="gym-zoom-inner"></div><div class="gym-zoom-name" hidden></div></div>
+        <div class="gym-zoom-stage gym-plate"><div class="gym-zoom-inner"></div><div class="gym-zoom-name" hidden></div><div class="gym-zoom-hint">swipe to turn</div></div>
         <div class="gym-zoom-foot">
             <div class="small flex-fill">${src.legend ?? ''}</div>
             <div class="btn-group btn-group-sm">
@@ -52,6 +56,7 @@ export function openZoom(src: ZoomSource) {
     const stage = root.querySelector<HTMLElement>('.gym-zoom-stage')!;
     const inner = root.querySelector<HTMLElement>('.gym-zoom-inner')!;
     const nameEl = root.querySelector<HTMLElement>('.gym-zoom-name')!;
+    const dots = root.querySelector<HTMLElement>('[data-dots]')!;
 
     const apply = () => {
         // never moved off the stage
@@ -62,10 +67,16 @@ export function openZoom(src: ZoomSource) {
         ty = Math.max(-maxY, Math.min(maxY, ty));
         inner.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
     };
-    const draw = () => {
-        inner.innerHTML = src.render(view, region);
-        root.querySelectorAll<HTMLElement>('[data-view]').forEach((b) => b.classList.toggle('btn-primary', b.dataset.view === view));
+    const turn = turntable(inner, (a) => src.render(viewOf(a), region), src.angle ?? src.view, {
+        onChange: (a) => {
+            dots.innerHTML = angleDots(a);
+            nameEl.hidden = true;
+        },
+    });
+    dots.innerHTML = angleDots(turn.angle());
+    const drawRegion = () => {
         root.querySelectorAll<HTMLElement>('[data-region]').forEach((b) => b.classList.toggle('btn-primary', b.dataset.region === region));
+        turn.redraw();
         nameEl.hidden = true;
         apply();
     };
@@ -100,22 +111,22 @@ export function openZoom(src: ZoomSource) {
         } else if (z === 'in') zoomTo(scale * 1.6);
         else if (z === 'out') zoomTo(scale / 1.6);
         else if (z === 'reset') zoomTo(1);
-        const v = t.closest<HTMLElement>('[data-view]')?.dataset.view as View | undefined;
-        if (v) {
-            view = v;
-            draw();
-        }
+        else if (z === 'left') turn.turn(-1);
+        else if (z === 'right') turn.turn(1);
         const g = t.closest<HTMLElement>('[data-region]')?.dataset.region as Region | undefined;
         if (g) {
             region = g;
             scale = 1;
             tx = ty = 0;
-            draw();
+            drawRegion();
         }
     });
 
-    /* touch and mouse: one pointer drags, two pinch; a tap names the muscle, a double tap zooms */
+    /* touch and mouse: at full size a sideways swipe turns the figure, zoomed one finger moves
+     * it; two pinch; a tap names the muscle, a double tap zooms */
     const pointers = new Map<number, { x: number; y: number }>();
+    let downAt: { x: number; y: number } | null = null;
+    let turning = false;
     let pinch: { d: number; scale: number } | null = null;
     let moved = false;
     let lastTap = 0;
@@ -123,9 +134,15 @@ export function openZoom(src: ZoomSource) {
         stage.setPointerCapture(e.pointerId);
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         moved = false;
+        if (pointers.size === 1) {
+            downAt = { x: e.clientX, y: e.clientY };
+            turning = false;
+        }
         if (pointers.size === 2) {
             const [a, b] = [...pointers.values()];
             pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), scale };
+            if (turning) turn.release(0);
+            turning = false;
         }
     });
     stage.addEventListener('pointermove', (e) => {
@@ -142,11 +159,22 @@ export function openZoom(src: ZoomSource) {
             tx += dx;
             ty += dy;
             apply();
+        } else if (pointers.size === 1 && downAt) {
+            const sx = e.clientX - downAt.x;
+            const sy = e.clientY - downAt.y;
+            if (!turning && Math.abs(sx) > 8 && Math.abs(sx) > Math.abs(sy)) turning = true;
+            if (turning) turn.drag(sx);
         }
     });
     const up = (e: PointerEvent) => {
         pointers.delete(e.pointerId);
         if (pointers.size < 2) pinch = null;
+        if (turning && downAt && !pointers.size) {
+            turn.release(e.clientX - downAt.x);
+            turning = false;
+            downAt = null;
+            return;
+        }
         if (moved || pointers.size) return;
         const now = Date.now();
         if (now - lastTap < 300) {
@@ -162,7 +190,11 @@ export function openZoom(src: ZoomSource) {
         if (m) nameEl.textContent = MUSCLES[m].label;
     };
     stage.addEventListener('pointerup', up);
-    stage.addEventListener('pointercancel', (e) => pointers.delete(e.pointerId));
+    stage.addEventListener('pointercancel', (e) => {
+        pointers.delete(e.pointerId);
+        if (turning) turn.release(0);
+        turning = false;
+    });
     stage.addEventListener(
         'wheel',
         (e) => {
@@ -171,5 +203,5 @@ export function openZoom(src: ZoomSource) {
         },
         { passive: false },
     );
-    draw();
+    drawRegion();
 }
