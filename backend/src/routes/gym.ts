@@ -34,6 +34,7 @@ import {
     saveExercise,
     saveTemplate,
     setProfile,
+    setFavorite,
     startWorkout,
     updateWorkout,
     type WorkoutFields,
@@ -212,6 +213,17 @@ export default function initGymRoutes(app: express.Application) {
             if (b.bodyweight !== undefined && b.bodyweight !== null && !(typeof b.bodyweight === 'number' && b.bodyweight >= 20 && b.bodyweight <= 400))
                 throw new Bad('bodyweight: 20 to 400 kg');
             return setProfile(user(req), { sex: b.sex as 'male' | 'female' | undefined, bodyweight: b.bodyweight as number | null | undefined });
+        }),
+    );
+
+    // { name, favorite }: an exercise marked as a favorite, or not any more
+    app.put(
+        '/api/gym/favorites',
+        auth,
+        handle(async (req) => {
+            const b = (req.body ?? {}) as Record<string, unknown>;
+            if (!isName(b.name) || typeof b.favorite !== 'boolean') throw new Bad('a name and favorite true or false');
+            return { favorites: await setFavorite(user(req), b.name, b.favorite) };
         }),
     );
 

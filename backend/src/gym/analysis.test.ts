@@ -206,3 +206,8 @@ test('rests and the times of the exercises: from the ticks, else shared out', ()
     // a pause is not training time
     assert.equal(workoutMinutes({ ...w, pausedMs: 10 * 60_000 }), 20);
 });
+
+test('favorites come first in a built workout', () => {
+    const ex = buildWorkout(['biceps'], [], guessExercise, 'short', new Set(['spider curl (dumbbell)']));
+    assert.equal(ex[0].name, 'Spider Curl (Dumbbell)');
+});

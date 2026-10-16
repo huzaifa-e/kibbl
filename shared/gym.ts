@@ -1260,7 +1260,8 @@ function quantile(sorted: number[], q: number) {
  * done. From that the hard sets each group gets a week; a group below its range gets sets on
  * its exercises (up to 5), else an exercise added to the day it goes with (a new leg day when
  * the legs have none); one far above loses sets; a stalled lift gets the other rep range. */
-export function suggestTemplates(workouts: GymWorkout[], info: ExerciseLookup, templates: GymTemplate[], now = Date.now()): Suggestions {
+export function suggestTemplates(workouts: GymWorkout[], info: ExerciseLookup, templates: GymTemplate[], now = Date.now(), favorites: Set<string> = new Set()): Suggestions {
+    const fav = (n: string) => favorites.has(exerciseKey(n));
     const strength = workouts.filter((w) => w.kind === 'strength' && w.end && w.start <= now && w.source !== 'tracker').sort((a, b) => a.start - b.start);
     let weeks = 12;
     let recent = strength.filter((w) => w.start >= now - weeks * WEEK_MS);
@@ -1353,7 +1354,8 @@ export function suggestTemplates(workouts: GymWorkout[], info: ExerciseLookup, t
             const keep = owns.get(t)!.has(g) ? (KEEP[g] ?? 2) : 1;
             if (mine.length <= keep) continue;
             const rank = (n: string) => recent.filter((w) => w.name.trim() === t.name && w.exercises.some((e) => e.name === n && e.sets.some(isWorkSet))).length;
-            const dropped = [...mine].sort((x, y) => rank(y.name) - rank(x.name) || y.sets - x.sets).slice(keep);
+            // a favorite always stays
+            const dropped = [...mine].sort((x, y) => Number(fav(y.name)) - Number(fav(x.name)) || rank(y.name) - rank(x.name) || y.sets - x.sets).slice(keep);
             t.exercises = t.exercises.filter((e) => !dropped.includes(e));
             t.changes.push(
                 owns.get(t)!.has(g)
@@ -1400,6 +1402,7 @@ export function suggestTemplates(workouts: GymWorkout[], info: ExerciseLookup, t
         for (const [g, n, fallbacks] of SLOTS) {
             const candidates = [
                 ...moved.filter((e) => primaryGroup(e.name) === g).map((e) => e.name),
+                ...[...favorites].map((k) => [...used.keys()].find((n) => exerciseKey(n) === k) ?? EXERCISES.find((e) => exerciseKey(e.name) === k)?.name).filter((x): x is string => !!x && primaryGroup(x) === g),
                 ...[...used.entries()].filter(([x]) => primaryGroup(x) === g && countsSets(info(x))).sort((a, b) => b[1] - a[1]).map(([x]) => x),
                 ...fallbacks,
             ];
@@ -1458,7 +1461,8 @@ export function suggestTemplates(workouts: GymWorkout[], info: ExerciseLookup, t
             }
             const have = new Set(day.exercises.map((e) => exerciseKey(e.name)));
             const name =
-                [...used.entries()].filter(([n]) => !have.has(exerciseKey(n)) && trains(n, g) && countsSets(info(n))).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+                [...used.entries()].filter(([n]) => !have.has(exerciseKey(n)) && trains(n, g) && countsSets(info(n))).sort((a, b) => Number(fav(b[0])) - Number(fav(a[0])) || b[1] - a[1])[0]?.[0] ??
+                EXERCISES.find((e) => fav(e.name) && !have.has(exerciseKey(e.name)) && trains(e.name, g))?.name ??
                 (have.has(exerciseKey(GROUP_PICK[g])) ? null : GROUP_PICK[g]);
             if (!name) break;
             day.exercises.push({ name, sets: 3, repsLow: 10, repsHigh: 15, restSeconds: 75 });
@@ -1540,7 +1544,7 @@ const LARGE: MuscleGroup[] = ['chest', 'back', 'quads', 'hamstrings', 'glutes', 
  * isolation; 1-3 a muscle by the size asked (a small muscle one less), never one twice. Sets and
  * reps as they were usually done, else 3 sets of 8-12 (isolation 10-15). Compound lifts first,
  * the large groups before the small. */
-export function buildWorkout(muscles: Muscle[], workouts: GymWorkout[], info: ExerciseLookup, size: BuildSize = 'normal'): TemplateExercise[] {
+export function buildWorkout(muscles: Muscle[], workouts: GymWorkout[], info: ExerciseLookup, size: BuildSize = 'normal', favorites: Set<string> = new Set()): TemplateExercise[] {
     const done = workouts.filter((w) => w.end && w.source !== 'tracker');
     const uses = new Map<string, number>();
     const reps = new Map<string, number[]>();
@@ -1568,11 +1572,19 @@ export function buildWorkout(muscles: Muscle[], workouts: GymWorkout[], info: Ex
         const want = Math.max(1, PER_MUSCLE[size] - (LARGE.includes(g) ? 0 : 1)) - (unique.filter((o) => o !== m && groupOf(o) === g).length ? 1 : 0);
         const candidates = [...pool.values()]
             .filter((x) => x.primary.includes(m) && (x.kind === 'weight' || x.kind === 'bodyweight' || x.kind === 'assisted' || x.kind === 'duration') && !has(x.name))
-            .sort((a, b) => (uses.get(b.name) ?? 0) - (uses.get(a.name) ?? 0) || Number(isIsolation(a)) - Number(isIsolation(b)) || a.primary.length - b.primary.length);
+            // favorites first, then the ones done most
+            .sort(
+                (a, b) =>
+                    Number(favorites.has(exerciseKey(b.name))) - Number(favorites.has(exerciseKey(a.name))) ||
+                    (uses.get(b.name) ?? 0) - (uses.get(a.name) ?? 0) ||
+                    Number(isIsolation(a)) - Number(isIsolation(b)) ||
+                    a.primary.length - b.primary.length,
+            );
         // the most done first, and one compound lift among them when there is one
         const picked: ExerciseInfo[] = [];
         const compound = candidates.find((x) => !isIsolation(x));
-        if (compound && !(uses.get(candidates[0]?.name) ?? 0)) picked.push(compound);
+        const known = candidates[0] && ((uses.get(candidates[0].name) ?? 0) > 0 || favorites.has(exerciseKey(candidates[0].name)));
+        if (compound && !known) picked.push(compound);
         for (const x of candidates) {
             if (picked.length >= Math.max(1, want)) break;
             if (!picked.includes(x)) picked.push(x);

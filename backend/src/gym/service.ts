@@ -453,11 +453,22 @@ export async function importStrong(userID: string, csv: string, unit: WeightUnit
 export interface GymProfile {
     sex: 'male' | 'female';
     bodyweight: number | null;
+    favorites: string[]; // exercises: first in the lists, preferred by the suggestions and the builder
 }
 
 export async function profile(userID: string): Promise<GymProfile> {
     const u = await User.findById(userID, { gym: 1 }).lean();
-    return { sex: u?.gym?.sex ?? 'male', bodyweight: u?.gym?.bodyweight ?? null };
+    return { sex: u?.gym?.sex ?? 'male', bodyweight: u?.gym?.bodyweight ?? null, favorites: u?.gym?.favorites ?? [] };
+}
+
+const MAX_FAVORITES = 200;
+
+export async function setFavorite(userID: string, name: string, favorite: boolean) {
+    const p = await profile(userID);
+    const rest = p.favorites.filter((n) => exerciseKey(n) !== exerciseKey(name));
+    const favorites = favorite ? [...rest, name.trim()].slice(-MAX_FAVORITES) : rest;
+    await User.updateOne({ _id: userID }, { $set: { 'gym.favorites': favorites } });
+    return favorites;
 }
 
 export async function setProfile(userID: string, p: Partial<GymProfile>) {
@@ -479,8 +490,8 @@ export async function overview(userID: string, days = 365) {
 /* Templates suggested from the routine as it is done (shared/gym.ts suggestTemplates), with the
  * weekly sets each group gets before and after. */
 export async function suggestions(userID: string) {
-    const [workouts, info, templates] = await Promise.all([listWorkouts(userID, Date.now() - 365 * DAY_MS, false), lookupFor(userID), listTemplates(userID)]);
-    return suggestTemplates(workouts, info, templates);
+    const [workouts, info, templates, me] = await Promise.all([listWorkouts(userID, Date.now() - 365 * DAY_MS, false), lookupFor(userID), listTemplates(userID), profile(userID)]);
+    return suggestTemplates(workouts, info, templates, Date.now(), new Set(me.favorites.map(exerciseKey)));
 }
 
 // for the assistant: the advice of the last weeks

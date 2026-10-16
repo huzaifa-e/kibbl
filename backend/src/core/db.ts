@@ -51,7 +51,7 @@ async function init() {
         // what the heating costs and the advance paid for it (heat/costs.ts)
         heatCosts: { advance: Number, previousAdvance: Number, advanceSince: String, otherCosts: Number, baseCost: Number, perUnit: Number },
         // the gym's drawings (male or female figure) and the weight of bodyweight exercises
-        gym: { sex: String, bodyweight: Number },
+        gym: { sex: String, bodyweight: Number, favorites: { type: [String], default: undefined } },
         createdAt: { type: Number, required: true },
     });
 

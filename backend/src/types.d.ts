@@ -14,7 +14,7 @@ declare global {
         tokenVersion: number;
         home?: HomeLocation; // for the weather outside (kibbl. air)
         heatCosts?: HeatCostSettings;
-        gym?: { sex?: 'male' | 'female'; bodyweight?: number | null }; // for the drawings and bodyweight exercises
+        gym?: { sex?: 'male' | 'female'; bodyweight?: number | null; favorites?: string[] }; // for the drawings and bodyweight exercises
         createdAt: number;
     }
 
