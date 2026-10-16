@@ -4,6 +4,7 @@ import type { HeatMeter, HeatOverview, HeatReading, HeatUnit } from '../../../sh
 import type { HomeRoom } from '../../../shared/heating';
 import { baseOptions } from './activityCharts';
 import { tone, type Tone } from './healthCharts';
+import { costsCard, initCosts, loadCosts } from './heatCosts';
 import { insightsCard, loadInsights } from './heatInsights';
 import { initReports, loadReports, reportsCard } from './heatReports';
 import { socket } from './socket';
@@ -63,6 +64,7 @@ function layout() {
                 <div class="card-actions d-flex gap-2"><div class="btn-group" id="unit-buttons"></div><div class="btn-group">${buttons}</div></div></div>
             <div class="card-body"><div id="use-chart"></div><div class="text-secondary small mt-2" id="use-note"></div></div>
         </div>
+        ${costsCard()}
         ${insightsCard()}
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title">Enter readings</h3></div>
@@ -81,6 +83,7 @@ function layout() {
         }),
     );
     initReports({ rooms: () => rooms, meters: () => data?.meters ?? [] });
+    initCosts({ used: usedUnits, kWhPerUnit: () => data?.energy?.kWhPerUnit });
     byId('add-meter').addEventListener('click', () => {
         editing = 'new';
         renderMeters();
@@ -105,6 +108,22 @@ function sumUse(from: string, to = '9999') {
             }
     }
     return any ? sum : null;
+}
+
+// the radiators' units used from a day on, and the last day with use
+function usedUnits(from: string) {
+    const ids = (data?.meters ?? []).filter((m) => m.unit === 'units').map((m) => m._id);
+    let units = 0;
+    let last: string | undefined;
+    for (const d of data?.days ?? []) {
+        if (d.date < from) continue;
+        for (const id of ids)
+            if (d.use[id] !== undefined) {
+                units += d.use[id];
+                last = d.date;
+            }
+    }
+    return last ? { units, last } : null;
 }
 
 function renderTiles() {
@@ -434,7 +453,7 @@ async function load(first = false) {
         return;
     }
     if (first) layout();
-    else void loadReports();
+    else void Promise.all([loadReports(), loadCosts()]);
     render();
     // the entry form keeps what is typed while the rest updates
     if (first || !document.getElementById('entry-form')?.contains(document.activeElement)) renderEntry();
