@@ -4,7 +4,7 @@ import type { HeatMeter, HeatOverview, HeatReading, HeatUnit } from '../../../sh
 import type { HomeRoom } from '../../../shared/heating';
 import { baseOptions } from './activityCharts';
 import { tone, type Tone } from './healthCharts';
-import { costsCard, initCosts, loadCosts, statementCard } from './heatCosts';
+import { costsCard, initCosts, loadCosts, renderCosts, statementCard } from './heatCosts';
 import { insightsCard, loadInsights } from './heatInsights';
 import { initReports, loadReports, reportsCard } from './heatReports';
 import { socket } from './socket';
@@ -467,6 +467,7 @@ function insights() {
 
 window.addEventListener('themechange', () => {
     if (data) render();
+    renderCosts(); // the charts take the theme's colors
 });
 socket.on('connect', () => load(!data).then(insights));
 // a reading or meter changed, here or through the assistant; tado read its rooms
