@@ -533,6 +533,9 @@ export interface GymWorkout {
     updatedAt?: number;
     pausedMs?: number; // the time the workout stood paused, not counted in its duration
     pausedAt?: number | null; // paused since, while it is
+    /* a session the tracker found by itself (Google Health: PASSIVELY_MEASURED), not one started or
+     * entered: shown, never counted as a workout */
+    detected?: boolean;
     // a session of the fitness tracker that ran at the same time (Google Health)
     tracker?: { type: string; start: number; end: number; calories: number | null; avgHr: number | null; azm: number | null } | null;
 }
@@ -1132,8 +1135,9 @@ export interface ActivityWeek {
     byKind: Partial<Record<WorkoutKind, { sessions: number; minutes: number }>>;
 }
 
-/* Every workout of the week, whatever its kind and wherever it was logged: the sessions and the
- * minutes, in all and by kind. */
+/* Every workout of the week, whatever its kind and wherever it was logged (in the app, in Strong,
+ * started on the tracker): the sessions and the minutes, in all and by kind. What the tracker
+ * only found by itself does not count. */
 export function weeklyActivity(workouts: GymWorkout[], weeks: number, now = Date.now()): ActivityWeek[] {
     const first = weekStart(now) - (weeks - 1) * WEEK_MS;
     const out: ActivityWeek[] = [];
@@ -1142,7 +1146,7 @@ export function weeklyActivity(workouts: GymWorkout[], weeks: number, now = Date
         const next = weekStart(week + WEEK_MS + 12 * 3600_000);
         const row: ActivityWeek = { week, sessions: 0, minutes: 0, byKind: {} };
         for (const w of workouts) {
-            if (w.start < week || w.start >= next || !w.end) continue;
+            if (w.start < week || w.start >= next || !w.end || w.detected) continue;
             const m = workoutMinutes(w);
             row.sessions++;
             row.minutes += m;

@@ -169,6 +169,7 @@ const toWorkout = (w: GymWorkoutDoc): GymWorkout => ({
 });
 
 interface TrackerSession {
+    detected: boolean; // found by the tracker, not started on it or entered
     type: string;
     start: number;
     end: number;
@@ -189,7 +190,15 @@ async function trackerSessions(userID: string, from: number): Promise<TrackerSes
     }
     const sessions = parsed
         .filter((s) => s.start && s.end && s.end - s.start >= MIN_TRACKER_MS && s.start >= from)
-        .map((s) => ({ type: s.type, start: s.start!, end: s.end!, calories: s.calories ?? null, avgHr: s.avg_hr ?? null, azm: s.azm ?? null }))
+        .map((s) => ({
+            detected: s.recording === 'PASSIVELY_MEASURED',
+            type: s.type,
+            start: s.start!,
+            end: s.end!,
+            calories: s.calories ?? null,
+            avgHr: s.avg_hr ?? null,
+            azm: s.azm ?? null,
+        }))
         .sort((a, b) => b.end - b.start - (a.end - a.start));
     const kept: TrackerSession[] = [];
     for (const s of sessions) if (!kept.some((k) => overlap(k, s) > 0.5)) kept.push(s);
@@ -222,7 +231,7 @@ export async function listWorkouts(userID: string, from: number, withTracker = t
         if (used.has(s)) continue;
         const kind = trackerKind(s.type);
         if (!kind) continue;
-        rows.push({ _id: `tracker-${s.start}`, name: s.type, kind, start: s.start, end: s.end, source: 'tracker', exercises: [], tracker: s });
+        rows.push({ _id: `tracker-${s.start}`, name: s.type, kind, start: s.start, end: s.end, source: 'tracker', exercises: [], tracker: s, ...(s.detected ? { detected: true } : {}) });
     }
     return rows.sort((a, b) => b.start - a.start);
 }
