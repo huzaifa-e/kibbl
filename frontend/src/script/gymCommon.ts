@@ -1,5 +1,6 @@
 import {
     WORKOUT_KINDS,
+    e1rm,
     exerciseKey,
     exerciseSessions,
     guessExercise,
@@ -335,8 +336,11 @@ export function toast(text: string, tone: 'ok' | 'error' = 'ok') {
     toastTimer = window.setTimeout(() => el!.classList.remove('show'), 3200);
 }
 
-/* An exercise's last sessions as a small chart: per session a bar for each set (its weight,
- * else its reps or time, all to one scale), under it the day and its best set. */
+/* An exercise's last sessions set by set: a row for each set (1, 2, 3...), a column for each of
+ * the last sessions (the oldest first) with the weight and reps of that set and a bar for how
+ * strong it was (its estimated 1RM, else its reps or time), and an arrow for how the newest went
+ * against the one before. Under it what that says: reps falling at the same weight (hold it or
+ * lower it), every set at the reps it had before or more (the weight can go up). */
 export function lastSessionsChart(name: string, n = 3, before = Infinity) {
     const x = info(name);
     const sessions = exerciseSessions(
@@ -344,31 +348,51 @@ export function lastSessionsChart(name: string, n = 3, before = Infinity) {
         name,
     ).slice(-n);
     if (!sessions.length) return '';
-    const value = (s: GymSet) => (x.kind === 'cardio' ? (s.distance ?? 0) : x.kind === 'duration' || x.kind === 'mobility' ? (s.seconds ?? 0) : s.weight || s.reps || 0);
-    const max = Math.max(1, ...sessions.flatMap((v) => v.sets.map(value)));
-    const W = 300;
-    const H = 64;
-    const col = W / sessions.length;
-    const label = (s: GymSet) =>
-        x.kind === 'cardio' ? `${r1(s.distance ?? 0)} km` : x.kind === 'duration' || x.kind === 'mobility' ? clock(s.seconds ?? 0) : s.weight ? `${kg(shown(s.weight, name))}×${s.reps ?? ''}` : `${s.reps ?? ''}`;
-    const groups = sessions
-        .map((v, i) => {
-            const sets = v.sets.slice(0, 8);
-            const bw = Math.min(16, (col - 14) / Math.max(1, sets.length) - 3);
-            const left = i * col + (col - sets.length * (bw + 3)) / 2;
-            const best = v.best ? v.sets.find((s) => s.weight === v.best!.weight && s.reps === v.best!.reps) ?? sets[0] : sets[0];
-            const bars = sets
-                .map((s, j) => {
-                    const h = Math.max(2, (value(s) / max) * (H - 22));
-                    return `<rect x="${f1(left + j * (bw + 3))}" y="${f1(H - 14 - h)}" width="${f1(bw)}" height="${f1(h)}" rx="2" class="gym-mini-bar${s === best ? ' best' : ''}"><title>${esc(label(s))}</title></rect>`;
-                })
-                .join('');
-            const latest = i === sessions.length - 1;
-            return `${bars}<text x="${f1(i * col + col / 2)}" y="${H - 2}" text-anchor="middle" class="gym-mini-day">${shortDay(v.at)}</text>
-                <text x="${f1(i * col + col / 2)}" y="8" text-anchor="middle" class="gym-mini-top${latest ? ' latest' : ''}">${esc(label(best))}</text>`;
-        })
-        .join('');
-    return `<svg class="gym-mini" viewBox="0 0 ${W} ${H}" role="img" aria-label="The last ${sessions.length} times">${groups}</svg>`;
+    const cardio = x.kind === 'cardio';
+    const timed = x.kind === 'duration' || x.kind === 'mobility';
+    const score = (s: GymSet | undefined) => (!s ? 0 : cardio ? (s.distance ?? 0) : timed ? (s.seconds ?? 0) : s.weight ? e1rm(s.weight, s.reps) : (s.reps ?? 0));
+    const label = (s: GymSet) => (cardio ? `${r1(s.distance ?? 0)} km` : timed ? clock(s.seconds ?? 0) : s.weight ? `${kg(shown(s.weight, name))}×${s.reps ?? ''}` : `${s.reps ?? ''}`);
+    const rows = Math.min(8, Math.max(...sessions.map((v) => v.sets.length)));
+    const max = Math.max(1, ...sessions.flatMap((v) => v.sets.map(score)));
+    let falling = 0;
+    let holding = 0;
+    const body = Array.from({ length: rows }, (_, i) => {
+        const cells = sessions.map((v) => v.sets[i]);
+        const last = cells[cells.length - 1];
+        const prev = cells.length > 1 ? cells[cells.length - 2] : undefined;
+        let trend = '';
+        if (last && prev) {
+            const d = score(last) - score(prev);
+            const rel = d / Math.max(1, score(prev));
+            trend = rel > 0.005 ? '<span class="gym-trend up" title="better than the time before">▲</span>' : rel < -0.005 ? '<span class="gym-trend down" title="less than the time before">▼</span>' : '<span class="gym-trend" title="the same">=</span>';
+            if (!cardio && !timed && last.weight && last.weight === prev.weight) {
+                if ((last.reps ?? 0) < (prev.reps ?? 0)) falling++;
+                else holding++;
+            }
+        }
+        const tds = cells
+            .map((c, j) => {
+                if (!c) return '<td class="gym-sw-cell empty">–</td>';
+                const newest = j === cells.length - 1;
+                return `<td class="gym-sw-cell${newest ? ' newest' : ''}"><div>${esc(label(c))}</div><span class="gym-sw-bar" style="width:${Math.round((score(c) / max) * 100)}%"></span></td>`;
+            })
+            .join('');
+        return `<tr><th>${i + 1}</th>${tds}<td class="gym-sw-trend">${trend}</td></tr>`;
+    }).join('');
+    const unit = unitLabel(name);
+    const latest = sessions[sessions.length - 1];
+    const sameWeight = latest.sets.every((s) => s.weight === latest.sets[0].weight) && latest.sets[0].weight;
+    const hint =
+        sessions.length < 2 || cardio || timed
+            ? ''
+            : falling >= Math.max(1, Math.ceil(rows / 2))
+              ? `Reps falling at the same weight in ${falling} of ${rows} sets: hold it${sameWeight ? ` at ${kg(shown(latest.sets[0].weight!, name))} ${unit}` : ''} until they come back, or lower it a step.`
+              : holding === rows
+                ? 'Every set as many reps as the time before or more: keep going, the weight can go up once the top of the range is reached.'
+                : '';
+    return `<div class="gym-sw"><table>
+        <thead><tr><th>Set</th>${sessions.map((v, j) => `<th class="${j === sessions.length - 1 ? 'newest' : ''}">${shortDay(v.at)}</th>`).join('')}<th></th></tr></thead>
+        <tbody>${body}</tbody></table>
+        ${hint ? `<div class="gym-sw-hint">${esc(hint)}</div>` : ''}</div>`;
 }
 
-const f1 = (v: number) => Math.round(v * 10) / 10;

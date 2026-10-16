@@ -634,30 +634,80 @@ body.gym-logging {
     opacity: 0.6;
 }
 
-/* an exercise's last sessions, small */
-.gym-mini {
-    display: block;
-    width: 100%;
-    height: 64px;
+/* an exercise's last sessions, set by set */
+.gym-sw {
     margin: 2px 0 8px;
 }
-.gym-mini-bar {
-    fill: color-mix(in srgb, var(--gym-red) 45%, transparent);
+.gym-sw table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 3px 2px;
+    font-size: 12px;
+    table-layout: fixed;
 }
-.gym-mini-bar.best {
-    fill: var(--gym-red);
+.gym-sw th {
+    font-weight: 600;
+    color: var(--tblr-secondary);
+    text-align: center;
+    font-size: 11px;
 }
-.gym-mini-day {
-    font-size: 10px;
-    fill: var(--tblr-secondary);
+.gym-sw thead th.newest {
+    color: var(--tblr-body-color);
 }
-.gym-mini-top {
-    font-size: 10px;
+.gym-sw tbody th {
+    width: 28px;
+}
+.gym-sw-cell {
+    text-align: center;
+    background: var(--tblr-bg-surface-secondary);
+    border-radius: 6px;
+    padding: 2px 3px 3px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.gym-sw-cell.newest {
     font-weight: 700;
-    fill: var(--tblr-secondary);
 }
-.gym-mini-top.latest {
-    fill: var(--tblr-body-color);
+.gym-sw-cell.empty {
+    color: var(--tblr-secondary);
+    background: none;
+}
+.gym-sw-bar {
+    display: block;
+    height: 3px;
+    margin-top: 2px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--gym-red) 50%, transparent);
+}
+.gym-sw-cell.newest .gym-sw-bar {
+    background: var(--gym-red);
+}
+.gym-sw-trend {
+    width: 22px;
+    text-align: center;
+}
+.gym-trend {
+    color: var(--tblr-secondary);
+    font-weight: 700;
+}
+.gym-trend.up {
+    color: var(--tblr-success);
+}
+.gym-trend.down {
+    color: var(--tblr-danger);
+}
+.gym-sw-hint {
+    font-size: 12px;
+    color: var(--tblr-secondary);
+    margin-top: 2px;
+}
+
+.gym-ex.gym-focus {
+    outline: 3px solid var(--tblr-primary);
+    outline-offset: 2px;
+    transition: outline-color 0.6s;
 }
 
 /* a drawing on a turntable */
@@ -692,14 +742,21 @@ body.gym-logging {
     max-width: 260px;
     margin: 0 auto;
 }
+/* the turning drawing keeps its size whatever the view: each one fits inside it */
 .gym-hero-wrap .gym-hero {
     max-width: none;
+    aspect-ratio: 4 / 5;
     cursor: grab;
+}
+.gym-hero-wrap .gym-turn .gym-body {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
 }
 .gym-hero-zoom {
     position: absolute;
-    top: 6px;
-    right: 6px;
+    inset: 8px 8px auto auto;
+    z-index: 2;
 }
 .gym-turn-dots {
     display: flex;
@@ -727,13 +784,4 @@ body.gym-logging {
     font-size: 11px;
     color: #8a8a8a;
     pointer-events: none;
-}
-/* the turning drawing keeps its size whatever the view: each one fits inside it */
-.gym-hero-wrap .gym-hero {
-    aspect-ratio: 4 / 5;
-}
-.gym-hero-wrap .gym-turn .gym-body {
-    width: auto;
-    height: 100%;
-    max-width: 100%;
 }
