@@ -78,7 +78,7 @@ import {
     unitLabel,
     type GymData,
 } from './gymCommon';
-import { cancelWorkout, openLogger, isOpen, readBackup, resumeActive } from './gymLogger';
+import { addToOpenWorkout, cancelWorkout, openLogger, isOpen, readBackup, resumeActive } from './gymLogger';
 import { FILTERS, allExercises, byUse, matchesFilter, muscleText, pickExercise, useCounts } from './gymPicker';
 import { emptyState, errorAlert, loadingHtml } from './utils';
 import { openZoom } from './gymZoom';
@@ -106,7 +106,7 @@ let tab: Tab = ((): Tab => {
 let active: GymWorkout | null = null;
 let charts: ApexCharts[] = [];
 let kindFilter: WorkoutKind | 'all' = 'all';
-let progressWeeks = 12;
+let progressWeeks = 4;
 let exerciseFilter: (typeof FILTERS)[number][0] = 'all';
 let exerciseQuery = '';
 
@@ -445,12 +445,19 @@ function workoutSheet(w: GymWorkout) {
 /* ----------------------------------------------------------------------- */
 /* Progress                                                                 */
 
+/* The sets of the weeks chosen (1 to 52): the workouts in them and how many weeks they span (a
+ * history shorter than the range is not spread over weeks without workouts). */
+function rangeSets(weeks: number) {
+    const recent = logged().filter((w) => w.start >= Date.now() - weeks * 7 * DAY_MS);
+    const covered = Math.max(1, Math.min(weeks, recent.length ? (Date.now() - Math.min(...recent.map((w) => w.start))) / (7 * DAY_MS) : 1));
+    return { recent, covered, perGroup: setsPerGroup(recent, info), perMuscle: setsPerMuscle(recent, info) };
+}
+
+const weeksText = (n: number) => (n === 1 ? 'this week' : `last ${n} weeks`);
+
 function progressTab() {
     const lifts = logged();
-    const recent = lifts.filter((w) => w.start >= Date.now() - 28 * DAY_MS);
-    const weeksCovered = Math.max(1, Math.min(4, recent.length ? (Date.now() - Math.min(...recent.map((w) => w.start))) / (7 * DAY_MS) : 1));
-    const perGroup = setsPerGroup(recent, info);
-    const perMuscle = setsPerMuscle(recent, info);
+    const { covered: weeksCovered, perGroup, perMuscle } = rangeSets(progressWeeks);
     const insights = gymInsights(lifts, info);
     const map = bodyMap((m) => {
         // full red at the top of the group's range: the map tells a little from a lot
@@ -463,7 +470,8 @@ function progressTab() {
         const [low, high] = GROUPS[g].sets;
         const v = perGroup[g] / weeksCovered;
         const max = Math.max(24, high + 4);
-        const change = groupStrengthChange(lifts, info, g);
+        // strength over the weeks chosen against as many before (at least a week)
+        const change = groupStrengthChange(lifts, info, g, Math.max(7, progressWeeks * 7));
         const tone = low && v < low * 0.6 ? 'low' : low && v < low ? 'near' : v > high * 1.25 ? 'high' : 'ok';
         return `<button class="gym-gbar" data-group="${g}">
             <span class="gym-gbar-name">${GROUPS[g].label}</span>
@@ -477,19 +485,19 @@ function progressTab() {
     const tone = { warn: 'danger', info: 'warning', good: 'success' } as const;
     const icon = { warn: 'alert-triangle', info: 'bulb', good: 'trending-up' } as const;
     return `
-    <div class="gym-chips mb-3">${[4, 12, 26, 52].map((n) => `<button class="gym-chip${progressWeeks === n ? ' on' : ''}" data-weeks="${n}">${n} weeks</button>`).join('')}</div>
+    <div class="gym-chips mb-3">${[1, 4, 12, 26, 52].map((n) => `<button class="gym-chip${progressWeeks === n ? ' on' : ''}" data-weeks="${n}">${n === 1 ? '1 week' : `${n} weeks`}</button>`).join('')}</div>
     <div class="card mb-3"><div class="card-body">
         <div class="hud-label mb-1">Everything you did</div>
         <div class="text-secondary small mb-2">Minutes a week by kind: the gym, your runs and rides, Pilates, all of it, with the sessions you started on the tracker (not what it found by itself).</div>
         <div id="chart-activity"></div>
     </div></div>
     <div class="card mb-3"><div class="card-body">
-        <div class="hud-label mb-1">Muscles, last 4 weeks</div>
+        <div class="hud-label mb-1">Muscles, ${weeksText(progressWeeks)}</div>
         <div class="text-secondary small mb-2">Hard sets a week against the range that grows each group (green). The deeper the red, the more it got. Tap a group for its trend.</div>
         <div class="row g-3 align-items-center">
             <div class="col-md-5"><div class="gym-plate gym-bodymap" data-zoom-progress role="button" aria-label="Zoom">${map.front}${map.back}</div></div>
             <div class="col-md-7"><div class="gym-gbars">
-                <div class="gym-gbar gym-gbar-head small text-secondary"><span>Group</span><span>hard sets a week</span><span></span><span title="estimated 1RM, last 4 weeks against the 4 before">1RM 4 wk</span></div>
+                <div class="gym-gbar gym-gbar-head small text-secondary"><span>Group</span><span>hard sets a week</span><span></span><span title="best estimated 1RM, the ${progressWeeks === 1 ? 'week' : `${progressWeeks} weeks`} chosen against as many before">1RM</span></div>
                 ${bars}</div></div>
         </div>
     </div></div>
@@ -617,7 +625,7 @@ function exerciseSheet(name: string, back?: () => void) {
                    <div class="small text-secondary text-center mb-3">tap or swipe to turn it</div>`
                 : `<div class="gym-plate gym-hero mb-3">${figureOf(name)}</div>`
         }
-        ${sessions.length ? `<div class="hud-label mb-1">The last ${Math.min(3, sessions.length)} times</div>${lastSessionsChart(name)}` : ''}
+        ${sessions.length ? `<div class="hud-label mb-1">The last ${Math.min(3, sessions.length)} times, set by set</div>${lastSessionsChart(name)}` : ''}
         <div class="mb-2">${x.primary.map((m) => chip(m, true)).join('')}${x.secondary.map((m) => chip(m, false)).join('')}${!x.primary.length ? '<span class="text-secondary small">No muscles set.</span>' : ''}</div>
         ${
             r.e1rm || r.weight
@@ -636,7 +644,7 @@ function exerciseSheet(name: string, back?: () => void) {
             size: 'lg',
             footer: `<button class="btn btn-icon" data-a="fav" aria-label="Favorite" title="Favorite: first in the lists, preferred when workouts are suggested or built">${starIcon(name)}</button>
                 <button class="btn" data-a="muscles"><i class="ti ti-adjustments me-1"></i>Muscles &amp; unit</button>
-                <button class="btn btn-primary" data-a="start-one"><i class="ti ti-player-play me-1"></i>Start with this</button>`,
+                <button class="btn btn-primary" data-a="start-one"><i class="ti ti-player-play me-1"></i>${active ? 'Add to workout' : 'Start with this'}</button>`,
             onClose: () => local.forEach((c) => c.destroy()),
             back,
         },
@@ -689,13 +697,28 @@ function exerciseSheet(name: string, back?: () => void) {
         }
     });
     s.el.querySelector('[data-a="start-one"]')!.addEventListener('click', async () => {
-        if (active) {
-            toast('A workout runs already: finish or cancel it first', 'error');
-            return;
-        }
         // as it was usually done
         const plan = buildWorkout(x.primary.length ? [x.primary[0]] : [], logged(), info, 'short', new Set([exerciseKey(name)])).filter((e) => exerciseKey(e.name) === exerciseKey(name));
         const one = plan[0] ?? { name, sets: 3, repsLow: 8, repsHigh: 12, restSeconds: 90 };
+        // a workout runs: the exercise joins it (the open one, else the one on the server)
+        if (addToOpenWorkout(name, one)) {
+            s.close();
+            return;
+        }
+        if (active) {
+            try {
+                const running = (await api<{ workout: GymWorkout | null }>('GET', '/api/gym/active')).workout;
+                if (running) {
+                    s.close();
+                    await openLogger(running, { onDone: () => void reload() });
+                    addToOpenWorkout(name, one);
+                    return;
+                }
+            } catch (err) {
+                toast((err as Error).message, 'error');
+                return;
+            }
+        }
         try {
             const w = await api<GymWorkout>('POST', '/api/gym/workouts/start', { kind: x.kind === 'cardio' ? (x.activity ?? 'cardio') : 'strength', name, exercises: [{ ...one, name }] });
             s.close();
@@ -825,6 +848,7 @@ function templateView(t: GymTemplate) {
                 <div class="d-flex align-items-center gap-3">${thumb(e.name, 52)}
                     <div class="flex-fill min-w-0"><div class="fw-bold text-truncate" data-ex="${esc(e.name)}" role="button"><span class="text-secondary me-1">${i + 1}</span>${isFavorite(e.name) ? '<i class="ti ti-star-filled text-warning me-1"></i>' : ''}${esc(e.name)}</div>
                     <div class="small text-secondary">${planText(e)}</div></div>
+                    <button class="btn btn-icon btn-primary btn-sm" data-run="${esc(e.name)}" aria-label="Start here" title="Start the workout at this exercise"><i class="ti ti-player-play"></i></button>
                 </div>
                 ${lastSessionsChart(e.name)}
             </div>`,
@@ -841,6 +865,16 @@ function templateView(t: GymTemplate) {
         if (ex) {
             s.close();
             exerciseSheet(ex.dataset.ex!, () => templateView(t));
+            return;
+        }
+        const run = t2.closest<HTMLElement>('[data-run]')?.dataset.run;
+        if (run) {
+            s.close();
+            // the template's workout, opened at this exercise; one of another template that runs is resumed
+            if (active) {
+                if (active.templateId !== t._id) toast('Another workout runs: it is opened, finish or cancel it first', 'error');
+                void openLogger(active, { onDone: () => void reload(), focus: active.templateId === t._id ? run : undefined });
+            } else void start(t._id, undefined, run);
             return;
         }
         const a = t2.closest<HTMLElement>('[data-a]')?.dataset.a;
@@ -1030,7 +1064,8 @@ function onZoomClick(ev: Event) {
     ev.preventDefault();
     ev.stopPropagation();
     if (z.dataset.zoom) {
-        zoomExercise(z.dataset.zoom);
+        // an exercise's picture opens its sheet, as its name does; full screen is one tap on from there
+        exerciseSheet(z.dataset.zoom);
     } else if (z.dataset.zoomTpl) {
         const tpl = state.data.templates.find((x) => x._id === z.dataset.zoomTpl);
         if (!tpl) return;
@@ -1040,10 +1075,8 @@ function onZoomClick(ev: Event) {
         const g = z.dataset.zoomGroup as MuscleGroup;
         zoomLevels(GROUPS[g].label, (m) => (groupOf(m) === g ? 1 : null), legendOf(MUSCLE_IDS.filter((m) => groupOf(m) === g), []));
     } else {
-        const recent = logged().filter((w) => w.start >= Date.now() - 28 * DAY_MS);
-        const weeks = Math.max(1, Math.min(4, recent.length ? (Date.now() - Math.min(...recent.map((w) => w.start))) / (7 * DAY_MS) : 1));
-        const per = setsPerMuscle(recent, info);
-        zoomLevels('Muscles, last 4 weeks', (m) => per[m] / weeks / GROUPS[groupOf(m)].sets[1] || null, 'The deeper the red, the more hard sets a week it got (full red: the top of its range). Tap a muscle for its name.');
+        const { covered, perMuscle } = rangeSets(progressWeeks);
+        zoomLevels(`Muscles, ${weeksText(progressWeeks)}`, (m) => perMuscle[m] / covered / GROUPS[groupOf(m)].sets[1] || null, 'The deeper the red, the more hard sets a week it got (full red: the top of its range). Tap a muscle for its name.');
     }
 }
 
@@ -1442,11 +1475,11 @@ function setTab(t: Tab, push = true) {
     window.scrollTo({ top: 0 });
 }
 
-async function start(templateId: string | null, kind?: WorkoutKind) {
+async function start(templateId: string | null, kind?: WorkoutKind, focus?: string) {
     try {
         const w = await api<GymWorkout>('POST', '/api/gym/workouts/start', templateId ? { templateId } : { kind: kind ?? 'strength', name: 'Workout' });
         active = w;
-        void openLogger(w, { onDone: () => void reload() });
+        void openLogger(w, { onDone: () => void reload(), focus });
     } catch (err) {
         toast((err as Error).message, 'error');
     }

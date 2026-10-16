@@ -15,7 +15,7 @@ import {
     type GymWorkout,
     type SetKind,
 } from '../../../shared/gym';
-import { api, ask, clock, lastSessionsChart, openLayer, saveAsTemplate, esc, info, kg, logged, minutesText, pace, parseClock, r1, sheet, shown, state, stored, thumb, toast, tonnage, workoutStats, wText } from './gymCommon';
+import { api, ask, clock, isFavorite, lastSessionsChart, openLayer, saveAsTemplate, toggleFavorite, esc, info, kg, logged, minutesText, pace, parseClock, r1, sheet, shown, state, stored, thumb, toast, tonnage, workoutStats, wText } from './gymCommon';
 import { pickExercise } from './gymPicker';
 
 /* The workout as it is done: full screen over the page. Each exercise with its sets (what was
@@ -206,6 +206,7 @@ function exerciseCard(e: GymExerciseLog, ei: number) {
                               : 'first time'
                     }</div>
                 </div>
+                <button class="btn btn-icon btn-ghost-secondary" data-act="fav" aria-label="Favorite" title="Favorite"><i class="ti ti-star${isFavorite(e.name) ? '-filled text-warning' : ''}"></i></button>
                 <div class="dropdown">
                     <button class="btn btn-icon btn-ghost-secondary" data-bs-toggle="dropdown" aria-label="More"><i class="ti ti-dots-vertical"></i></button>
                     <div class="dropdown-menu dropdown-menu-end">
@@ -571,6 +572,15 @@ async function onClick(ev: Event) {
         case 'info':
             document.dispatchEvent(new CustomEvent('gym:exercise', { detail: e.name }));
             return;
+        case 'fav':
+            try {
+                const on = await toggleFavorite(e.name);
+                toast(on ? `${e.name} is a favorite` : `${e.name} is no favorite any more`);
+                render();
+            } catch (err) {
+                toast((err as Error).message, 'error');
+            }
+            return;
         case 'rest-minus':
             if (rest) rest.until -= 15_000;
             drawRest();
@@ -646,7 +656,35 @@ export function isOpen() {
     return !!root;
 }
 
-export async function openLogger(workout: GymWorkout, opts: { editing?: boolean; onDone?: () => void } = {}) {
+// the card of an exercise brought into view and marked for a moment
+function focusExercise(name: string) {
+    const i = w.exercises.findIndex((e) => exerciseKey(e.name) === exerciseKey(name));
+    const card = root?.querySelector<HTMLElement>(`.gym-ex[data-e="${i}"]`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card.classList.add('gym-focus');
+    setTimeout(() => card.classList.remove('gym-focus'), 1600);
+}
+
+/* An exercise into the workout that is open (from an exercise's sheet over it): at the end,
+ * with the sets of a plan, then shown. One already in it is only shown. */
+export function addToOpenWorkout(name: string, plan: { sets: number; restSeconds: number; seconds?: number; distance?: number }) {
+    if (!root) return false;
+    if (!w.exercises.some((e) => exerciseKey(e.name) === exerciseKey(name))) {
+        const x = info(name);
+        w.exercises.push({
+            name,
+            restSeconds: plan.restSeconds,
+            sets: Array.from({ length: Math.max(1, plan.sets) }, () => ({ ...emptySet(x), ...(plan.seconds ? { seconds: plan.seconds } : {}), ...(plan.distance ? { distance: plan.distance } : {}) })),
+        });
+        changed();
+        render();
+    }
+    focusExercise(name);
+    return true;
+}
+
+export async function openLogger(workout: GymWorkout, opts: { editing?: boolean; onDone?: () => void; focus?: string } = {}) {
     if (root) close(false);
     w = structuredClone(workout);
     editing = !!opts.editing;
@@ -667,6 +705,7 @@ export async function openLogger(workout: GymWorkout, opts: { editing?: boolean;
         if ((e.target as HTMLElement).matches('input[data-f], [data-meta="notes"], [data-meta="name"]')) onInput(e);
     });
     render();
+    if (opts.focus) setTimeout(() => focusExercise(opts.focus!), 50);
     if (!editing) {
         clockTimer = window.setInterval(() => {
             const el = root?.querySelector('[data-clock]');
