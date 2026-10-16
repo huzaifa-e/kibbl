@@ -1,12 +1,14 @@
 import {
     WORKOUT_KINDS,
     exerciseKey,
+    exerciseSessions,
     guessExercise,
     isWorkSet,
     setVolume,
     shownWeight,
     storedWeight,
     type ExerciseInfo,
+    type GymSet,
     type GymTemplate,
     type GymWorkout,
     type WorkoutKind,
@@ -23,18 +25,28 @@ export interface GymData {
     workouts: GymWorkout[];
     templates: GymTemplate[];
     exercises: ExerciseInfo[]; // the user's own
-    profile: { sex: Sex; bodyweight: number | null };
+    profile: { sex: Sex; bodyweight: number | null; favorites: string[] };
     oldest: number | null;
 }
 
 export const state: { data: GymData; own: Map<string, ExerciseInfo> } = {
-    data: { workouts: [], templates: [], exercises: [], profile: { sex: 'male', bodyweight: null }, oldest: null },
+    data: { workouts: [], templates: [], exercises: [], profile: { sex: 'male', bodyweight: null, favorites: [] }, oldest: null },
     own: new Map(),
 };
 
 export function setData(d: GymData) {
     state.data = d;
     state.own = new Map(d.exercises.map((e) => [exerciseKey(e.name), e]));
+}
+
+// the exercises marked with a star: first in the lists, preferred by the builder and the suggestions
+export const isFavorite = (name: string) => (state.data.profile.favorites ?? []).some((n) => exerciseKey(n) === exerciseKey(name));
+export const favoriteKeys = () => new Set((state.data.profile.favorites ?? []).map(exerciseKey));
+
+export async function toggleFavorite(name: string) {
+    const r = await api<{ favorites: string[] }>('PUT', '/api/gym/favorites', { name, favorite: !isFavorite(name) });
+    state.data.profile.favorites = r.favorites;
+    return isFavorite(name);
 }
 
 export const info = (name: string): ExerciseInfo => state.own.get(exerciseKey(name)) ?? guessExercise(name);
@@ -322,3 +334,41 @@ export function toast(text: string, tone: 'ok' | 'error' = 'ok') {
     clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => el!.classList.remove('show'), 3200);
 }
+
+/* An exercise's last sessions as a small chart: per session a bar for each set (its weight,
+ * else its reps or time, all to one scale), under it the day and its best set. */
+export function lastSessionsChart(name: string, n = 3, before = Infinity) {
+    const x = info(name);
+    const sessions = exerciseSessions(
+        logged().filter((w) => w.start < before),
+        name,
+    ).slice(-n);
+    if (!sessions.length) return '';
+    const value = (s: GymSet) => (x.kind === 'cardio' ? (s.distance ?? 0) : x.kind === 'duration' || x.kind === 'mobility' ? (s.seconds ?? 0) : s.weight || s.reps || 0);
+    const max = Math.max(1, ...sessions.flatMap((v) => v.sets.map(value)));
+    const W = 300;
+    const H = 64;
+    const col = W / sessions.length;
+    const label = (s: GymSet) =>
+        x.kind === 'cardio' ? `${r1(s.distance ?? 0)} km` : x.kind === 'duration' || x.kind === 'mobility' ? clock(s.seconds ?? 0) : s.weight ? `${kg(shown(s.weight, name))}×${s.reps ?? ''}` : `${s.reps ?? ''}`;
+    const groups = sessions
+        .map((v, i) => {
+            const sets = v.sets.slice(0, 8);
+            const bw = Math.min(16, (col - 14) / Math.max(1, sets.length) - 3);
+            const left = i * col + (col - sets.length * (bw + 3)) / 2;
+            const best = v.best ? v.sets.find((s) => s.weight === v.best!.weight && s.reps === v.best!.reps) ?? sets[0] : sets[0];
+            const bars = sets
+                .map((s, j) => {
+                    const h = Math.max(2, (value(s) / max) * (H - 22));
+                    return `<rect x="${f1(left + j * (bw + 3))}" y="${f1(H - 14 - h)}" width="${f1(bw)}" height="${f1(h)}" rx="2" class="gym-mini-bar${s === best ? ' best' : ''}"><title>${esc(label(s))}</title></rect>`;
+                })
+                .join('');
+            const latest = i === sessions.length - 1;
+            return `${bars}<text x="${f1(i * col + col / 2)}" y="${H - 2}" text-anchor="middle" class="gym-mini-day">${shortDay(v.at)}</text>
+                <text x="${f1(i * col + col / 2)}" y="8" text-anchor="middle" class="gym-mini-top${latest ? ' latest' : ''}">${esc(label(best))}</text>`;
+        })
+        .join('');
+    return `<svg class="gym-mini" viewBox="0 0 ${W} ${H}" role="img" aria-label="The last ${sessions.length} times">${groups}</svg>`;
+}
+
+const f1 = (v: number) => Math.round(v * 10) / 10;

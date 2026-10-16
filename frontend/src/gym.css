@@ -633,3 +633,107 @@ body.gym-logging {
 .gym-detected {
     opacity: 0.6;
 }
+
+/* an exercise's last sessions, small */
+.gym-mini {
+    display: block;
+    width: 100%;
+    height: 64px;
+    margin: 2px 0 8px;
+}
+.gym-mini-bar {
+    fill: color-mix(in srgb, var(--gym-red) 45%, transparent);
+}
+.gym-mini-bar.best {
+    fill: var(--gym-red);
+}
+.gym-mini-day {
+    font-size: 10px;
+    fill: var(--tblr-secondary);
+}
+.gym-mini-top {
+    font-size: 10px;
+    font-weight: 700;
+    fill: var(--tblr-secondary);
+}
+.gym-mini-top.latest {
+    fill: var(--tblr-body-color);
+}
+
+/* a drawing on a turntable */
+.gym-turn-holder {
+    perspective: 900px;
+    touch-action: pan-y;
+    user-select: none;
+}
+.gym-zoom-inner.gym-turn-holder {
+    touch-action: none;
+}
+.gym-turn {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+}
+.gym-turn.mirrored .gym-body {
+    transform: scaleX(-1);
+}
+.gym-zoom-inner .gym-turn .gym-body {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: 100%;
+}
+.gym-hero-wrap {
+    position: relative;
+    max-width: 260px;
+    margin: 0 auto;
+}
+.gym-hero-wrap .gym-hero {
+    max-width: none;
+    cursor: grab;
+}
+.gym-hero-zoom {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+}
+.gym-turn-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 0 0;
+}
+.gym-turn-dots span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--tblr-border-color);
+}
+.gym-turn-dots span.on {
+    background: var(--gym-red);
+}
+.gym-zoom-bar .gym-turn-dots {
+    padding: 0 6px;
+}
+.gym-zoom-hint {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #8a8a8a;
+    pointer-events: none;
+}
+/* the turning drawing keeps its size whatever the view: each one fits inside it */
+.gym-hero-wrap .gym-hero {
+    aspect-ratio: 4 / 5;
+}
+.gym-hero-wrap .gym-turn .gym-body {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+}

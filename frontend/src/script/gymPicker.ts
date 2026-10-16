@@ -1,11 +1,11 @@
 import { EXERCISES, GROUPS, GROUP_IDS, MUSCLES, exerciseKey, groupOf, type ExerciseInfo, type MuscleGroup } from '../../../shared/gym';
-import { esc, info, logged, sheet, state, thumb } from './gymCommon';
+import { esc, info, isFavorite, logged, sheet, state, thumb } from './gymCommon';
 
 /* Choosing an exercise: the catalog with the user's own, searched by name or muscle, filtered
  * by group (or cardio, mobility), the ones done most often first. A name nobody knows yet can
  * be taken as it is: it becomes an exercise of the user's own. */
 
-type Filter = MuscleGroup | 'cardio' | 'mobility' | 'pilates' | 'all';
+type Filter = MuscleGroup | 'cardio' | 'mobility' | 'pilates' | 'all' | 'favorites';
 
 export function allExercises(): ExerciseInfo[] {
     const seen = new Map<string, ExerciseInfo>();
@@ -22,10 +22,16 @@ export function useCounts() {
     return counts;
 }
 
+// favorites first, then the ones done most, then by name
+export const byUse = (counts: Map<string, number>) => (a: ExerciseInfo, b: ExerciseInfo) =>
+    Number(isFavorite(b.name)) - Number(isFavorite(a.name)) || (counts.get(exerciseKey(b.name)) ?? 0) - (counts.get(exerciseKey(a.name)) ?? 0) || a.name.localeCompare(b.name);
+
 export const matchesFilter = (e: ExerciseInfo, f: Filter) =>
     f === 'all'
         ? true
-        : f === 'cardio'
+        : f === 'favorites'
+          ? isFavorite(e.name)
+          : f === 'cardio'
           ? e.kind === 'cardio'
           : f === 'mobility'
             ? e.kind === 'mobility'
@@ -35,6 +41,7 @@ export const matchesFilter = (e: ExerciseInfo, f: Filter) =>
 
 export const FILTERS: [Filter, string][] = [
     ['all', 'All'],
+    ['favorites', '★ Favorites'],
     ...GROUP_IDS.map((g) => [g, GROUPS[g].label] as [Filter, string]),
     ['pilates', 'Pilates'],
     ['mobility', 'Mobility'],
@@ -62,7 +69,7 @@ export function pickExercise(onPick: (name: string) => void, title = 'Add exerci
         const rows = allExercises()
             .filter((e) => matchesFilter(e, filter))
             .filter((e) => !q || e.name.toLowerCase().includes(q) || muscleText(e).toLowerCase().includes(q))
-            .sort((a, b) => (counts.get(exerciseKey(b.name)) ?? 0) - (counts.get(exerciseKey(a.name)) ?? 0) || a.name.localeCompare(b.name))
+            .sort(byUse(counts))
             .slice(0, 120);
         const exact = rows.some((e) => e.name.toLowerCase() === q);
         list.innerHTML =
@@ -75,7 +82,7 @@ export function pickExercise(onPick: (name: string) => void, title = 'Add exerci
                 .map(
                     (e) => `<button class="list-group-item list-group-item-action d-flex align-items-center gap-3" data-name="${esc(e.name)}">
                         ${thumb(e.name, 48)}
-                        <div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${esc(e.name)}</div>
+                        <div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${isFavorite(e.name) ? '<i class="ti ti-star-filled text-warning me-1"></i>' : ''}${esc(e.name)}</div>
                         <div class="text-secondary small text-truncate">${esc(muscleText(e))}${counts.get(exerciseKey(e.name)) ? ` · ${counts.get(exerciseKey(e.name))}×` : ''}</div></div></button>`,
                 )
                 .join('');

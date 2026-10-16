@@ -15,7 +15,7 @@ import {
     type GymWorkout,
     type SetKind,
 } from '../../../shared/gym';
-import { api, ask, clock, openLayer, saveAsTemplate, esc, info, kg, logged, minutesText, pace, parseClock, r1, sheet, shown, state, stored, thumb, toast, tonnage, workoutStats, wText } from './gymCommon';
+import { api, ask, clock, lastSessionsChart, openLayer, saveAsTemplate, esc, info, kg, logged, minutesText, pace, parseClock, r1, sheet, shown, state, stored, thumb, toast, tonnage, workoutStats, wText } from './gymCommon';
 import { pickExercise } from './gymPicker';
 
 /* The workout as it is done: full screen over the page. Each exercise with its sets (what was
@@ -220,6 +220,7 @@ function exerciseCard(e: GymExerciseLog, ei: number) {
                 </div>
             </div>
             ${e.notes ? `<div class="small text-secondary mb-2 gym-note"><i class="ti ti-note"></i> ${esc(e.notes)}</div>` : ''}
+            ${lastSessionsChart(e.name, 3, w.start)}
             <div class="gym-set gym-set-head text-secondary" style="--cols:${cols.length}"><span>Set</span><span>Last</span>${cols.map((c) => `<span>${c}</span>`).join('')}<span></span></div>
             <div style="--cols:${cols.length}">${e.sets.map((s, si) => setRow(ei, s, si, x, prevSession?.sets[si] ?? prevSession?.sets[prevSession.sets.length - 1], s.kind === 'warmup' ? 0 : ++normal, e.name)).join('')}</div>
             ${restsOf(e).length ? `<div class="small text-secondary mt-1"><i class="ti ti-clock-pause"></i> rests ${restsOf(e).map((r) => clock(r)).join(', ')}</div>` : ''}

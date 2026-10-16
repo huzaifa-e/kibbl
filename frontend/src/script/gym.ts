@@ -60,6 +60,10 @@ import {
     r1,
     setData,
     sheet,
+    lastSessionsChart,
+    isFavorite,
+    favoriteKeys,
+    toggleFavorite,
     layerPop,
     saveAsTemplate,
     shortDay,
@@ -75,9 +79,10 @@ import {
     type GymData,
 } from './gymCommon';
 import { cancelWorkout, openLogger, isOpen, readBackup, resumeActive } from './gymLogger';
-import { FILTERS, allExercises, matchesFilter, muscleText, pickExercise, useCounts } from './gymPicker';
+import { FILTERS, allExercises, byUse, matchesFilter, muscleText, pickExercise, useCounts } from './gymPicker';
 import { emptyState, errorAlert, loadingHtml } from './utils';
 import { openZoom } from './gymZoom';
+import { angleDots, turntable, viewOf, type Angle } from './gymTurn';
 
 /* The gym: every kind of training in one place. Train starts a workout from a template (lifting,
  * running, riding, Pilates, mobility, HIIT); History is everything done, with the fitness
@@ -225,7 +230,11 @@ function templateCard(t: GymTemplate) {
                     .slice(0, 5)
                     .map((e) => `${esc(e.name)}${e.distance ? ` · ${e.distance} km` : e.seconds && !e.repsHigh ? ` · ${clock(e.seconds)}` : ''}${e.sets > 1 ? ` <span class="text-nowrap">× ${e.sets}</span>` : ''}`)
                     .join('<br>')}${t.exercises.length > 5 ? `<br>+ ${t.exercises.length - 5} more` : ''}</div>
-                <button class="btn btn-primary btn-sm mt-2" data-act="tpl-start"><i class="ti ti-player-play me-1"></i>Start</button>
+                <div class="d-flex flex-wrap gap-1 mt-2">
+                    <button class="btn btn-primary btn-sm" data-act="tpl-start"><i class="ti ti-player-play me-1"></i>Start</button>
+                    <button class="btn btn-sm" data-act="tpl-view"><i class="ti ti-list-details me-1"></i>View</button>
+                    <button class="btn btn-sm" data-act="tpl-progress"><i class="ti ti-chart-line me-1"></i>Progress</button>
+                </div>
             </div>
         </div>
     </div>`;
@@ -565,7 +574,7 @@ function exercisesTab() {
     const rows = allExercises()
         .filter((e) => matchesFilter(e, exerciseFilter))
         .filter((e) => !q || e.name.toLowerCase().includes(q) || muscleText(e).toLowerCase().includes(q))
-        .sort((a, b) => (counts.get(exerciseKey(b.name)) ?? 0) - (counts.get(exerciseKey(a.name)) ?? 0) || a.name.localeCompare(b.name));
+        .sort(byUse(counts));
     return `<div class="d-flex gap-2 mb-2">
             <input type="search" class="form-control" placeholder="Search ${rows.length} exercises" value="${esc(exerciseQuery)}" data-exq autocomplete="off" />
             <button class="btn" data-act="ex-new" title="New exercise"><i class="ti ti-plus"></i></button>
@@ -576,11 +585,13 @@ function exercisesTab() {
             .map(
                 (e) => `<button class="list-group-item list-group-item-action d-flex align-items-center gap-3" data-ex="${esc(e.name)}">
                 ${thumb(e.name, 56)}
-                <div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${esc(e.name)}${e.custom ? ' <span class="badge bg-secondary-lt">own</span>' : ''}</div>
+                <div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${isFavorite(e.name) ? '<i class="ti ti-star-filled text-warning me-1"></i>' : ''}${esc(e.name)}${e.custom ? ' <span class="badge bg-secondary-lt">own</span>' : ''}</div>
                 <div class="small text-secondary text-truncate">${esc(muscleText(e))}${counts.get(exerciseKey(e.name)) ? ` · ${counts.get(exerciseKey(e.name))}×` : ''}</div></div></button>`,
             )
             .join('')}</div></div>`;
 }
+
+const starIcon = (name: string) => `<i class="ti ti-star${isFavorite(name) ? '-filled text-warning' : ''}"></i>`;
 
 function exerciseSheet(name: string, back?: () => void) {
     const x = info(name);
@@ -598,8 +609,15 @@ function exerciseSheet(name: string, back?: () => void) {
         .join('');
     const s = sheet(
         esc(name),
-        `<div class="gym-plate gym-hero mb-1" data-zoom="${esc(name)}" role="button" aria-label="Zoom">${figureOf(name)}</div>
-        <div class="small text-secondary text-center mb-3"><i class="ti ti-zoom-in"></i> tap to zoom: front, side and back</div>
+        `${
+            x.primary.length
+                ? `<div class="gym-hero-wrap mb-1"><div class="gym-plate gym-hero" data-hero role="img" aria-label="${esc(name)}"></div>
+                    <button class="btn btn-icon btn-sm gym-hero-zoom" data-hero-zoom data-turn-ignore aria-label="Full screen"><i class="ti ti-zoom-in"></i></button>
+                    <div data-hero-dots></div></div>
+                   <div class="small text-secondary text-center mb-3">tap or swipe to turn it</div>`
+                : `<div class="gym-plate gym-hero mb-3">${figureOf(name)}</div>`
+        }
+        ${sessions.length ? `<div class="hud-label mb-1">The last ${Math.min(3, sessions.length)} times</div>${lastSessionsChart(name)}` : ''}
         <div class="mb-2">${x.primary.map((m) => chip(m, true)).join('')}${x.secondary.map((m) => chip(m, false)).join('')}${!x.primary.length ? '<span class="text-secondary small">No muscles set.</span>' : ''}</div>
         ${
             r.e1rm || r.weight
@@ -616,11 +634,28 @@ function exerciseSheet(name: string, back?: () => void) {
         ${sessions.length ? '<div class="hud-label mt-3 mb-1">Heart rate</div><div data-exhrc class="small text-secondary"><span class="spinner-border spinner-border-sm me-1"></span>reading</div>' : ''}`,
         {
             size: 'lg',
-            footer: `<button class="btn" data-a="muscles"><i class="ti ti-adjustments me-1"></i>Muscles &amp; unit</button>`,
+            footer: `<button class="btn btn-icon" data-a="fav" aria-label="Favorite" title="Favorite: first in the lists, preferred when workouts are suggested or built">${starIcon(name)}</button>
+                <button class="btn" data-a="muscles"><i class="ti ti-adjustments me-1"></i>Muscles &amp; unit</button>
+                <button class="btn btn-primary" data-a="start-one"><i class="ti ti-player-play me-1"></i>Start with this</button>`,
             onClose: () => local.forEach((c) => c.destroy()),
             back,
         },
     );
+    // the drawing turns: front, side, back, the other side
+    const heroEl = s.el.querySelector<HTMLElement>('[data-hero]');
+    if (heroEl) {
+        const place = placeOf(x.primary);
+        const dotsEl = s.el.querySelector<HTMLElement>('[data-hero-dots]')!;
+        const hero = turntable(heroEl, (a) => exerciseFigure(x.primary, x.secondary, state.data.profile.sex, name, { view: viewOf(a), region: place.region }), place.view, {
+            bind: true,
+            onChange: (a) => (dotsEl.innerHTML = angleDots(a)),
+        });
+        dotsEl.innerHTML = angleDots(hero.angle());
+        s.el.querySelector('[data-hero-zoom]')!.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            zoomExercise(name, hero.angle());
+        });
+    }
     const local: ApexCharts[] = [];
     s.el.addEventListener(
         'shown.bs.modal',
@@ -643,6 +678,33 @@ function exerciseSheet(name: string, back?: () => void) {
         },
         { once: true },
     );
+    s.el.querySelector('[data-a="fav"]')!.addEventListener('click', async (ev) => {
+        const b = ev.currentTarget as HTMLButtonElement;
+        try {
+            const on = await toggleFavorite(name);
+            b.innerHTML = starIcon(name);
+            toast(on ? `${name} is a favorite` : `${name} is no favorite any more`);
+        } catch (err) {
+            toast((err as Error).message, 'error');
+        }
+    });
+    s.el.querySelector('[data-a="start-one"]')!.addEventListener('click', async () => {
+        if (active) {
+            toast('A workout runs already: finish or cancel it first', 'error');
+            return;
+        }
+        // as it was usually done
+        const plan = buildWorkout(x.primary.length ? [x.primary[0]] : [], logged(), info, 'short', new Set([exerciseKey(name)])).filter((e) => exerciseKey(e.name) === exerciseKey(name));
+        const one = plan[0] ?? { name, sets: 3, repsLow: 8, repsHigh: 12, restSeconds: 90 };
+        try {
+            const w = await api<GymWorkout>('POST', '/api/gym/workouts/start', { kind: x.kind === 'cardio' ? (x.activity ?? 'cardio') : 'strength', name, exercises: [{ ...one, name }] });
+            s.close();
+            active = w;
+            void openLogger(w, { onDone: () => void reload() });
+        } catch (err) {
+            toast((err as Error).message, 'error');
+        }
+    });
     s.el.querySelector('[data-a="muscles"]')!.addEventListener('click', () => {
         s.close();
         exerciseEditor(x, () => exerciseSheet(name, back));
@@ -749,6 +811,102 @@ function figureFor(e: ExerciseInfo) {
 /* ----------------------------------------------------------------------- */
 /* Templates                                                                */
 
+const planText = (e: TemplateExercise) =>
+    `${e.sets} × ${e.repsHigh ? `${e.repsLow}–${e.repsHigh} reps` : e.seconds ? clock(e.seconds) : ''}${e.distance ? ` · ${e.distance} km` : ''}${e.restSeconds ? ` · rest ${clock(e.restSeconds)}` : ''}`;
+
+// a template's exercises as they are planned, each with its last three times
+function templateView(t: GymTemplate) {
+    const s = sheet(
+        esc(t.name),
+        `<div class="small text-secondary mb-2"><i class="ti ti-${WORKOUT_KINDS[t.kind].icon}"></i> ${WORKOUT_KINDS[t.kind].label} · ${t.exercises.length} exercises · ${t.exercises.reduce((n, e) => n + e.sets, 0)} sets</div>
+        ${t.exercises
+            .map(
+                (e, i) => `<div class="py-2 border-bottom">
+                <div class="d-flex align-items-center gap-3">${thumb(e.name, 52)}
+                    <div class="flex-fill min-w-0"><div class="fw-bold text-truncate" data-ex="${esc(e.name)}" role="button"><span class="text-secondary me-1">${i + 1}</span>${isFavorite(e.name) ? '<i class="ti ti-star-filled text-warning me-1"></i>' : ''}${esc(e.name)}</div>
+                    <div class="small text-secondary">${planText(e)}</div></div>
+                </div>
+                ${lastSessionsChart(e.name)}
+            </div>`,
+            )
+            .join('')}`,
+        {
+            size: 'lg',
+            footer: `<button class="btn" data-a="progress"><i class="ti ti-chart-line me-1"></i>Progress</button><button class="btn" data-a="edit"><i class="ti ti-pencil me-1"></i>Edit</button><button class="btn btn-primary" data-a="start"><i class="ti ti-player-play me-1"></i>Start</button>`,
+        },
+    );
+    s.el.addEventListener('click', (ev) => {
+        const t2 = ev.target as HTMLElement;
+        const ex = t2.closest<HTMLElement>('[data-ex]');
+        if (ex) {
+            s.close();
+            exerciseSheet(ex.dataset.ex!, () => templateView(t));
+            return;
+        }
+        const a = t2.closest<HTMLElement>('[data-a]')?.dataset.a;
+        if (a === 'progress') {
+            s.close();
+            templateProgress(t, () => templateView(t));
+        } else if (a === 'edit') {
+            s.close();
+            templateEditor(t);
+        } else if (a === 'start') {
+            s.close();
+            if (active) void openLogger(active, { onDone: () => void reload() });
+            else void start(t._id);
+        }
+    });
+}
+
+// the progress of a template's exercises: each one's chart and how its estimated 1RM went
+function templateProgress(t: GymTemplate, back?: () => void) {
+    const lifts = logged();
+    const rows = t.exercises.map((e) => {
+        const sessions = exerciseSessions(lifts, e.name);
+        const withBest = sessions.filter((v) => v.best);
+        const first = withBest[0]?.best?.e1rm;
+        const last = withBest[withBest.length - 1]?.best?.e1rm;
+        const recentFrom = Date.now() - 28 * DAY_MS;
+        const before = withBest.filter((v) => v.at < recentFrom).slice(-4);
+        const now = withBest.filter((v) => v.at >= recentFrom);
+        const change = before.length && now.length ? (Math.max(...now.map((v) => v.best!.e1rm)) / Math.max(...before.map((v) => v.best!.e1rm)) - 1) * 100 : null;
+        return { e, sessions, first, last, change };
+    });
+    const s = sheet(
+        `Progress: ${esc(t.name)}`,
+        rows
+            .map(
+                ({ e, sessions, first, last, change }, i) => `<div class="mb-3 pb-2 border-bottom">
+                <div class="d-flex align-items-center gap-2 mb-1">${thumb(e.name, 40)}
+                    <div class="flex-fill min-w-0"><div class="fw-bold text-truncate" data-ex="${esc(e.name)}" role="button">${esc(e.name)}</div>
+                    <div class="small text-secondary">${sessions.length ? `${sessions.length} sessions${first && last ? ` · 1RM ≈ ${wText(first, e.name)} → ${wText(last, e.name)}` : ''}` : 'not done yet'}</div></div>
+                    ${change === null ? '' : `<span class="badge ${change >= 1 ? 'bg-success-lt' : change <= -1 ? 'bg-danger-lt' : 'bg-secondary-lt'}" title="best estimated 1RM, the last 4 weeks against the sessions before">${change > 0 ? '+' : ''}${r1(change)} %</span>`}
+                </div>
+                ${sessions.length >= 2 ? `<div data-pc="${i}"></div>` : sessions.length ? lastSessionsChart(e.name) : ''}
+            </div>`,
+            )
+            .join(''),
+        { size: 'lg', back, onClose: () => local.forEach((c) => c.destroy()) },
+    );
+    const local: ApexCharts[] = [];
+    s.el.addEventListener(
+        'shown.bs.modal',
+        () =>
+            rows.forEach(({ e, sessions }, i) => {
+                const el = s.el.querySelector<HTMLElement>(`[data-pc="${i}"]`);
+                if (el) local.push(exerciseChart(el, sessions, (v) => shown(v, e.name), unitLabel(e.name)));
+            }),
+        { once: true },
+    );
+    s.el.addEventListener('click', (ev) => {
+        const ex = (ev.target as HTMLElement).closest<HTMLElement>('[data-ex]');
+        if (ex) {
+            s.close();
+            exerciseSheet(ex.dataset.ex!, () => templateProgress(t, back));
+        }
+    });
+}
+
 function templateEditor(t: GymTemplate | null) {
     const tpl: Omit<GymTemplate, '_id' | 'order'> & { _id?: string } = t ? structuredClone(t) : { name: '', kind: 'strength', exercises: [] };
     const row = (e: TemplateExercise, i: number) => {
@@ -846,12 +1004,13 @@ const legendOf = (primary: Muscle[], secondary: Muscle[]) =>
         .map((m) => `<span class="badge gym-badge-pink me-1 mb-1">${MUSCLES[m].label}</span>`)
         .join('')}`;
 
-function zoomExercise(name: string) {
+function zoomExercise(name: string, angle?: Angle) {
     const x = info(name);
     const place = placeOf(x.primary);
     openZoom({
         title: name,
         view: place.view,
+        angle,
         region: place.region,
         render: (view: View, region: Region) => exerciseFigure(x.primary, x.secondary, state.data.profile.sex, name, { view, region }),
         legend: x.primary.length ? legendOf(x.primary, x.secondary) : 'No muscles set for it.',
@@ -921,7 +1080,7 @@ function muscleBuilder() {
             b.classList.toggle('red', !all.every((m) => picked.has(m)) && all.some((m) => picked.has(m)));
         });
         s.el.querySelectorAll<HTMLElement>('[data-size]').forEach((b) => b.classList.toggle('btn-primary', b.dataset.size === size));
-        if (!edited) plan = buildWorkout([...picked], logged(), info, size);
+        if (!edited) plan = buildWorkout([...picked], logged(), info, size, favoriteKeys());
         const chips = [...picked].map((m) => `<span class="badge gym-badge-red me-1 mb-1">${MUSCLES[m].label}</span>`).join('');
         planEl.innerHTML = picked.size
             ? `<div class="mb-2">${chips}</div>
@@ -1380,6 +1539,12 @@ function onClick(ev: Event) {
                     toast('A workout runs already: finish it first', 'error');
                     void openLogger(active, { onDone: () => void reload() });
                 } else if (tpl) void start(tpl._id);
+                return;
+            case 'tpl-view':
+                if (tpl) templateView(tpl);
+                return;
+            case 'tpl-progress':
+                if (tpl) templateProgress(tpl);
                 return;
             case 'tpl-edit':
                 templateEditor(tpl);
