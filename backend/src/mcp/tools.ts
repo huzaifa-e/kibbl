@@ -24,7 +24,7 @@ import { weatherForUser } from '../core/weather';
 import { listRooms } from '../core/rooms';
 import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
 import { registerWriteTools } from './writeTools';
-import { listWorkouts, lookupFor } from '../gym/service';
+import { listWorkouts, lookupFor, suggestions as gymSuggestions, workoutHeartRate } from '../gym/service';
 import {
     GROUPS,
     GROUP_IDS,
@@ -834,12 +834,30 @@ export function createMcpServer(session: SessionInfo) {
                 to: day.optional().describe('last day; default today'),
                 kinds: z.array(z.enum(WORKOUT_KIND_IDS as [string, ...string[]])).optional().describe('only these kinds'),
                 sets: z.boolean().default(true).describe('include every set; false gives each exercise as a summary'),
+                heart_rate: z
+                    .boolean()
+                    .default(false)
+                    .describe("each workout's mean and peak heart rate, minutes per zone, and each exercise's mean and peak (from the tracker; at most 20 workouts)"),
             },
             annotations: readOnly,
         },
-        async ({ from, to, kinds, sets }) => {
+        async ({ from, to, kinds, sets, heart_rate }) => {
             const range = dayRange(from, to, 30);
             const all = (await listWorkouts(session.userID, range.start)).filter((w) => w.start < range.end && (!kinds?.length || kinds.includes(w.kind)));
+            const hr = new Map<string, Awaited<ReturnType<typeof workoutHeartRate>>>();
+            if (heart_rate) for (const w of all.slice(0, 20)) hr.set(w._id, await workoutHeartRate(session.userID, w._id).catch(() => null));
+            const hrOf = (id: string) => {
+                const h = hr.get(id);
+                if (!h?.stats) return {};
+                return {
+                    heart_rate: {
+                        avg: h.stats.avg,
+                        max: h.stats.max,
+                        minutes_in_zones: Object.fromEntries(h.inZones.map((z) => [z.zone, z.minutes])),
+                        exercises: h.exercises.filter((x) => 'avg' in x).map((x) => ({ name: x.name, avg: (x as { avg: number }).avg, max: (x as { max: number }).max, times_estimated: x.estimated })),
+                    },
+                };
+            };
             return json({
                 from: range.from,
                 to: range.to,
@@ -851,6 +869,7 @@ export function createMcpServer(session: SessionInfo) {
                         source: w.source,
                         start: localTime(w.start),
                         minutes: Math.round(workoutMinutes(w)),
+                        ...hrOf(w._id),
                         ...(w.notes ? { notes: w.notes } : {}),
                         ...(w.tracker ? { tracker: { calories: w.tracker.calories, avg_hr: w.tracker.avgHr, active_zone_minutes: w.tracker.azm } } : {}),
                         exercises: w.exercises.map((e) => {
@@ -912,6 +931,19 @@ export function createMcpServer(session: SessionInfo) {
             }
             return json(out);
         },
+    );
+
+    server.registerTool(
+        'kibbl_gym_suggestions',
+        {
+            title: 'Suggested gym templates',
+            description:
+                'Templates suggested from the routine as it is done (each workout name done 3+ times in 12 weeks), balanced over the week: ' +
+                'hard sets per muscle group a week now and with the suggestions against the range that grows each group, and for each template its ' +
+                'exercises (sets, rep range) with every change and why. Nothing is saved; the user takes them in the app.',
+            annotations: readOnly,
+        },
+        async () => json(await gymSuggestions(session.userID)),
     );
 
     registerWriteTools(server, session);
