@@ -58,13 +58,13 @@ function layout() {
     const buttons = (Object.keys(PERIOD_LABELS) as Period[]).map((p) => `<button class="btn btn-sm" data-period="${p}">${PERIOD_LABELS[p]}</button>`).join('');
     byId('container').innerHTML = `
         <div id="heat-error"></div>
-        <div class="row row-cards mb-3" id="tiles"></div>
+        <div class="row row-cards mb-2" id="tiles"></div>
+        ${costsCard()}
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title">Heat used</h3>
                 <div class="card-actions d-flex gap-2"><div class="btn-group" id="unit-buttons"></div><div class="btn-group">${buttons}</div></div></div>
             <div class="card-body"><div id="use-chart"></div><div class="text-secondary small mt-2" id="use-note"></div></div>
         </div>
-        ${costsCard()}
         ${insightsCard()}
         <div class="card mb-3">
             <div class="card-header"><h3 class="card-title">Enter readings</h3></div>

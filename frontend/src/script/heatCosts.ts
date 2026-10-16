@@ -17,16 +17,14 @@ const num = (v: number | undefined, digits = 0) =>
     typeof v === 'number' ? v.toLocaleString([], { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '–';
 const dateText = (key?: string) => (key ? new Date(`${key}T12:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
+// under the consumption tiles: the cost tiles, the sum behind them and the payments form
 export function costsCard() {
-    return `<div class="card mb-3">
-        <div class="card-header"><h3 class="card-title">Costs</h3>
-            <div class="card-actions"><button class="btn btn-sm" id="costs-edit"><i class="ti ti-settings me-1"></i>Payments</button></div></div>
-        <div id="costs"></div>
-    </div>`;
+    return `<div class="row row-cards mb-2" id="cost-tiles"></div><div class="mb-3" id="costs"></div>`;
 }
 
 export function initCosts(c: typeof ctx) {
     ctx = c;
+    byId('page-actions').insertAdjacentHTML('beforeend', '<button class="btn" id="costs-edit"><i class="ti ti-coin-euro me-1"></i>Payments</button>');
     byId('costs-edit').addEventListener('click', () => {
         editing = !editing;
         renderCosts();
@@ -51,8 +49,11 @@ export function renderCosts() {
     const used = ctx.used(`${year}-01-01`);
     const k = ctx.kWhPerUnit();
     const kwh = (units: number) => (k ? ` ≈ ${num(units * k)} kWh` : '');
-    const stat = (label: string, value: string, sub: string, cls = '') =>
-        `<div class="col-sm-6 col-lg-3"><div class="text-secondary small">${label}</div><div class="h2 mb-0 ${cls}">${value}</div><div class="text-secondary small">${sub}</div></div>`;
+    const stat = (label: string, value: string, sub: string, cls = '', icon = 'coin-euro') =>
+        `<div class="col-sm-6 col-xl-3"><div class="card h-100"><div class="card-body">
+            <div class="d-flex align-items-center gap-2 mb-1"><i class="ti ti-${icon} text-secondary"></i><span class="text-secondary small">${label}</span></div>
+            <div class="stat-value ${cls}">${value}</div><div class="text-secondary small">${sub}</div></div></div></div>`;
+    let tiles = '';
 
     let body = '';
     if (!s.perUnit) body = `<div class="text-secondary">Import a heating cost report: its price per unit prices your use.</div>`;
@@ -60,22 +61,21 @@ export function renderCosts() {
         const usedCost = used ? used.units * s.perUnit : undefined;
         const left = budget && used ? budget.units - used.units : budget?.units;
         const r = costs.report;
-        body = `<div class="row g-3 mb-3">
-            ${stat(`Use in ${year}`, eur(usedCost), used ? `${num(used.units)} units${kwh(used.units)}, up to ${dateText(used.last)}` : 'no readings this year yet')}
+        tiles = `${stat(`Use in ${year}`, eur(usedCost), used ? `${num(used.units)} units${kwh(used.units)}, up to ${dateText(used.last)}` : 'no readings this year yet')}
             ${
                 budget
-                    ? stat(`Paid for use in ${year}`, eur(budget.forUse), `${num(budget.units)} units${kwh(budget.units)}`) +
+                    ? stat(`Paid for use in ${year}`, eur(budget.forUse), `${num(budget.units)} units${kwh(budget.units)}`, '', 'wallet') +
                       stat(
                           'Room left',
                           left !== undefined ? eur(left * s.perUnit) : '–',
                           left !== undefined ? `${num(left)} units${kwh(left)} more until the end of ${year}` : '',
                           left !== undefined && left < 0 ? 'text-danger' : 'text-success',
+                          'gauge',
                       )
-                    : stat('Room left', '–', 'enter your advance payment')
+                    : stat('Room left', '–', 'enter your advance under Payments', '', 'gauge')
             }
-            ${r?.units !== undefined ? stat(`Last statement`, eur(r.costs), `${num(r.units)} units${kwh(r.units)}, ${r.to?.slice(0, 4) ?? ''}`) : ''}
-        </div>
-        ${
+            ${r?.units !== undefined ? stat(`Last statement`, eur(r.costs), `${num(r.units)} units${kwh(r.units)}, ${r.to?.slice(0, 4) ?? ''}`, '', 'file-invoice') : ''}`;
+        body = `${
             budget
                 ? `<div class="text-secondary small">${eur(budget.paid)} advance in ${year} − ${eur(s.otherCosts ?? 0)} other running costs − ${eur(s.baseCost ?? 0)} heating base share
                     = ${eur(budget.forUse)} for use, at ${num(s.perUnit, 4)} € per unit.${
@@ -86,7 +86,8 @@ export function renderCosts() {
                 : ''
         }`;
     }
-    el.innerHTML = `<div class="card-body">${body}${editing ? form(s) : ''}</div>`;
+    byId('cost-tiles').innerHTML = tiles;
+    el.innerHTML = body + (editing ? `<div class="card mt-2"><div class="card-body">${form(s)}</div></div>` : '');
     if (editing) wire();
 }
 
@@ -96,7 +97,7 @@ function form(s: HeatCostSettings) {
         `<div class="col-sm-6 col-lg-4"><label class="form-label">${label}</label>
             <input class="form-control" id="cost-${id}" type="${type}" ${type === 'number' ? 'step="any" min="0"' : ''} value="${escapeHtml(String(value ?? ''))}" />
             <div class="form-hint">${hint}</div></div>`;
-    return `<form id="costs-form" class="mt-3 pt-3 border-top"><div class="row g-3">
+    return `<form id="costs-form"><div class="row g-3">
         ${field('advance', 'Advance per month (EUR)', 'Vorauszahlung BK/NK/Hzg, now', s.advance)}
         ${field('previousAdvance', 'Advance before (EUR)', 'if it changed this year', s.previousAdvance)}
         ${field('advanceSince', 'Changed in', 'the first month of the new advance', s.advanceSince, 'month')}
