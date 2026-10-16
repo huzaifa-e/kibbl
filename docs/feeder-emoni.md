@@ -65,7 +65,7 @@ idf.py -B $B -D SDKCONFIG=$B/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults
 1. Set up the Wi-Fi as for a kibbl. cam. In the app, approve the new **kibbl. feeder**.
 2. **Settings:** the firmware starts with the Nano's tested ones: 2400 steps/s, 8000 steps/s², closed limit 2092 steps. They are kept in the board (NVS). Change them in the app under Tuning.
 3. **Position:** the board doesn't know where the iris stands at its first start: it assumes open (0). Run **Find the zero** once before the first feed.
-4. **Check the stepping:** the S42B's screen shows `Deg`, its target angle. It must follow every move. If it doesn't, the inputs don't switch at 3.3 V: check COM on +3V3. A 74AHCT125 buffer from 5 V is the way out.
+4. **Check the stepping:** the S42B's screen shows `Deg`, its target angle. It must follow every move. The S42B steps at 3.3 V (tested 2026-10-16). It buzzes and lights red on a move but doesn't turn: EN arrives, STEP doesn't. The Nano's ribbon is all white and D9 sits next to D10: check CLK to BAT_READ and EN to EN.EXT for continuity, power off. If the wiring is right and it still doesn't step, check COM on +3V3; a 74AHCT125 buffer from 5 V is the way out.
 
 ## What it does like the Nano
 
