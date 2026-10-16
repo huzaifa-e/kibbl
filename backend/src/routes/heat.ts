@@ -4,6 +4,7 @@ import { HEAT_UNITS, type HeatUnit } from '../../../shared/heat';
 import { checkAuthMiddleware } from '../core/auth';
 import { logger } from '../core/logger';
 import { ownRoom } from '../core/rooms';
+import { heatCosts, setHeatCosts } from '../heat/costs';
 import { heatInsights } from '../heat/insights';
 import { OcrError } from '../heat/ocr';
 import { ReportError, applyReport, listReports, removeReport, reportFile, uploadReport, type ApplyDevice } from '../heat/reports';
@@ -71,6 +72,33 @@ export default function initHeatRoutes(app: express.Application) {
     // which radiator uses the most, and where heat may be wasted
     app.get('/api/heat/insights', auth, async (req: RequestWithSessionInfo, res) => {
         res.json(await heatInsights(user(req)));
+    });
+
+    // what the heating costs and what the advance payments leave for it
+    app.get('/api/heat/costs', auth, async (req: RequestWithSessionInfo, res) => {
+        res.json(await heatCosts(user(req)));
+    });
+
+    // { advance, previousAdvance, advanceSince, otherCosts, baseCost, perUnit }: a number (EUR, YYYY-MM for advanceSince) or null
+    app.put('/api/heat/costs', auth, async (req: RequestWithSessionInfo, res) => {
+        const b = (req.body ?? {}) as Record<string, unknown>;
+        const fields: Record<string, number | string | null> = {};
+        for (const k of ['advance', 'previousAdvance', 'otherCosts', 'baseCost', 'perUnit']) {
+            if (b[k] === undefined) continue;
+            if (b[k] !== null && !(typeof b[k] === 'number' && Number.isFinite(b[k]) && (b[k] as number) >= 0 && (b[k] as number) < 1e6)) {
+                res.status(400).send(`${k}: an amount of 0 or more`);
+                return;
+            }
+            fields[k] = b[k] as number | null;
+        }
+        if (b.advanceSince !== undefined) {
+            if (b.advanceSince !== null && !(typeof b.advanceSince === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(b.advanceSince))) {
+                res.status(400).send('advanceSince: a month YYYY-MM');
+                return;
+            }
+            fields.advanceSince = b.advanceSince as string | null;
+        }
+        res.json(await setHeatCosts(user(req), fields));
     });
 
     app.get('/api/heat/meters', auth, async (req: RequestWithSessionInfo, res) => {

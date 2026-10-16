@@ -128,3 +128,40 @@ export interface HeatInsights {
     ranking: HeatRank[];
     insights: HeatInsight[];
 }
+
+/* What the heating costs and what the advance payments leave for it (backend/src/heat/costs.ts,
+ * frontend heatCosts.ts): the monthly advance for running costs and heating (Vorauszahlung
+ * BK/NK/Hzg) pays the other running costs first; what remains pays the heating's base share
+ * (by the floor area) and then its use, at the report's price per unit. */
+
+export interface HeatCostSettings {
+    advance?: number; // EUR per month, now
+    previousAdvance?: number; // EUR per month before advanceSince
+    advanceSince?: string; // YYYY-MM the advance became what it is
+    otherCosts?: number; // EUR per year, the running costs that are not heating (last statement)
+    baseCost?: number; // EUR per year, the heating's base share (Grundkosten)
+    perUnit?: number; // EUR per unit of the heat cost allocators (Verbrauchskosten)
+}
+
+export interface HeatCosts {
+    settings: HeatCostSettings;
+    // from the latest imported report, what the settings default to
+    report?: { from?: string; to?: string; units?: number; costs?: number; baseCost?: number; perUnit?: number };
+}
+
+// what is paid in advance in a year: the months before advanceSince at the previous advance
+export function advancePaid(s: HeatCostSettings, year: number) {
+    if (s.advance === undefined) return undefined;
+    const since = s.advanceSince && s.previousAdvance !== undefined ? s.advanceSince : undefined;
+    let sum = 0;
+    for (let m = 1; m <= 12; m++) sum += since && `${year}-${String(m).padStart(2, '0')}` < since ? s.previousAdvance! : s.advance;
+    return sum;
+}
+
+// the units of use a year's advance pays for, after the other costs and the heating's base share
+export function heatBudget(s: HeatCostSettings, year: number) {
+    const paid = advancePaid(s, year);
+    if (paid === undefined || !s.perUnit) return undefined;
+    const forUse = paid - (s.otherCosts ?? 0) - (s.baseCost ?? 0);
+    return { paid, forUse, units: forUse / s.perUnit };
+}

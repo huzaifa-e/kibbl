@@ -45,6 +45,8 @@ async function init() {
         tokenVersion: { type: Number, required: true, default: 0 },
         // where the home is, for the weather outside (kibbl. air)
         home: { latitude: Number, longitude: Number, name: String },
+        // what the heating costs and the advance paid for it (heat/costs.ts)
+        heatCosts: { advance: Number, previousAdvance: Number, advanceSince: String, otherCosts: Number, baseCost: Number, perUnit: Number },
         createdAt: { type: Number, required: true },
     });
 
