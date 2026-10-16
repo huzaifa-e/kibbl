@@ -99,6 +99,7 @@ test('a workout type as words', () => {
                 interval: { startTime: '2026-10-04T16:00:00Z', endTime: '2026-10-04T16:45:00Z' },
                 metricsSummary: { caloriesKcal: '547' },
             },
+            dataSource: { recordingMethod: 'ACTIVELY_MEASURED' },
         },
     ]);
     assert.deepEqual(w, {
@@ -109,6 +110,7 @@ test('a workout type as words', () => {
         calories: 547,
         avg_hr: null,
         azm: null,
+        recording: 'ACTIVELY_MEASURED',
     });
 });
 

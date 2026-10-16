@@ -234,6 +234,8 @@ export function parseExercise(points: Json[]) {
             calories: num(m.caloriesKcal),
             avg_hr: num(m.averageHeartRateBeatsPerMinute),
             azm: num(m.activeZoneMinutes),
+            // started on the tracker (ACTIVELY_MEASURED), entered by hand (MANUAL) or found by it (PASSIVELY_MEASURED)
+            recording: (p?.dataSource?.recordingMethod as string | undefined) ?? null,
         });
     }
     return out.sort(byDate);
