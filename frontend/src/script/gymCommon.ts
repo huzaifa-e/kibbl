@@ -4,6 +4,8 @@ import {
     guessExercise,
     isWorkSet,
     setVolume,
+    shownWeight,
+    storedWeight,
     type ExerciseInfo,
     type GymTemplate,
     type GymWorkout,
@@ -36,6 +38,14 @@ export function setData(d: GymData) {
 }
 
 export const info = (name: string): ExerciseInfo => state.own.get(exerciseKey(name)) ?? guessExercise(name);
+
+/* Weights are kept in kg; each exercise shows and takes them in its unit (lbs on a machine
+ * labelled in pounds). */
+export const unitLabel = (name: string) => (info(name).unit === 'lbs' ? 'lb' : 'kg');
+export const shown = (kgValue: number, name: string) => shownWeight(kgValue, info(name).unit);
+export const stored = (value: number, name: string) => storedWeight(value, info(name).unit);
+// "55 lb", "25 kg"
+export const wText = (kgValue: number | null | undefined, name: string) => (typeof kgValue === 'number' ? `${kg(shown(kgValue, name))} ${unitLabel(name)}` : '–');
 
 // the workouts that hold sets (not the tracker's alone), finished
 export const logged = () => state.data.workouts.filter((w) => w.source !== 'tracker' && w.end);
@@ -149,7 +159,9 @@ export function figureOf(name: string) {
     return svg || `<div class="gym-noimg"><i class="ti ti-${x.kind === 'cardio' ? WORKOUT_KINDS[x.activity ?? 'cardio'].icon : 'barbell'}"></i></div>`;
 }
 
-export const thumb = (name: string, size = 56) => `<div class="gym-plate gym-thumb" style="width:${size}px;height:${size}px">${figureOf(name)}</div>`;
+// tapped, it opens big (gym.ts, onZoomClick)
+export const thumb = (name: string, size = 56) =>
+    `<div class="gym-plate gym-thumb" style="width:${size}px;height:${size}px"${info(name).primary.length ? ` data-zoom="${escapeHtml(name)}" role="button" aria-label="Zoom"` : ''}>${figureOf(name)}</div>`;
 
 export function clearFigures() {
     figureCache.clear();
@@ -166,20 +178,89 @@ export interface Sheet {
     close(): void;
 }
 
-export function sheet(title: string, body: string, opts: { footer?: string; size?: 'lg' | 'xl'; onClose?: () => void } = {}): Sheet {
+/* Screens over the page (sheets, the workout, the zoomed drawing) are layers. The first one
+ * opened puts one entry in the browser's history, so the phone's back button or gesture closes
+ * the top layer instead of leaving the gym; when the last one closes by its own button that
+ * entry is taken back out. */
+const layers: { close: () => void }[] = [];
+let marker = false;
+let ignorePop = false;
+
+export function openLayer(close: () => void) {
+    const layer = { close };
+    layers.push(layer);
+    if (!marker) {
+        history.pushState({ ...(history.state ?? {}), gymLayer: true }, '');
+        marker = true;
+    }
+    // the layer closed itself (its button, the backdrop): when none is left, the entry goes
+    return () => {
+        const i = layers.indexOf(layer);
+        if (i >= 0) layers.splice(i, 1);
+        // a layer that opens the next as it closes keeps the entry: decide once it has
+        setTimeout(() => {
+            if (!layers.length && marker) {
+                marker = false;
+                ignorePop = true;
+                history.back();
+            }
+        }, 0);
+    };
+}
+
+// the browser went back: true when that was a layer's (closed now), false for the page's own
+export function layerPop() {
+    if (ignorePop) {
+        ignorePop = false;
+        return true;
+    }
+    if (!marker) return false;
+    marker = false;
+    const top = layers.pop();
+    if (!top) return false;
+    top.close();
+    if (layers.length) {
+        history.pushState({ ...(history.state ?? {}), gymLayer: true }, '');
+        marker = true;
+    }
+    return true;
+}
+
+/* A sheet: a modal, full screen on a phone, a back arrow on its left. `back` is the screen it
+ * was opened from, shown again when going back (the arrow or the phone's back); the cross
+ * closes it to the page. */
+export function sheet(title: string, body: string, opts: { footer?: string; size?: 'lg' | 'xl'; onClose?: () => void; back?: () => void } = {}): Sheet {
     const el = document.createElement('div');
     el.className = 'modal modal-blur fade gym-sheet';
     el.id = `gym-sheet-${++sheetCount}`;
     el.tabIndex = -1;
     el.innerHTML = `<div class="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down ${opts.size ? `modal-${opts.size}` : ''}">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title text-truncate">${title}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-header gap-2">
+                <button type="button" class="btn btn-icon btn-ghost-secondary gym-back" data-sheet-back aria-label="Back"><i class="ti ti-arrow-left"></i></button>
+                <h5 class="modal-title text-truncate flex-fill">${title}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
             <div class="modal-body">${body}</div>
             ${opts.footer ? `<div class="modal-footer">${opts.footer}</div>` : ''}
         </div></div>`;
     document.body.appendChild(el);
     const modal = bootstrap.Modal.getOrCreateInstance(el);
+    let goBack = false;
+    const closed = openLayer(() => {
+        goBack = true;
+        modal.hide();
+    });
+    el.querySelector('[data-sheet-back]')!.addEventListener('click', () => {
+        goBack = true;
+        modal.hide();
+    });
+    el.addEventListener('hide.bs.modal', () => {
+        // the screen before opens as this one leaves
+        if (goBack) opts.back?.();
+    });
     el.addEventListener('hidden.bs.modal', () => {
+        closed();
         opts.onClose?.();
         el.remove();
     });
@@ -201,6 +282,30 @@ export function ask(title: string, text: string, yes: string, danger = false): P
             resolve(true);
             s.close();
         });
+    });
+}
+
+/* A workout kept as a template: its exercises in their order, the sets done, the reps they
+ * spanned, their time and distance. */
+export async function saveAsTemplate(w: GymWorkout, name = w.name) {
+    return api<{ _id: string }>('POST', '/api/gym/templates', {
+        name,
+        kind: w.kind,
+        exercises: w.exercises
+            .filter((e) => e.sets.some(isWorkSet))
+            .map((e) => {
+                const work = e.sets.filter(isWorkSet);
+                const reps = work.map((x) => x.reps ?? 0).filter(Boolean);
+                return {
+                    name: e.name,
+                    sets: Math.max(1, work.length),
+                    repsLow: reps.length ? Math.min(...reps) : 0,
+                    repsHigh: reps.length ? Math.max(...reps) : 0,
+                    restSeconds: e.restSeconds ?? 90,
+                    seconds: Math.max(0, ...work.map((x) => x.seconds ?? 0)) || undefined,
+                    distance: Math.max(0, ...work.map((x) => x.distance ?? 0)) || undefined,
+                };
+            }),
     });
 }
 

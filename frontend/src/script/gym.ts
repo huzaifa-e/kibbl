@@ -15,7 +15,8 @@ import {
     groupStrengthChange,
     groupStrengthIndex,
     gymInsights,
-    isWorkSet,
+    buildName,
+    buildWorkout,
     records,
     setsPerGroup,
     setsPerMuscle,
@@ -30,10 +31,13 @@ import {
     type GymWorkout,
     type Muscle,
     type MuscleGroup,
+    type Suggestions,
     type TemplateExercise,
+    type TemplateSuggestion,
+    type BuildSize,
     type WorkoutKind,
 } from '../../../shared/gym';
-import { BODY_CSS, bodyMap } from './gymBody';
+import { BODY_CSS, bodyMap, bodyMapView, exerciseFigure, placeOf, type Region, type View } from './gymBody';
 import { activityChart, exerciseChart, groupSetsChart, strengthChart } from './gymCharts';
 import {
     ApiError,
@@ -55,6 +59,8 @@ import {
     r1,
     setData,
     sheet,
+    layerPop,
+    saveAsTemplate,
     shortDay,
     state,
     thumb,
@@ -62,11 +68,15 @@ import {
     toast,
     tonnage,
     workoutStats,
+    wText,
+    shown,
+    unitLabel,
     type GymData,
 } from './gymCommon';
-import { openLogger, isOpen, readBackup, resumeActive } from './gymLogger';
+import { cancelWorkout, openLogger, isOpen, readBackup, resumeActive } from './gymLogger';
 import { FILTERS, allExercises, matchesFilter, muscleText, pickExercise, useCounts } from './gymPicker';
-import { emptyState, errorAlert } from './utils';
+import { emptyState, errorAlert, loadingHtml } from './utils';
+import { openZoom } from './gymZoom';
 
 /* The gym: every kind of training in one place. Train starts a workout from a template (lifting,
  * running, riding, Pilates, mobility, HIIT); History is everything done, with the fitness
@@ -192,7 +202,7 @@ function templateCard(t: GymTemplate) {
     const map = muscles.size ? bodyMap((m) => muscles.get(m) ?? null, state.data.profile.sex) : null;
     return `<div class="card gym-tpl" data-tpl="${t._id}">
         <div class="card-body p-3 d-flex gap-3">
-            ${map ? `<div class="gym-plate gym-tpl-map">${map.front}${map.back}</div>` : `<div class="gym-tpl-map d-flex align-items-center justify-content-center">${kindIcon(t.kind, 56)}</div>`}
+            ${map ? `<div class="gym-plate gym-tpl-map" data-zoom-tpl="${t._id}" role="button" aria-label="Zoom">${map.front}${map.back}</div>` : `<div class="gym-tpl-map d-flex align-items-center justify-content-center">${kindIcon(t.kind, 56)}</div>`}
             <div class="flex-fill min-w-0">
                 <div class="d-flex align-items-start gap-2">
                     <div class="flex-fill min-w-0">
@@ -228,10 +238,15 @@ function trainTab() {
             ? `<div class="card gym-active mb-3" data-act="resume"><div class="card-body d-flex align-items-center gap-3">
                 ${kindIcon(active.kind)}<div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${esc(active.name)}</div>
                 <div class="small">running since ${timeText(active.start)} · ${active.exercises.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0)} sets done</div></div>
+                <button class="btn btn-ghost-light btn-sm" data-act="cancel-active" aria-label="Cancel the workout">Cancel</button>
                 <button class="btn btn-light">Resume</button></div></div>`
             : ''
     }
     ${weekStrip()}
+    <div class="card mb-3 gym-build-cta" data-act="build" role="button"><div class="card-body d-flex gap-3 align-items-center">
+        <span class="hud-icon hud-pumpkin"><i class="ti ti-target-arrow"></i></span>
+        <div class="flex-fill"><div class="fw-bold">What do you want to train today?</div><div class="small text-secondary">Tap the muscles, get a workout for this session.</div></div>
+        <i class="ti ti-chevron-right text-secondary"></i></div></div>
     <div class="d-flex gap-2 mb-3">
         <button class="btn flex-fill" data-act="empty"><i class="ti ti-plus me-1"></i>Empty workout</button>
         <button class="btn flex-fill" data-act="past"><i class="ti ti-history me-1"></i>Log a past one</button>
@@ -242,6 +257,14 @@ function trainTab() {
                 <div class="d-flex gap-3 align-items-center"><span class="hud-icon hud-pumpkin"><i class="ti ti-file-import"></i></span>
                 <div class="flex-fill"><div class="fw-bold">Bring your Strong history</div><div class="small text-secondary">Your sets, weights and workouts, and templates made from your real routine.</div></div></div>
                 <button class="btn btn-primary w-100 mt-3" data-act="import">Import from Strong</button></div></div>`
+            : ''
+    }
+    ${
+        logged().length >= 6
+            ? `<div class="card mb-3 gym-suggest" data-act="suggest" role="button"><div class="card-body d-flex gap-3 align-items-center">
+                <span class="hud-icon hud-plum"><i class="ti ti-wand"></i></span>
+                <div class="flex-fill"><div class="fw-bold">Suggested for you</div><div class="small text-secondary">Your routine as you do it, balanced over the week: sets per muscle group into the range that grows it.</div></div>
+                <i class="ti ti-chevron-right text-secondary"></i></div></div>`
             : ''
     }
     <div class="d-flex align-items-center justify-content-between mb-2">
@@ -308,7 +331,7 @@ function workoutSheet(w: GymWorkout) {
                             ? [s.distance ? `${r1(s.distance)} km` : '', s.seconds ? clock(s.seconds) : ''].filter(Boolean).join(' · ')
                             : x.kind === 'duration' || x.kind === 'mobility'
                               ? clock(s.seconds ?? 0)
-                              : `${s.weight ? `${kg(s.weight)} kg × ` : ''}${s.reps ?? ''}${s.rpe ? ` @${s.rpe}` : ''}`;
+                              : `${s.weight ? `${wText(s.weight, e.name)} × ` : ''}${s.reps ?? ''}${s.rpe ? ` @${s.rpe}` : ''}`;
                     return `<div class="d-flex gap-2"><span class="gym-setno small">${label}</span><span>${value}</span></div>`;
                 })
                 .join('');
@@ -340,7 +363,7 @@ function workoutSheet(w: GymWorkout) {
         const ex = t.closest<HTMLElement>('[data-ex]');
         if (ex) {
             s.close();
-            exerciseSheet(ex.dataset.ex!);
+            exerciseSheet(ex.dataset.ex!, () => workoutSheet(w));
             return;
         }
         const a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
@@ -352,23 +375,7 @@ function workoutSheet(w: GymWorkout) {
             s.close();
             void openLogger(made, { editing: true, onDone: () => void reload() });
         } else if (a === 'template') {
-            await api('POST', '/api/gym/templates', {
-                name: w.name,
-                kind: w.kind,
-                exercises: w.exercises.map((e) => {
-                    const work = e.sets.filter(isWorkSet);
-                    const reps = work.map((x) => x.reps ?? 0).filter(Boolean);
-                    return {
-                        name: e.name,
-                        sets: Math.max(1, work.length),
-                        repsLow: reps.length ? Math.min(...reps) : 0,
-                        repsHigh: reps.length ? Math.max(...reps) : 0,
-                        restSeconds: e.restSeconds ?? 90,
-                        seconds: Math.max(0, ...work.map((x) => x.seconds ?? 0)) || undefined,
-                        distance: Math.max(0, ...work.map((x) => x.distance ?? 0)) || undefined,
-                    };
-                }),
-            });
+            await saveAsTemplate(w);
             toast('Saved as a template');
             s.close();
             void reload();
@@ -421,7 +428,7 @@ function progressTab() {
         <div class="hud-label mb-1">Muscles, last 4 weeks</div>
         <div class="text-secondary small mb-2">Hard sets a week against the range that grows each group (green). The deeper the red, the more it got. Tap a group for its trend.</div>
         <div class="row g-3 align-items-center">
-            <div class="col-md-5"><div class="gym-plate gym-bodymap">${map.front}${map.back}</div></div>
+            <div class="col-md-5"><div class="gym-plate gym-bodymap" data-zoom-progress role="button" aria-label="Zoom">${map.front}${map.back}</div></div>
             <div class="col-md-7"><div class="gym-gbars">
                 <div class="gym-gbar gym-gbar-head small text-secondary"><span>Group</span><span>hard sets a week</span><span></span><span title="estimated 1RM, last 4 weeks against the 4 before">1RM 4 wk</span></div>
                 ${bars}</div></div>
@@ -464,13 +471,13 @@ function groupSheet(g: MuscleGroup) {
         .map(
             ({ n, sessions, r, last }) => `<button class="list-group-item list-group-item-action d-flex gap-3 align-items-center" data-ex="${esc(n)}">${thumb(n, 44)}
             <div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${esc(n)}</div>
-            <div class="small text-secondary">${sessions.length}× · last ${shortDay(last)}${r.e1rm ? ` · 1RM ≈ ${kg(r.e1rm.value)} kg` : ''}</div></div></button>`,
+            <div class="small text-secondary">${sessions.length}× · last ${shortDay(last)}${r.e1rm ? ` · 1RM ≈ ${wText(r.e1rm.value, n)}` : ''}</div></div></button>`,
         )
         .join('');
     const s = sheet(
         GROUPS[g].label,
         `<div class="row g-3">
-            <div class="col-4"><div class="gym-plate gym-bodymap">${map.front}${map.back}</div></div>
+            <div class="col-4"><div class="gym-plate gym-bodymap" data-zoom-group="${g}" role="button" aria-label="Zoom">${map.front}${map.back}</div></div>
             <div class="col-8"><div class="hud-label">Hard sets a week</div><div data-c="sets"></div></div>
         </div>
         <div class="hud-label mt-3">Strength (100 = where each exercise started)</div>
@@ -494,7 +501,7 @@ function groupSheet(g: MuscleGroup) {
         const ex = (ev.target as HTMLElement).closest<HTMLElement>('[data-ex]');
         if (ex) {
             s.close();
-            exerciseSheet(ex.dataset.ex!);
+            exerciseSheet(ex.dataset.ex!, () => groupSheet(g));
         }
     });
 }
@@ -525,7 +532,7 @@ function exercisesTab() {
             .join('')}</div></div>`;
 }
 
-function exerciseSheet(name: string) {
+function exerciseSheet(name: string, back?: () => void) {
     const x = info(name);
     const sessions = exerciseSessions(logged(), name);
     const r = records(sessions);
@@ -536,19 +543,20 @@ function exerciseSheet(name: string) {
         .reverse()
         .map(
             (s) => `<div class="d-flex justify-content-between py-1 border-bottom small"><span>${dayText(s.at)}</span>
-            <span>${s.sets.map((set) => (x.kind === 'cardio' ? `${r1(set.distance ?? 0)} km ${clock(set.seconds ?? 0)}` : x.kind === 'duration' || x.kind === 'mobility' ? clock(set.seconds ?? 0) : `${set.weight ? kg(set.weight) + '×' : ''}${set.reps ?? ''}`)).join(', ')}</span></div>`,
+            <span>${s.sets.map((set) => (x.kind === 'cardio' ? `${r1(set.distance ?? 0)} km ${clock(set.seconds ?? 0)}` : x.kind === 'duration' || x.kind === 'mobility' ? clock(set.seconds ?? 0) : `${set.weight ? kg(shown(set.weight, name)) + '×' : ''}${set.reps ?? ''}`)).join(', ')}</span></div>`,
         )
         .join('');
     const s = sheet(
         esc(name),
-        `<div class="gym-plate gym-hero mb-3">${figureOf(name)}</div>
+        `<div class="gym-plate gym-hero mb-1" data-zoom="${esc(name)}" role="button" aria-label="Zoom">${figureOf(name)}</div>
+        <div class="small text-secondary text-center mb-3"><i class="ti ti-zoom-in"></i> tap to zoom, front and back</div>
         <div class="mb-2">${x.primary.map((m) => chip(m, true)).join('')}${x.secondary.map((m) => chip(m, false)).join('')}${!x.primary.length ? '<span class="text-secondary small">No muscles set.</span>' : ''}</div>
         ${
             r.e1rm || r.weight
                 ? `<div class="row g-2 mb-3">
-                ${r.e1rm ? recordTile('Estimated 1RM', `${kg(r.e1rm.value)} kg`, `${kg(r.e1rm.weight)} × ${r.e1rm.reps}`) : ''}
-                ${r.weight ? recordTile('Heaviest', `${kg(r.weight.value)} kg`, `× ${r.weight.reps}, ${shortDay(r.weight.at)}`) : ''}
-                ${r.reps ? recordTile('Most reps', `${r.reps.value}`, r.reps.weight ? `at ${kg(r.reps.weight)} kg` : '') : ''}
+                ${r.e1rm ? recordTile('Estimated 1RM', wText(r.e1rm.value, name), `${wText(r.e1rm.weight, name)} × ${r.e1rm.reps}`) : ''}
+                ${r.weight ? recordTile('Heaviest', wText(r.weight.value, name), `× ${r.weight.reps}, ${shortDay(r.weight.at)}`) : ''}
+                ${r.reps ? recordTile('Most reps', `${r.reps.value}`, r.reps.weight ? `at ${wText(r.reps.weight, name)}` : '') : ''}
                 ${r.volume ? recordTile('Best session', tonnage(r.volume.value), shortDay(r.volume.at)) : ''}
             </div>`
                 : ''
@@ -557,8 +565,9 @@ function exerciseSheet(name: string) {
         ${recent ? `<div class="hud-label mb-1">Recent</div>${recent}` : ''}`,
         {
             size: 'lg',
-            footer: `<button class="btn" data-a="muscles"><i class="ti ti-adjustments me-1"></i>Muscles</button>`,
+            footer: `<button class="btn" data-a="muscles"><i class="ti ti-adjustments me-1"></i>Muscles &amp; unit</button>`,
             onClose: () => local.forEach((c) => c.destroy()),
+            back,
         },
     );
     const local: ApexCharts[] = [];
@@ -566,13 +575,13 @@ function exerciseSheet(name: string) {
         'shown.bs.modal',
         () => {
             const el = s.el.querySelector<HTMLElement>('[data-c="ex"]');
-            if (el) local.push(exerciseChart(el, sessions));
+            if (el) local.push(exerciseChart(el, sessions, (v) => shown(v, name), unitLabel(name)));
         },
         { once: true },
     );
     s.el.querySelector('[data-a="muscles"]')!.addEventListener('click', () => {
         s.close();
-        exerciseEditor(x);
+        exerciseEditor(x, () => exerciseSheet(name, back));
     });
 }
 
@@ -586,7 +595,7 @@ const EXERCISE_KINDS: [ExerciseKind, string][] = [
     ['cardio', 'Cardio: time and distance'],
 ];
 
-function exerciseEditor(x: ExerciseInfo | null) {
+function exerciseEditor(x: ExerciseInfo | null, back?: () => void) {
     const e: ExerciseInfo = x ? structuredClone(x) : { name: '', primary: [], secondary: [], equipment: 'other', kind: 'weight', custom: true };
     const muscleGrid = () =>
         GROUP_IDS.map(
@@ -603,13 +612,17 @@ function exerciseEditor(x: ExerciseInfo | null) {
         <div class="row g-2 mb-3">
             <div class="col-6"><select class="form-select" data-kind>${EXERCISE_KINDS.map(([k, l]) => `<option value="${k}"${k === e.kind ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
             <div class="col-6"><select class="form-select" data-equip>${EQUIPMENT.map((q) => `<option value="${q}"${q === e.equipment ? ' selected' : ''}>${q}</option>`).join('')}</select></div>
+            <div class="col-12"><div class="btn-group w-100" role="group" aria-label="Weights in">
+                <input type="radio" class="btn-check" name="gym-unit" id="gym-unit-kg" value="kg"${e.unit !== 'lbs' ? ' checked' : ''}><label class="btn" for="gym-unit-kg">Weights in kg</label>
+                <input type="radio" class="btn-check" name="gym-unit" id="gym-unit-lbs" value="lbs"${e.unit === 'lbs' ? ' checked' : ''}><label class="btn" for="gym-unit-lbs">Weights in lbs</label>
+            </div></div>
         </div>
         <div class="d-flex gap-3 align-items-start">
             <div class="gym-plate gym-thumb flex-shrink-0" style="width:110px;height:110px" data-fig></div>
             <div class="small text-secondary">Tap a muscle once for <b class="text-danger">trained</b>, again for <b style="color:#c9675e">helps</b>, a third time to clear.</div>
         </div>
         <div class="mt-2" data-grid>${muscleGrid()}</div>`,
-        { size: 'lg', footer: `${x?.custom && sessionsOf(x.name) === 0 ? '<button class="btn btn-ghost-danger me-auto" data-del>Delete</button>' : ''}<button class="btn btn-primary" data-save>Save</button>` },
+        { size: 'lg', back, footer: `${x?.custom && sessionsOf(x.name) === 0 ? '<button class="btn btn-ghost-danger me-auto" data-del>Delete</button>' : ''}<button class="btn btn-primary" data-save>Save</button>` },
     );
     const fig = () => {
         const el = s.el.querySelector<HTMLElement>('[data-fig]')!;
@@ -633,12 +646,13 @@ function exerciseEditor(x: ExerciseInfo | null) {
         if (nameEl) e.name = nameEl.value.trim();
         e.kind = s.el.querySelector<HTMLSelectElement>('[data-kind]')!.value as ExerciseKind;
         e.equipment = s.el.querySelector<HTMLSelectElement>('[data-equip]')!.value as Equipment;
+        e.unit = s.el.querySelector<HTMLInputElement>('input[name="gym-unit"]:checked')!.value as 'kg' | 'lbs';
         if (!e.name) {
             toast('Give it a name', 'error');
             return;
         }
         try {
-            await api('PUT', '/api/gym/exercises', { name: e.name, primary: e.primary, secondary: e.secondary, equipment: e.equipment, kind: e.kind, ...(e.kind === 'cardio' ? { activity: e.activity ?? 'cardio' } : {}) });
+            await api('PUT', '/api/gym/exercises', { name: e.name, primary: e.primary, secondary: e.secondary, equipment: e.equipment, kind: e.kind, unit: e.unit, ...(e.kind === 'cardio' ? { activity: e.activity ?? 'cardio' } : {}) });
             s.close();
             clearFigures();
             await reload();
@@ -761,53 +775,386 @@ function templateEditor(t: GymTemplate | null) {
 }
 
 /* ----------------------------------------------------------------------- */
+/* Drawings, big                                                            */
+
+const legendOf = (primary: Muscle[], secondary: Muscle[]) =>
+    `${[...new Set(primary)].map((m) => `<span class="badge gym-badge-red me-1 mb-1">${MUSCLES[m].label}</span>`).join('')}${[...new Set(secondary)]
+        .map((m) => `<span class="badge gym-badge-pink me-1 mb-1">${MUSCLES[m].label}</span>`)
+        .join('')}`;
+
+function zoomExercise(name: string) {
+    const x = info(name);
+    const place = placeOf(x.primary);
+    openZoom({
+        title: name,
+        view: place.view,
+        region: place.region,
+        render: (view: View, region: Region) => exerciseFigure(x.primary, x.secondary, state.data.profile.sex, name, { view, region }),
+        legend: x.primary.length ? legendOf(x.primary, x.secondary) : 'No muscles set for it.',
+    });
+}
+
+function zoomLevels(title: string, level: (m: Muscle) => number | null, legend: string) {
+    const trained = MUSCLE_IDS.filter((m) => (level(m) ?? 0) > 0);
+    const place = placeOf(trained);
+    openZoom({ title, view: place.view, region: 'full', render: (view: View, region: Region) => bodyMapView(level, state.data.profile.sex, view, region), legend });
+}
+
+function onZoomClick(ev: Event) {
+    const t = ev.target as HTMLElement;
+    const z = t.closest<HTMLElement>('[data-zoom], [data-zoom-tpl], [data-zoom-progress], [data-zoom-group]');
+    if (!z || z.closest('.gym-zoom')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (z.dataset.zoom) {
+        zoomExercise(z.dataset.zoom);
+    } else if (z.dataset.zoomTpl) {
+        const tpl = state.data.templates.find((x) => x._id === z.dataset.zoomTpl);
+        if (!tpl) return;
+        const muscles = templateMuscles(tpl);
+        zoomLevels(tpl.name, (m) => muscles.get(m) ?? null, legendOf([...muscles].filter(([, v]) => v === 1).map(([m]) => m), [...muscles].filter(([, v]) => v < 1).map(([m]) => m)));
+    } else if (z.dataset.zoomGroup) {
+        const g = z.dataset.zoomGroup as MuscleGroup;
+        zoomLevels(GROUPS[g].label, (m) => (groupOf(m) === g ? 1 : null), legendOf(MUSCLE_IDS.filter((m) => groupOf(m) === g), []));
+    } else {
+        const recent = logged().filter((w) => w.start >= Date.now() - 28 * DAY_MS);
+        const weeks = Math.max(1, Math.min(4, recent.length ? (Date.now() - Math.min(...recent.map((w) => w.start))) / (7 * DAY_MS) : 1));
+        const per = setsPerMuscle(recent, info);
+        zoomLevels('Muscles, last 4 weeks', (m) => per[m] / weeks / GROUPS[groupOf(m)].sets[1] || null, 'The deeper the red, the more hard sets a week it got (full red: the top of its range). Tap a muscle for its name.');
+    }
+}
+
+/* ----------------------------------------------------------------------- */
+/* A workout for the muscles chosen                                         */
+
+function muscleBuilder() {
+    const picked = new Set<Muscle>();
+    let size: BuildSize = 'normal';
+    let plan: TemplateExercise[] = [];
+    let edited = false; // exercises removed or added by hand stay until the muscles change
+    const s = sheet(
+        'Build by muscle',
+        `<div class="small text-secondary mb-2">Tap the muscles you want to train this session, on the front and the back.</div>
+        <div class="gym-plate gym-builder mb-2" data-figs></div>
+        <div class="gym-chips mb-2" data-groups>${GROUP_IDS.map((g) => `<button class="gym-chip" data-bg="${g}">${GROUPS[g].label}</button>`).join('')}</div>
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="small text-secondary">Session</span>
+            <div class="btn-group btn-group-sm" role="group">${(['short', 'normal', 'long'] as BuildSize[]).map((z) => `<button class="btn" data-size="${z}">${z === 'short' ? 'Short' : z === 'normal' ? 'Normal' : 'Long'}</button>`).join('')}</div>
+        </div>
+        <div data-plan></div>`,
+        { size: 'lg', footer: '<button class="btn btn-primary w-100" data-start disabled>Pick some muscles</button>' },
+    );
+    const figs = s.el.querySelector<HTMLElement>('[data-figs]')!;
+    const planEl = s.el.querySelector<HTMLElement>('[data-plan]')!;
+    const startBtn = s.el.querySelector<HTMLButtonElement>('[data-start]')!;
+
+    const draw = () => {
+        const map = bodyMap((m) => (picked.has(m) ? 1 : null), state.data.profile.sex);
+        figs.innerHTML = `<div>${map.front}<div class="small text-center text-secondary">front</div></div><div>${map.back}<div class="small text-center text-secondary">back</div></div>`;
+        s.el.querySelectorAll<HTMLElement>('[data-bg]').forEach((b) => {
+            const all = MUSCLE_IDS.filter((m) => groupOf(m) === b.dataset.bg);
+            b.classList.toggle('on', all.every((m) => picked.has(m)));
+            b.classList.toggle('red', !all.every((m) => picked.has(m)) && all.some((m) => picked.has(m)));
+        });
+        s.el.querySelectorAll<HTMLElement>('[data-size]').forEach((b) => b.classList.toggle('btn-primary', b.dataset.size === size));
+        if (!edited) plan = buildWorkout([...picked], logged(), info, size);
+        const chips = [...picked].map((m) => `<span class="badge gym-badge-red me-1 mb-1">${MUSCLES[m].label}</span>`).join('');
+        planEl.innerHTML = picked.size
+            ? `<div class="mb-2">${chips}</div>
+               <div class="hud-label mb-1">${esc(buildName([...picked]))}: ${plan.length} exercises</div>
+               <div class="list-group list-group-flush mb-2">${plan
+                   .map(
+                       (e, i) => `<div class="list-group-item d-flex align-items-center gap-2 px-1">${thumb(e.name, 44)}
+                        <div class="flex-fill min-w-0"><div class="fw-bold text-truncate small">${esc(e.name)}</div>
+                        <div class="small text-secondary">${e.sets} × ${e.repsHigh ? `${e.repsLow}–${e.repsHigh}` : clock(e.seconds ?? 0)}</div></div>
+                        <button class="btn btn-icon btn-sm btn-ghost-secondary" data-swap="${i}" aria-label="Swap"><i class="ti ti-replace"></i></button>
+                        <button class="btn btn-icon btn-sm btn-ghost-danger" data-drop="${i}" aria-label="Remove"><i class="ti ti-x"></i></button></div>`,
+                   )
+                   .join('')}</div>
+               <button class="btn btn-sm w-100" data-addx><i class="ti ti-plus me-1"></i>Add an exercise</button>`
+            : '<p class="text-secondary text-center my-3">Nothing picked yet.</p>';
+        startBtn.disabled = !plan.length;
+        startBtn.innerHTML = plan.length ? `<i class="ti ti-player-play me-1"></i>Start ${esc(buildName([...picked]))}` : 'Pick some muscles';
+    };
+
+    s.el.addEventListener('click', async (ev) => {
+        const t = ev.target as HTMLElement;
+        // a muscle tapped on the figures (the drawings here pick, they do not zoom)
+        const hit = t.closest('[data-muscle]');
+        if (hit && figs.contains(hit)) {
+            const m = hit.getAttribute('data-muscle') as Muscle;
+            if (picked.has(m)) picked.delete(m);
+            else picked.add(m);
+            edited = false;
+            draw();
+            return;
+        }
+        const bg = t.closest<HTMLElement>('[data-bg]')?.dataset.bg as MuscleGroup | undefined;
+        if (bg) {
+            const all = MUSCLE_IDS.filter((m) => groupOf(m) === bg);
+            const on = all.every((m) => picked.has(m));
+            for (const m of all) on ? picked.delete(m) : picked.add(m);
+            edited = false;
+            draw();
+            return;
+        }
+        const z = t.closest<HTMLElement>('[data-size]')?.dataset.size as BuildSize | undefined;
+        if (z) {
+            size = z;
+            edited = false;
+            draw();
+            return;
+        }
+        const drop = t.closest<HTMLElement>('[data-drop]')?.dataset.drop;
+        if (drop !== undefined) {
+            plan.splice(Number(drop), 1);
+            edited = true;
+            draw();
+            return;
+        }
+        const swap = t.closest<HTMLElement>('[data-swap]')?.dataset.swap;
+        if (swap !== undefined) {
+            pickExercise((name) => {
+                plan[Number(swap)] = { ...plan[Number(swap)], name };
+                edited = true;
+                draw();
+            }, 'Swap for');
+            return;
+        }
+        if (t.closest('[data-addx]')) {
+            pickExercise((name) => {
+                plan.push({ name, sets: 3, repsLow: 8, repsHigh: 12, restSeconds: 90 });
+                edited = true;
+                draw();
+            });
+            return;
+        }
+        if (t.closest('[data-start]') && plan.length) {
+            startBtn.disabled = true;
+            try {
+                const w = await api<GymWorkout>('POST', '/api/gym/workouts/start', { kind: 'strength', name: buildName([...picked]), exercises: plan });
+                s.close();
+                active = w;
+                void openLogger(w, { onDone: () => void reload() });
+            } catch (err) {
+                startBtn.disabled = false;
+                toast((err as Error).message, 'error');
+            }
+        }
+    });
+    draw();
+}
+
+/* ----------------------------------------------------------------------- */
+/* Suggested templates                                                      */
+
+async function suggestionsSheet() {
+    const s = sheet('Suggested templates', loadingHtml('Reading your routine'), { size: 'lg' });
+    let r: Suggestions;
+    try {
+        r = await api<Suggestions>('GET', '/api/gym/suggestions');
+    } catch (err) {
+        s.body.innerHTML = errorAlert(esc((err as Error).message));
+        return;
+    }
+    if (!r.suggestions.length) {
+        s.body.innerHTML = emptyState('wand', 'Nothing to suggest yet', 'A workout name done three times or more becomes a routine to build on.');
+        return;
+    }
+    const max = Math.max(24, ...GROUP_IDS.map((g) => Math.max(r.before[g], r.after[g])));
+    const bars = GROUP_IDS.map((g) => {
+        const [low, high] = GROUPS[g].sets;
+        const pct = (v: number) => `${Math.min(100, (v / max) * 100)}%`;
+        return `<div class="gym-gbar gym-cmp">
+            <span class="gym-gbar-name">${GROUPS[g].label}</span>
+            <span class="gym-gbar-track"><span class="gym-gbar-band" style="left:${pct(low)};width:${((high - low) / max) * 100}%"></span>
+                <span class="gym-gbar-fill was" style="width:${pct(r.before[g])}"></span>
+                <span class="gym-gbar-fill" style="width:${pct(r.after[g])}"></span></span>
+            <span class="gym-gbar-val small">${r1(r.before[g])} → <b>${r1(r.after[g])}</b></span>
+        </div>`;
+    }).join('');
+    const card = (t: TemplateSuggestion, i: number) => `<div class="card mb-3" data-sug="${i}"><div class="card-body p-3">
+        <div class="d-flex align-items-start gap-2 mb-2">
+            <div class="flex-fill"><div class="fw-bold">${esc(t.name)} ${t.sessions ? '' : '<span class="badge bg-purple-lt">new</span>'}</div>
+            <div class="small text-secondary">${t.sessions ? `from your last ${Math.min(8, t.sessions)} of ${t.sessions} sessions · ${t.perWeek}× a week` : 'once a week'}${t.replaces ? ' · replaces your template of this name' : ''}</div></div>
+            <button class="btn btn-primary btn-sm" data-use="${i}">Use</button>
+        </div>
+        <div class="gym-sug-list">${t.exercises
+            .map((e) => `<div class="d-flex align-items-center gap-2 py-1">${thumb(e.name, 36)}<div class="flex-fill min-w-0 text-truncate small">${esc(e.name)}</div>
+                <div class="small text-nowrap text-secondary">${e.sets} × ${e.repsHigh ? `${e.repsLow}–${e.repsHigh}` : e.seconds ? clock(e.seconds) : ''}</div></div>`)
+            .join('')}</div>
+        ${t.changes.length ? `<div class="hud-label mt-2 mb-1">What changed</div><ul class="small mb-0 ps-3">${t.changes.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : '<div class="small text-secondary mt-2">Matches what you do.</div>'}
+    </div></div>`;
+    s.body.innerHTML = `<p class="text-secondary small">From your last ${r.weeks} weeks. Each change says why; nothing changes until you use a template.</p>
+        <div class="card mb-3"><div class="card-body">
+            <div class="hud-label mb-1">Hard sets a week per group</div>
+            <div class="small text-secondary mb-2">Now (pale) and with the suggestions (red), against the range that grows each group (green).</div>
+            <div class="gym-gbars">${bars}</div>
+        </div></div>
+        ${r.suggestions.map(card).join('')}
+        <button class="btn btn-outline-primary w-100 mb-2" data-use="all">Use all ${r.suggestions.length}</button>`;
+    const use = async (t: TemplateSuggestion) => {
+        const payload = { name: t.name, kind: t.kind, exercises: t.exercises };
+        if (t.replaces) await api('PUT', `/api/gym/templates/${t.replaces}`, payload);
+        else await api('POST', '/api/gym/templates', payload);
+    };
+    s.body.addEventListener('click', async (ev) => {
+        const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-use]');
+        if (!b) return;
+        b.disabled = true;
+        try {
+            if (b.dataset.use === 'all') for (const t of r.suggestions) await use(t);
+            else await use(r.suggestions[Number(b.dataset.use)]);
+            toast(b.dataset.use === 'all' ? `${r.suggestions.length} templates saved` : 'Template saved');
+            if (b.dataset.use === 'all') s.close();
+            else b.outerHTML = '<span class="badge bg-success-lt"><i class="ti ti-check"></i> saved</span>';
+            await reload();
+        } catch (err) {
+            b.disabled = false;
+            toast((err as Error).message, 'error');
+        }
+    });
+}
+
+/* ----------------------------------------------------------------------- */
 /* Settings and the Strong import                                           */
 
+interface UnitRow {
+    name: string;
+    sets: number;
+    weights: number[];
+    detected: 'kg' | 'lbs' | null;
+    evidence: number[];
+    saved: 'kg' | 'lbs' | null;
+    known: boolean;
+}
+
+/* The import in two steps: the file is read first and each exercise shown with its weights and
+ * its unit (as the file proves it, as set before, else kg), to be set where the gym's machines
+ * are in pounds; then imported with those units. */
 function importSheet() {
     const s = sheet(
         'Import from Strong',
-        `<ol class="mb-3">
+        `<div data-step="1">
+        <ol class="mb-3">
             <li>In Strong: <b>Profile</b> → <b>Settings</b> (the gear) → <b>Export Strong Data</b>.</li>
             <li>Save the CSV file to your phone (Files, or mail it to yourself).</li>
             <li>Pick it here.</li>
         </ol>
         <input type="file" class="form-control mb-2" accept=".csv,text/csv,text/plain" data-file />
-        <div class="d-flex align-items-center gap-2 mb-2"><span class="small text-secondary">Weights in the file are in</span>
-            <select class="form-select form-select-sm w-auto" data-unit><option value="kg">kg</option><option value="lbs">lbs</option></select></div>
-        <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="gym-learn" checked data-learn />
-            <label class="form-check-label" for="gym-learn">Make my templates from the workouts I repeat (they replace the starter weights split)</label></div>
-        <div class="small text-secondary mt-2">Importing again replaces the earlier import of the same workouts, never doubles them. Workouts logged here stay.</div>
+        <div class="small text-secondary">Importing again replaces the earlier import of the same workouts, never doubles them. Workouts logged here stay.</div>
+        </div>
+        <div data-step="2" hidden></div>
         <div data-result class="mt-3"></div>`,
-        { footer: '<button class="btn btn-primary" data-go>Import</button>' },
+        { size: 'lg', footer: '<button class="btn btn-primary" data-go>Check the file</button>' },
     );
-    s.el.querySelector('[data-go]')!.addEventListener('click', async (ev) => {
-        const btn = ev.currentTarget as HTMLButtonElement;
-        const file = s.el.querySelector<HTMLInputElement>('[data-file]')!.files?.[0];
-        if (!file) {
-            toast('Pick the CSV file first', 'error');
+    const go = s.el.querySelector<HTMLButtonElement>('[data-go]')!;
+    let file: File | undefined;
+    let rows: UnitRow[] = [];
+    const units = new Map<string, 'kg' | 'lbs'>();
+    const busy = (text: string) => {
+        go.disabled = true;
+        go.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${text}`;
+    };
+    const machine = (n: string) => /machine|cable|plate loaded|pec deck|crossover|pulldown|pushdown|face pull/i.test(n);
+
+    const drawUnits = () => {
+        const step = s.el.querySelector<HTMLElement>('[data-step="2"]')!;
+        step.innerHTML = `<p class="mb-2">Strong writes each exercise in the unit you set for it, and the file does not say which. Check the units: <b>lbs</b> where the machine or your log is in pounds.</p>
+            <div class="d-flex flex-wrap gap-1 mb-2">
+                <button class="gym-chip" data-all="kg">All kg</button><button class="gym-chip" data-all="lbs">All lbs</button>
+                <button class="gym-chip" data-all="machines">Machines &amp; cables in lbs</button>
+            </div>
+            <div class="list-group list-group-flush">${rows
+                .map((r) => {
+                    const u = units.get(r.name)!;
+                    return `<div class="list-group-item d-flex align-items-center gap-2 px-1" data-row="${esc(r.name)}">
+                        <div class="flex-fill min-w-0"><div class="fw-bold text-truncate">${esc(r.name)}</div>
+                        <div class="small text-secondary text-truncate">${r.sets} sets · ${r.weights.slice(0, 5).map((w) => kg(w)).join(', ') || 'no weights'}
+                        ${r.detected ? ` · <span class="badge bg-success-lt" title="${r.evidence.map((v) => kg(v)).join(', ')} only make sense in ${r.detected}">proven</span>` : r.saved ? ' · <span class="badge bg-secondary-lt">set before</span>' : ''}</div></div>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn${u === 'kg' ? ' btn-primary' : ''}" data-u="kg">kg</button><button class="btn${u === 'lbs' ? ' btn-primary' : ''}" data-u="lbs">lbs</button>
+                        </div></div>`;
+                })
+                .join('')}</div>
+            <div class="form-check mt-3 mb-0"><input class="form-check-input" type="checkbox" id="gym-learn" checked data-learn />
+                <label class="form-check-label" for="gym-learn">Make templates from the workouts I repeat (they replace the starter weights split)</label></div>`;
+    };
+
+    s.el.addEventListener('click', (ev) => {
+        const t = ev.target as HTMLElement;
+        const all = t.closest<HTMLElement>('[data-all]')?.dataset.all;
+        if (all) {
+            for (const r of rows) units.set(r.name, all === 'machines' ? (machine(r.name) ? 'lbs' : 'kg') : (all as 'kg' | 'lbs'));
+            // what the file proves stays
+            for (const r of rows) if (r.detected) units.set(r.name, r.detected);
+            drawUnits();
             return;
         }
+        const u = t.closest<HTMLElement>('[data-u]')?.dataset.u as 'kg' | 'lbs' | undefined;
+        const row = t.closest<HTMLElement>('[data-row]')?.dataset.row;
+        if (u && row) {
+            units.set(row, u);
+            drawUnits();
+        }
+    });
+
+    go.addEventListener('click', async () => {
+        const result = s.el.querySelector('[data-result]')!;
+        if (!rows.length) {
+            file = s.el.querySelector<HTMLInputElement>('[data-file]')!.files?.[0];
+            if (!file) {
+                toast('Pick the CSV file first', 'error');
+                return;
+            }
+            busy('Reading');
+            const form = new FormData();
+            form.append('file', file);
+            try {
+                const p = await api<{ workouts: number; from: number | null; to: number | null; exercises: UnitRow[] }>('POST', '/api/gym/import/strong/preview', form);
+                rows = p.exercises;
+                for (const r of rows) units.set(r.name, r.detected ?? r.saved ?? 'kg');
+                s.el.querySelector<HTMLElement>('[data-step="1"]')!.hidden = true;
+                s.el.querySelector<HTMLElement>('[data-step="2"]')!.hidden = false;
+                result.innerHTML = '';
+                drawUnits();
+                s.el.querySelector<HTMLElement>('[data-step="2"]')!.insertAdjacentHTML(
+                    'afterbegin',
+                    `<div class="alert alert-info py-2">${p.workouts} workouts${p.from ? ` from ${shortDay(p.from)} ${new Date(p.from).getFullYear()} to ${shortDay(p.to!)} ${new Date(p.to!).getFullYear()}` : ''}, ${rows.length} exercises.</div>`,
+                );
+                go.disabled = false;
+                go.textContent = `Import ${p.workouts} workouts`;
+            } catch (err) {
+                result.innerHTML = errorAlert(esc((err as Error).message));
+                go.disabled = false;
+                go.textContent = 'Check the file';
+            }
+            return;
+        }
+        busy('Importing');
         const form = new FormData();
-        form.append('unit', s.el.querySelector<HTMLSelectElement>('[data-unit]')!.value);
-        form.append('file', file);
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing';
+        form.append('unit', 'kg');
+        form.append('units', JSON.stringify(Object.fromEntries(units)));
+        form.append('file', file!);
         try {
+            const learn = s.el.querySelector<HTMLInputElement>('[data-learn]')?.checked;
             const r = await api<{ workouts: number; replaced: number; from: number; to: number; exercises: number; guessed: { name: string; primary: string[] }[] }>('POST', '/api/gym/import/strong', form);
             let learned = 0;
-            if (s.el.querySelector<HTMLInputElement>('[data-learn]')!.checked) learned = (await api<{ added: number }>('POST', '/api/gym/templates/learn')).added;
+            if (learn) learned = (await api<{ added: number }>('POST', '/api/gym/templates/learn')).added;
             await reload();
             const unknown = r.guessed.filter((g) => !g.primary.length);
-            s.el.querySelector('[data-result]')!.innerHTML = `<div class="alert alert-success mb-0">
-                <b>${r.workouts} workouts</b> from ${shortDay(r.from)} ${new Date(r.from).getFullYear()} to ${shortDay(r.to)} ${new Date(r.to).getFullYear()}, ${r.exercises} exercises${r.replaced ? ` (${r.replaced} replaced)` : ''}.
-                ${learned ? `<br>${learned} templates made from your routine.` : ''}
-                ${r.guessed.length ? `<br>${r.guessed.length} exercises were new to kibbl.: their muscles were guessed from the name${unknown.length ? `, ${unknown.length} need you to set them (Exercises → the exercise → Muscles): ${unknown.map((u) => esc(u.name)).join(', ')}` : ''}.` : ''}
+            const lbs = [...units.values()].filter((u) => u === 'lbs').length;
+            s.el.querySelector<HTMLElement>('[data-step="2"]')!.hidden = true;
+            result.innerHTML = `<div class="alert alert-success mb-0">
+                <b>${r.workouts} workouts</b> imported, ${r.exercises} exercises${r.replaced ? ` (${r.replaced} replaced)` : ''}${lbs ? `, ${lbs} in lbs (shown and entered in lbs from now on)` : ''}.
+                ${learned ? `<br>${learned} templates made from your routine. See <b>Suggested</b> on Train for them balanced over the week.` : ''}
+                ${unknown.length ? `<br>Set the muscles of ${unknown.map((u) => esc(u.name)).join(', ')} (Exercises → the exercise → Muscles &amp; unit).` : ''}
             </div>`;
-            btn.remove();
+            go.remove();
         } catch (err) {
-            s.el.querySelector('[data-result]')!.innerHTML = errorAlert(esc((err as Error).message));
-            btn.disabled = false;
-            btn.textContent = 'Import';
+            result.innerHTML = errorAlert(esc((err as Error).message));
+            go.disabled = false;
+            go.textContent = 'Import';
         }
     });
 }
@@ -928,6 +1275,23 @@ function onClick(ev: Event) {
     if (act) {
         if (act.tagName === 'A') ev.preventDefault();
         switch (act.dataset.act) {
+            case 'cancel-active':
+                if (active) void cancelWorkout(active, () => void reload());
+                return;
+            case 'page-back':
+                if (tab === 'train') window.location.href = '/';
+                else if (history.state?.tab) history.back();
+                else setTab('train');
+                return;
+            case 'suggest':
+                void suggestionsSheet();
+                return;
+            case 'build':
+                if (active) {
+                    toast('A workout runs already: finish or cancel it first', 'error');
+                    void openLogger(active, { onDone: () => void reload() });
+                } else muscleBuilder();
+                return;
             case 'resume':
                 if (active) void openLogger(active, { onDone: () => void reload() });
                 return;
@@ -1024,7 +1388,14 @@ async function main() {
     injectStyle();
     bottomNav();
     document.getElementById('page-actions')!.innerHTML = `<button class="btn btn-icon" data-act="settings" aria-label="Gym settings"><i class="ti ti-settings"></i></button>`;
+    // the page's own back: to the tab before, from Train to kibbl.'s home
+    document.getElementById('page-title')!.closest('.col')!.insertAdjacentHTML(
+        'beforebegin',
+        '<div class="col-auto"><button class="btn btn-icon btn-ghost-secondary" data-act="page-back" aria-label="Back"><i class="ti ti-arrow-left"></i></button></div>',
+    );
     document.addEventListener('click', onClick);
+    // a drawing tapped anywhere opens big, before anything else the tap would do
+    document.addEventListener('click', onZoomClick, true);
     document.addEventListener('input', (ev) => {
         const el = ev.target as HTMLInputElement;
         if (el.matches('[data-exq]')) {
@@ -1039,6 +1410,8 @@ async function main() {
     // an exercise's sheet asked for from inside the logger
     document.addEventListener('gym:exercise', (ev) => exerciseSheet((ev as CustomEvent<string>).detail));
     window.addEventListener('popstate', () => {
+        // the phone's back closes the screen on top first
+        if (layerPop()) return;
         const p = (window.location.pathname.split('/')[2] as Tab) || 'train';
         setTab(TABS.some(([t]) => t === p) ? p : 'train', false);
     });

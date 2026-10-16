@@ -86,7 +86,7 @@ export function strengthChart(el: HTMLElement, points: { week: number; index: nu
 }
 
 /* An exercise over time: the estimated 1RM and the heaviest set as lines, the volume as bars. */
-export function exerciseChart(el: HTMLElement, sessions: ExerciseSession[]) {
+export function exerciseChart(el: HTMLElement, sessions: ExerciseSession[], show: (kg: number) => number = (v) => v, unit = 'kg') {
     const dark = isDarkMode();
     const withWeight = sessions.filter((s) => s.topWeight > 0);
     if (!withWeight.length) {
@@ -103,9 +103,9 @@ export function exerciseChart(el: HTMLElement, sessions: ExerciseSession[]) {
         ...baseOptions(),
         chart: { ...baseOptions().chart, type: 'line', height: 240 },
         series: [
-            { name: 'Volume', type: 'column', data: withWeight.map((s) => ({ x: s.at, y: Math.round(s.volume) })) },
-            { name: 'Estimated 1RM', type: 'line', data: withWeight.map((s) => ({ x: s.at, y: s.best ? r1(s.best.e1rm) : null })) },
-            { name: 'Heaviest', type: 'line', data: withWeight.map((s) => ({ x: s.at, y: s.topWeight })) },
+            { name: 'Volume', type: 'column', data: withWeight.map((s) => ({ x: s.at, y: Math.round(show(s.volume)) })) },
+            { name: 'Estimated 1RM', type: 'line', data: withWeight.map((s) => ({ x: s.at, y: s.best ? r1(show(s.best.e1rm)) : null })) },
+            { name: 'Heaviest', type: 'line', data: withWeight.map((s) => ({ x: s.at, y: r1(show(s.topWeight)) })) },
         ],
         colors: [dark ? 'rgba(243,230,207,0.22)' : 'rgba(42,26,18,0.14)', RED, dark ? '#e0b14a' : '#c98d12'],
         stroke: { width: [0, 3, 2], curve: 'smooth' },
@@ -113,8 +113,8 @@ export function exerciseChart(el: HTMLElement, sessions: ExerciseSession[]) {
         plotOptions: { bar: { columnWidth: '50%' } },
         xaxis: { type: 'datetime', labels: { datetimeUTC: false, format: 'd MMM' } },
         yaxis: [
-            { seriesName: 'Volume', opposite: true, labels: { formatter: (v: number) => `${Math.round(v)}` }, title: { text: 'kg × reps' } },
-            { seriesName: 'Estimated 1RM', labels: { formatter: (v: number) => `${Math.round(v)}` }, title: { text: 'kg' } },
+            { seriesName: 'Volume', opposite: true, labels: { formatter: (v: number) => `${Math.round(v)}` }, title: { text: `${unit} × reps` } },
+            { seriesName: 'Estimated 1RM', labels: { formatter: (v: number) => `${Math.round(v)}` }, title: { text: unit } },
             { seriesName: 'Estimated 1RM', show: false },
         ],
         legend: { position: 'bottom', fontSize: '12px' },

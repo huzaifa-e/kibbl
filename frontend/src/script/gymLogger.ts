@@ -14,7 +14,7 @@ import {
     type GymWorkout,
     type SetKind,
 } from '../../../shared/gym';
-import { api, ask, clock, esc, info, kg, logged, minutesText, pace, parseClock, r1, sheet, state, thumb, toast, tonnage, workoutStats } from './gymCommon';
+import { api, ask, clock, openLayer, saveAsTemplate, esc, info, kg, logged, minutesText, pace, parseClock, r1, sheet, shown, state, stored, thumb, toast, tonnage, workoutStats, wText } from './gymCommon';
 import { pickExercise } from './gymPicker';
 
 /* The workout as it is done: full screen over the page. Each exercise with its sets (what was
@@ -37,6 +37,7 @@ let rest: { until: number; total: number; timer?: number } | null = null;
 let wakeLock: { release(): Promise<void> } | null = null;
 let saving = false;
 let pending = false;
+let layerClosed: (() => void) | null = null;
 
 /* ----------------------------------------------------------------------- */
 /* Saving                                                                   */
@@ -120,11 +121,11 @@ function repRange(name: string) {
 }
 
 // "80 × 8", "1:30", "5.2 km · 28:00" for a set
-function setText(s: GymSet | undefined, x: ExerciseInfo) {
+function setText(s: GymSet | undefined, x: ExerciseInfo, name: string) {
     if (!s) return '–';
     if (x.kind === 'cardio') return [s.distance ? `${r1(s.distance)} km` : '', s.seconds ? clock(s.seconds) : ''].filter(Boolean).join(' · ') || '–';
     if (x.kind === 'duration' || x.kind === 'mobility') return s.seconds ? clock(s.seconds) : '–';
-    const weight = s.weight ? `${x.kind === 'assisted' ? '−' : x.kind === 'bodyweight' ? '+' : ''}${kg(s.weight)}` : x.kind === 'bodyweight' ? 'BW' : '';
+    const weight = s.weight ? `${x.kind === 'assisted' ? '−' : x.kind === 'bodyweight' ? '+' : ''}${kg(shown(s.weight, name))}` : x.kind === 'bodyweight' ? 'BW' : '';
     return weight ? `${weight} × ${s.reps ?? '–'}` : `${s.reps ?? '–'}`;
 }
 
@@ -137,20 +138,22 @@ const NEXT_KIND: Record<SetKind, SetKind> = { normal: 'warmup', warmup: 'drop', 
 function columns(x: ExerciseInfo) {
     if (x.kind === 'cardio') return ['km', 'time'];
     if (x.kind === 'duration' || x.kind === 'mobility') return ['time'];
-    return [x.kind === 'assisted' ? '−kg' : x.kind === 'bodyweight' ? '+kg' : 'kg', 'reps'];
+    const u = x.unit === 'lbs' ? 'lb' : 'kg';
+    return [x.kind === 'assisted' ? `−${u}` : x.kind === 'bodyweight' ? `+${u}` : u, 'reps'];
 }
 
-function setRow(ei: number, s: GymSet, si: number, x: ExerciseInfo, prev: GymSet | undefined, normalIndex: number) {
+function setRow(ei: number, s: GymSet, si: number, x: ExerciseInfo, prev: GymSet | undefined, normalIndex: number, name: string) {
+    const w = (v: number | null | undefined) => (typeof v === 'number' ? String(shown(v, name)) : '');
     const cols = columns(x);
     const field = (col: string) => {
         if (col === 'reps') return `<input class="form-control" inputmode="numeric" data-f="reps" value="${s.reps ?? ''}" placeholder="${prev?.reps ?? ''}" />`;
         if (col === 'km') return `<input class="form-control" inputmode="decimal" data-f="distance" value="${s.distance ?? ''}" placeholder="${prev?.distance ?? ''}" />`;
         if (col === 'time') return `<input class="form-control" inputmode="numeric" data-f="seconds" value="${s.seconds ? clock(s.seconds) : ''}" placeholder="${prev?.seconds ? clock(prev.seconds) : 'm:ss'}" />`;
-        return `<input class="form-control" inputmode="decimal" data-f="weight" value="${s.weight ?? ''}" placeholder="${prev?.weight ?? ''}" />`;
+        return `<input class="form-control" inputmode="decimal" data-f="weight" value="${w(s.weight)}" placeholder="${w(prev?.weight)}" />`;
     };
     return `<div class="gym-set${s.done ? ' done' : ''} k-${s.kind}" data-e="${ei}" data-s="${si}">
         <button class="gym-setno" data-act="kind" title="Normal, warm-up, drop set, to failure">${KIND_LABEL[s.kind] || normalIndex}</button>
-        <div class="gym-prev text-secondary">${esc(setText(prev, x))}</div>
+        <div class="gym-prev text-secondary">${esc(setText(prev, x, name))}</div>
         ${cols.map(field).join('')}
         <button class="gym-tick" data-act="tick" aria-label="Done"><i class="ti ti-check"></i></button>
     </div>`;
@@ -167,12 +170,12 @@ function exerciseCard(e: GymExerciseLog, ei: number) {
     return `<div class="card gym-ex" data-e="${ei}">
         <div class="card-body p-2 p-sm-3">
             <div class="d-flex align-items-center gap-2 mb-2">
-                <button class="btn btn-ghost p-0 border-0" data-act="info">${thumb(e.name, 52)}</button>
+                ${thumb(e.name, 52)}
                 <div class="flex-fill min-w-0">
                     <div class="fw-bold text-truncate" data-act="info">${esc(e.name)}</div>
                     <div class="text-secondary small text-truncate">${
                         next
-                            ? `<i class="ti ti-trending-up"></i> ${kg(next.weight)} kg × ${next.reps} · ${esc(next.why)}`
+                            ? `<i class="ti ti-trending-up"></i> ${wText(next.weight, e.name)} × ${next.reps} · ${esc(next.why)}`
                             : prevSession
                               ? `last ${new Date(prevSession.at).toLocaleDateString([], { day: 'numeric', month: 'short' })}`
                               : 'first time'
@@ -193,7 +196,7 @@ function exerciseCard(e: GymExerciseLog, ei: number) {
             </div>
             ${e.notes ? `<div class="small text-secondary mb-2 gym-note"><i class="ti ti-note"></i> ${esc(e.notes)}</div>` : ''}
             <div class="gym-set gym-set-head text-secondary" style="--cols:${cols.length}"><span>Set</span><span>Last</span>${cols.map((c) => `<span>${c}</span>`).join('')}<span></span></div>
-            <div style="--cols:${cols.length}">${e.sets.map((s, si) => setRow(ei, s, si, x, prevSession?.sets[si] ?? prevSession?.sets[prevSession.sets.length - 1], s.kind === 'warmup' ? 0 : ++normal)).join('')}</div>
+            <div style="--cols:${cols.length}">${e.sets.map((s, si) => setRow(ei, s, si, x, prevSession?.sets[si] ?? prevSession?.sets[prevSession.sets.length - 1], s.kind === 'warmup' ? 0 : ++normal, e.name)).join('')}</div>
             ${cardio && cardio.paceSecPerKm ? `<div class="small text-secondary mt-1">${r1(cardio.distance)} km in ${clock(cardio.seconds)} · ${pace(cardio.paceSecPerKm)} · ${r1(cardio.kmh!)} km/h</div>` : ''}
             <button class="btn btn-sm w-100 mt-2" data-act="addset"><i class="ti ti-plus me-1"></i>Add set</button>
         </div>
@@ -207,7 +210,8 @@ function headerHtml() {
         return d.toISOString().slice(0, 16);
     };
     return `<div class="gym-log-head">
-        <button class="btn btn-icon btn-ghost-secondary" data-act="minimize" aria-label="Back"><i class="ti ti-chevron-down"></i></button>
+        <button class="btn btn-icon btn-ghost-secondary" data-act="minimize" aria-label="Back" title="Back (the workout keeps running)"><i class="ti ti-arrow-left"></i></button>
+        ${editing ? '' : '<button class="btn btn-ghost-danger btn-sm" data-act="cancel">Cancel</button>'}
         <div class="flex-fill text-center min-w-0">
             <div class="gym-log-clock" data-clock>${editing ? minutesText(((w.end ?? w.start) - w.start) / 60_000) : clock((Date.now() - w.start) / 1000)}</div>
             <div class="small text-secondary" data-status>${editing ? 'editing' : 'saved'}</div>
@@ -317,7 +321,7 @@ function emptySet(x: ExerciseInfo, like?: GymSet): GymSet {
     return s;
 }
 
-function readField(input: HTMLInputElement, s: GymSet) {
+function readField(input: HTMLInputElement, s: GymSet, name: string) {
     const f = input.dataset.f as 'weight' | 'reps' | 'seconds' | 'distance';
     const raw = input.value.trim();
     if (!raw) {
@@ -326,7 +330,7 @@ function readField(input: HTMLInputElement, s: GymSet) {
     }
     const v = f === 'seconds' ? parseClock(raw) : Number(raw.replace(',', '.'));
     if (v === null || !Number.isFinite(v) || v < 0) return;
-    s[f] = f === 'reps' ? Math.round(v) : v;
+    s[f] = f === 'reps' ? Math.round(v) : f === 'weight' ? stored(v, name) : v;
 }
 
 async function finish() {
@@ -361,15 +365,35 @@ function summary(done: GymWorkout) {
         const r = records(exerciseSessions(before, e.name));
         const best = Math.max(0, ...e.sets.filter(isWorkSet).map((s) => e1rm(s.weight, s.reps)));
         const heaviest = Math.max(0, ...e.sets.filter(isWorkSet).map((s) => s.weight ?? 0));
-        if (r.e1rm && best > r.e1rm.value) prs.push(`${esc(e.name)}: estimated 1RM ${kg(best)} kg (was ${kg(r.e1rm.value)})`);
-        else if (r.weight && heaviest > r.weight.value) prs.push(`${esc(e.name)}: heaviest ${kg(heaviest)} kg`);
+        if (r.e1rm && best > r.e1rm.value) prs.push(`${esc(e.name)}: estimated 1RM ${wText(best, e.name)} (was ${wText(r.e1rm.value, e.name)})`);
+        else if (r.weight && heaviest > r.weight.value) prs.push(`${esc(e.name)}: heaviest ${wText(heaviest, e.name)}`);
     }
-    sheet(
+    const s = sheet(
         'Workout done',
         `<div class="text-center mb-3"><div class="display-6 fw-bold">${esc(done.name)}</div>
             <div class="text-secondary">${minutesText(((done.end ?? done.start) - done.start) / 60_000)} · ${st.sets} sets${st.volume ? ` · ${tonnage(st.volume)}` : ''}${st.distance ? ` · ${r1(st.distance)} km` : ''}</div></div>
-        ${prs.length ? `<h4><i class="ti ti-trophy text-warning me-1"></i>New records</h4><ul>${prs.map((p) => `<li>${p}</li>`).join('')}</ul>` : '<p class="text-secondary text-center mb-0">Logged. Keep it going.</p>'}`,
+        ${prs.length ? `<h4><i class="ti ti-trophy text-warning me-1"></i>New records</h4><ul>${prs.map((p) => `<li>${p}</li>`).join('')}</ul>` : '<p class="text-secondary text-center mb-0">Logged. Keep it going.</p>'}
+        ${
+            done.templateId || !done.exercises.length
+                ? ''
+                : `<div class="card mt-3"><div class="card-body p-3"><div class="fw-bold mb-1">Keep this workout?</div>
+                    <div class="small text-secondary mb-2">Save it as a template to start it again with one tap.</div>
+                    <div class="d-flex gap-2"><input class="form-control" data-tname value="${esc(done.name)}" maxlength="80" /><button class="btn btn-primary text-nowrap" data-save-tpl>Save as template</button></div></div></div>`
+        }`,
     );
+    s.el.querySelector('[data-save-tpl]')?.addEventListener('click', async (ev) => {
+        const b = ev.currentTarget as HTMLButtonElement;
+        const name = s.el.querySelector<HTMLInputElement>('[data-tname]')!.value.trim() || done.name;
+        b.disabled = true;
+        try {
+            await saveAsTemplate(done, name);
+            b.closest('.card')!.innerHTML = `<div class="card-body p-3 text-success"><i class="ti ti-check me-1"></i>Saved as “${esc(name)}”: it is in your templates.</div>`;
+            onDone();
+        } catch (err) {
+            b.disabled = false;
+            toast((err as Error).message, 'error');
+        }
+    });
 }
 
 async function onClick(ev: Event) {
@@ -391,6 +415,13 @@ async function onClick(ev: Event) {
             return;
         case 'finish':
             await finish();
+            return;
+        case 'cancel':
+            await cancelWorkout(w, () => {
+                clearTimeout(saveTimer);
+                close();
+                onDone();
+            });
             return;
         case 'discard':
             if (await ask(editing ? 'Delete this workout?' : 'Discard this workout?', 'Its sets are gone for good.', editing ? 'Delete' : 'Discard', true)) {
@@ -418,7 +449,7 @@ async function onClick(ev: Event) {
                 // empty fields take last time's values, as they stand in the placeholders
                 row!.querySelectorAll<HTMLInputElement>('input[data-f]').forEach((input) => {
                     if (!input.value && input.placeholder && input.placeholder !== 'm:ss') input.value = input.placeholder;
-                    readField(input, s);
+                    readField(input, s, e.name);
                 });
                 const x = info(e.name);
                 if (!s.reps && !s.seconds && !s.distance && x.kind !== 'cardio') {
@@ -531,13 +562,16 @@ function onInput(ev: Event) {
     }
     const row = input.closest<HTMLElement>('[data-s]');
     if (!row || !input.dataset.f) return;
-    readField(input, w.exercises[Number(row.dataset.e)].sets[Number(row.dataset.s)]);
+    const ex = w.exercises[Number(row.dataset.e)];
+    readField(input, ex.sets[Number(row.dataset.s)], ex.name);
     changed();
 }
 
 /* ----------------------------------------------------------------------- */
 
 function close(final = true) {
+    layerClosed?.();
+    layerClosed = null;
     clearInterval(clockTimer);
     stopRest();
     if (!final) void save();
@@ -546,6 +580,21 @@ function close(final = true) {
     root?.remove();
     root = null;
     document.body.classList.remove('gym-logging');
+}
+
+/* A workout started by mistake goes at once; one with ticked sets only when that is confirmed. */
+export async function cancelWorkout(workout: GymWorkout, done: () => void) {
+    const ticked = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0);
+    if (ticked && !(await ask('Cancel this workout?', `${ticked} set${ticked === 1 ? ' is' : 's are'} ticked. Cancelling deletes the workout with them.`, 'Cancel workout', true))) return;
+    try {
+        await api('DELETE', `/api/gym/workouts/${workout._id}`);
+    } catch (err) {
+        toast(`Not cancelled: ${(err as Error).message}`, 'error');
+        return;
+    }
+    dropBackup();
+    toast('Workout cancelled');
+    done();
 }
 
 export function isOpen() {
@@ -561,6 +610,12 @@ export async function openLogger(workout: GymWorkout, opts: { editing?: boolean;
     root.className = 'gym-logger';
     document.body.appendChild(root);
     document.body.classList.add('gym-logging');
+    // the phone's back: the page again, the workout keeps running
+    layerClosed = openLayer(() => {
+        layerClosed = null;
+        close(false);
+        onDone();
+    });
     root.addEventListener('click', (e) => void onClick(e));
     root.addEventListener('change', onInput);
     root.addEventListener('input', (e) => {
