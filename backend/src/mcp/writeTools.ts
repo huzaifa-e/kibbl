@@ -2,7 +2,18 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { HeatingCommand } from '../../../shared/heating';
-import { framesizes, lampColors, lampModes, fanModes, isMirrored, rotationCommand, rotationOf, ZOOM_MAX } from '../../../shared/protocol';
+import {
+    RGB_FADE_MAX_MS,
+    framesizes,
+    lampColors,
+    lampModes,
+    fanModes,
+    isMirrored,
+    rgbPresets,
+    rotationCommand,
+    rotationOf,
+    ZOOM_MAX,
+} from '../../../shared/protocol';
 import { setNightSchedule } from '../core/air';
 import { applyMotionSettings, runDeviceCommand } from '../core/control';
 import { Device, User } from '../core/db';
@@ -198,6 +209,56 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             await publishDevice(doc._id);
             log.info('night schedule', { device: doc._id, night: enabled ? `${from}-${to}h` : 'off', user: who, via: VIA });
             return json({ ok: true, device: doc.name, schedule: { enabled, from, to } });
+        },
+    );
+
+    /* ------------------------------------------------------------------- */
+
+    server.registerTool(
+        'kibbl_light_set',
+        {
+            title: 'Set a light',
+            description:
+                'Changes a kibbl. light (an RGB strip, one colour for all of it): on or off, the colour as #rrggbb or a name (' +
+                Object.keys(rgbPresets).join(', ') +
+                '), the brightness in %, and how long the change fades. blink flashes it white to find it. Only the fields given change; the light comes back like this after a power cut.',
+            inputSchema: {
+                light: z.string().default('').describe('the kibbl. light by name or id; the only one if left empty'),
+                on: z.boolean().optional(),
+                color: z.string().optional().describe('#rrggbb, or a name such as warm or blue'),
+                brightness: z.number().int().min(1).max(100).optional().describe('%'),
+                fade_ms: z.number().int().min(0).max(RGB_FADE_MAX_MS).optional().describe('how long the change takes, 400 ms unless given'),
+                blink: z.boolean().optional().describe('flash white 3 times'),
+            },
+            annotations: writes,
+        },
+        async (args) => {
+            const doc = await findOwnDevice(session.userID, args.light, 'rgb');
+            if (!doc) return fail(`No kibbl. light "${args.light}". kibbl_light lists them.`);
+            const cmd: Record<string, unknown> = { cmd: 'rgb' };
+            if (args.on !== undefined) cmd.on = args.on;
+            if (args.color !== undefined) {
+                const name = lower(args.color);
+                const hex = /^#?([0-9a-f]{6})$/.exec(name);
+                const color = rgbPresets[name] ?? (hex ? [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16)) : undefined);
+                if (!color) return fail(`Colour "${args.color}" is no #rrggbb and none of ${Object.keys(rgbPresets).join(', ')}.`);
+                cmd.color = color;
+                // a colour asked for is meant to be seen
+                if (args.on === undefined) cmd.on = true;
+            }
+            if (args.brightness !== undefined) cmd.brightness = args.brightness;
+            if (args.fade_ms !== undefined) cmd.fadeMs = args.fade_ms;
+            const results: { change: string; ok: boolean; error?: string; rgb?: unknown }[] = [];
+            if (Object.keys(cmd).length > 1) {
+                const r = await runDeviceCommand(doc, cmd, who, VIA);
+                results.push({ change: 'light', ok: r.ok, error: r.error, rgb: r.rgb });
+            }
+            if (args.blink) {
+                const r = await runDeviceCommand(doc, { cmd: 'blink', count: 3, level: 60 }, who, VIA);
+                results.push({ change: 'blink', ok: r.ok, error: r.error });
+            }
+            if (!results.length) return fail('Nothing to change: give at least one setting.');
+            return json({ light: doc.name, results });
         },
     );
 

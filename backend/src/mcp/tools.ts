@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { productName, roomClimate, isMirrored, rotationOf } from '../../../shared/protocol';
+import { productName, roomClimate, isMirrored, rotationOf, type RgbState } from '../../../shared/protocol';
 import { version } from '../../../shared/version';
 import { Device, HealthLink, Meter, MotionEventModel } from '../core/db';
 import { getLive, summarize } from '../core/devices';
@@ -123,6 +123,16 @@ async function findMeter(userID: string, ref: string) {
 }
 
 // what the app shows of a device, without the hardware inside it
+// a kibbl. light as an assistant reads it: the colour also as #rrggbb
+function lightInfo(rgb: RgbState) {
+    return {
+        on: rgb.on,
+        color: rgb.color,
+        hex: '#' + rgb.color.map((c) => c.toString(16).padStart(2, '0')).join(''),
+        brightness_percent: rgb.brightness,
+    };
+}
+
 function deviceInfo(doc: DeviceDoc) {
     const s = summarize(doc);
     return {
@@ -139,6 +149,7 @@ function deviceInfo(doc: DeviceDoc) {
             ? { ...s.camera, rotation: rotationOf(s.camera, s.turn90), mirror: isMirrored(s.camera), zoom: s.view ?? { zoom: 1, x: 0.5, y: 0.5 } }
             : null,
         camera_error: s.cameraError ?? null,
+        light: s.caps.includes('rgb') ? (s.rgb ? lightInfo(s.rgb) : null) : undefined,
         signal_dbm: s.telemetry?.rssi ?? null,
         uptime_s: s.telemetry?.uptime ?? null,
         viewers: s.viewers,
@@ -202,7 +213,7 @@ export function createMcpServer(session: SessionInfo) {
         { name: 'kibbl', title: 'kibbl.', version },
         {
             instructions:
-                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), " +
+                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), the lights (kibbl. light, RGB strips), " +
                 'utility meters, the heat used (radiator readings, Techem), health data from a fitness tracker, and the workouts of every kind (gym sets, runs, rides, Pilates; kibbl_gym_workouts, kibbl_gym_progress). ' +
                 "Start with kibbl_overview; kibbl_analysis says what stands out across all of it (alerts, things worth a look, hints). All times are the home's local time; ranges of days include both ends. " +
                 'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise.',
@@ -265,6 +276,24 @@ export function createMcpServer(session: SessionInfo) {
         async () => {
             const docs = await Device.find({ status: 'approved', ownerID: session.userID }).sort({ createdAt: 1 }).lean();
             return json(docs.map(deviceInfo));
+        },
+    );
+
+    server.registerTool(
+        'kibbl_light',
+        {
+            title: 'Lights now',
+            description: 'The kibbl. lights (RGB strips, one colour for the whole strip): online, on or off, the colour and the brightness each one shows now.',
+            annotations: readOnly,
+        },
+        async () => {
+            const docs = await Device.find({ status: 'approved', ownerID: session.userID, caps: 'rgb' }).sort({ createdAt: 1 }).lean();
+            return json(
+                docs.map((doc) => {
+                    const s = summarize(doc);
+                    return { id: s._id, name: s.name, online: s.online, light: s.rgb ? lightInfo(s.rgb) : null };
+                }),
+            );
         },
     );
 
