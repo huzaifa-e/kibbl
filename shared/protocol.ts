@@ -7,7 +7,22 @@ import type { RoomKind } from './roomKind';
  */
 
 export type Capability =
-    'camera' | 'light' | 'ota' | 'switch' | 'feeder' | 'thermostat' | 'air' | 'fan' | 'lamp' | 'night' | 'calibrate' | 'buzzer' | 'smoke' | 'window' | 'fire';
+    | 'camera'
+    | 'light'
+    | 'ota'
+    | 'switch'
+    | 'feeder'
+    | 'thermostat'
+    | 'air'
+    | 'fan'
+    | 'lamp'
+    | 'night'
+    | 'calibrate'
+    | 'buzzer'
+    | 'smoke'
+    | 'window'
+    | 'fire'
+    | 'rgb';
 
 export const capabilityCommands: Record<string, string[]> = {
     camera: ['camera'],
@@ -28,6 +43,8 @@ export const capabilityCommands: Record<string, string[]> = {
     smoke: [], // events only
     window: [],
     fire: [], // events and the alarm on the device
+    // kibbl. light (an RGB strip, one colour for all of it)
+    rgb: ['rgb'],
 };
 
 // any device may get these: every device is on the Wi-Fi
@@ -39,6 +56,7 @@ export const productNames: Record<string, string> = {
     'kibbl-cam': 'kibbl. cam',
     'kibbl-air': 'kibbl. air',
     'kibbl-feeder': 'kibbl. feeder',
+    'kibbl-light': 'kibbl. light',
     'kibbl-switch': 'kibbl. switch',
     'kibbl-thermostat': 'kibbl. thermostat',
 };
@@ -48,6 +66,7 @@ export function productName(model: string | undefined, caps: string[] = []) {
     if (caps.includes('camera')) return 'kibbl. cam';
     if (caps.includes('feeder')) return 'kibbl. feeder';
     if (caps.includes('air')) return 'kibbl. air';
+    if (caps.includes('rgb')) return 'kibbl. light';
     return 'kibbl. device';
 }
 
@@ -131,8 +150,37 @@ export interface DeviceTelemetry {
     frameBytes: number;
     air?: AirState; // a kibbl. air
     feeder?: FeederState; // a kibbl. feeder: several a second while the iris moves
+    rgb?: RgbState; // a kibbl. light
     time: number; // server time it arrived
 }
+
+/* ----------------------------------------------------------------------- */
+/* kibbl. light: an analog RGB strip, one colour for all of it (firmware/light) */
+
+// the light as set on the device (hello, telemetry, the answer to rgb); it comes back after a power cut
+export interface RgbState {
+    on: boolean;
+    color: [number, number, number]; // 0-255 each, the colour at full brightness
+    brightness: number; // 1-100 %
+    order?: string; // the order of the strip's wires on the board's red, green and blue
+}
+
+export const RGB_FADE_MAX_MS = 10000;
+export const rgbOrders = ['rgb', 'rbg', 'grb', 'gbr', 'brg', 'bgr'] as const;
+
+// colours the app and an assistant offer by name
+export const rgbPresets: Record<string, [number, number, number]> = {
+    warm: [255, 150, 70],
+    white: [255, 255, 255],
+    red: [255, 0, 0],
+    orange: [255, 90, 0],
+    yellow: [255, 200, 0],
+    green: [0, 255, 0],
+    cyan: [0, 255, 255],
+    blue: [0, 0, 255],
+    purple: [150, 0, 255],
+    pink: [255, 40, 120],
+};
 
 /* ----------------------------------------------------------------------- */
 /* kibbl. air: the Conny CO2 traffic light */
@@ -347,6 +395,7 @@ export interface DeviceSummary {
     wifiChangeFailed?: string; // the network a change from the app could not join; the device went back
     light?: number;
     feeder?: FeederState; // a kibbl. feeder
+    rgb?: RgbState; // a kibbl. light, while online
     motion: MotionSettings;
     air?: AirDevice; // a kibbl. air
     roomId?: string; // the room of the home it stands in
