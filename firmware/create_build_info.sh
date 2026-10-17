@@ -10,7 +10,7 @@ then
 fi
 
 # Get branch name for adding branch name to version
-# $2 is optional, $3 the product prefix (KIBBL for the cam, KIBBL-AIR); run in the project
+# $2 is optional, $3 the product prefix (KIBBL for the cam, KIBBL-AIR, KIBBL-LIGHT); run in the project
 prefix="${3:-KIBBL}"
 # the version number of the product, raised with every change to its firmware
 version="$(tr -d '[:space:]' < VERSION)"

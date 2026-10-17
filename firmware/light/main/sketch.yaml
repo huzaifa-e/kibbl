@@ -1,0 +1,11 @@
+# arduino-cli compile --profile light (firmware/light/build.sh): the core and the library
+# versions the image is built with, the same on every machine and in CI
+profiles:
+  light:
+    fqbn: esp8266:esp8266:esp8285:xtal=160,eesz=1M,ip=lm2n,ssl=all,mmu=3232,exception=disabled,dbg=Disabled,lvl=None____
+    platforms:
+      - platform: esp8266:esp8266 (3.1.2)
+        platform_index_url: https://arduino.esp8266.com/stable/package_esp8266com_index.json
+    libraries:
+      - ArduinoJson (7.4.2)
+default_profile: light

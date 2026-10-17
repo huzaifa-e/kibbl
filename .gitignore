@@ -46,3 +46,6 @@ firmware/*/main/BUILD_INFO.h
 
 # detection models, downloaded (Dockerfile, backend/src/core/catDetector.ts)
 backend/models/
+# kibbl. light (arduino-cli): the setup page made from kibbl_core's portal.html
+firmware/light/build/
+firmware/light/main/portal_html.h
