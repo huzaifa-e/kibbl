@@ -49,6 +49,31 @@ jobs:
                   name: firmware-${{ matrix.project }}-${{ github.sha }}
                   path: firmware/${{ matrix.project }}/artifacts
 
+    # kibbl. light (Magic Home controller, ESP8285): an Arduino sketch, ESP-IDF 5 has no ESP8266
+    firmware-light:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: arduino/setup-arduino-cli@v2
+            - name: Build
+              shell: bash
+              working-directory: firmware/light
+              run: |
+                  branch=""
+                  if [ "$GITHUB_REF_NAME" != "main" ]; then
+                      branch="-${GITHUB_REF_NAME//\//-}"
+                  fi
+                  ../create_build_info.sh "${GITHUB_SHA::8}" "$branch" KIBBL-LIGHT
+                  ./build.sh
+                  v="$(tr -d '[:space:]' < VERSION)"
+                  mkdir -p artifacts
+                  cp build/main.ino.bin "artifacts/KIBBL-LIGHT-$v-${GITHUB_SHA::8}$branch.bin"
+                  cp build/main.ino.elf "artifacts/KIBBL-LIGHT-$v-${GITHUB_SHA::8}$branch.elf"
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: firmware-light-${{ github.sha }}
+                  path: firmware/light/artifacts
+
     app:
         runs-on: ubuntu-latest
         steps:
