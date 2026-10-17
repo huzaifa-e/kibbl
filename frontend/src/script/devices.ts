@@ -22,6 +22,7 @@ const capabilityLabels: Record<string, string> = {
     smoke: 'cigarettes',
     window: 'windows',
     fire: 'fire warning',
+    rgb: 'RGB light',
 };
 // shown on the device page instead
 const hiddenCapabilities = new Set(['blink', 'buzzer', 'calibrate']);
@@ -56,7 +57,7 @@ function deviceRow(d: DeviceSummary) {
     return `<tr data-row="${d._id}">
         <td>
             <div class="d-flex align-items-center">
-                <span class="avatar me-2 ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}"><i class="ti ti-${d.caps.includes('camera') ? 'device-cctv' : d.caps.includes('air') ? 'wind' : 'cpu'}"></i></span>
+                <span class="avatar me-2 ${d.online ? 'bg-green-lt' : 'bg-secondary-lt'}"><i class="ti ti-${d.caps.includes('camera') ? 'device-cctv' : d.caps.includes('air') ? 'wind' : d.caps.includes('rgb') ? 'bulb' : 'cpu'}"></i></span>
                 <div>
                     <div class="fw-bold">${escapeHtml(d.name)}</div>
                     <div class="text-secondary small">${escapeHtml(productName(d.model, d.caps))} · <span class="text-mono">${escapeHtml(d._id)}</span></div>

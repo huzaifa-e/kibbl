@@ -1,5 +1,15 @@
 import { climateHints } from '../../../shared/climate';
-import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_SPEED, feedLevels, roomClimate, type AirLevel, type DeviceSummary } from '../../../shared/protocol';
+import {
+    FEEDER_ACCEL,
+    FEEDER_MAX_MM,
+    FEEDER_MIN_MM,
+    FEEDER_SPEED,
+    feedLevels,
+    rgbPresets,
+    roomClimate,
+    type AirLevel,
+    type DeviceSummary,
+} from '../../../shared/protocol';
 import { feedLevelAnimHtml, followFeeder, irisSvg, previewIris } from './iris';
 import { request } from './socket';
 import { escapeHtml } from './utils';
@@ -118,6 +128,36 @@ function feederHtml(d: DeviceSummary, disabled: string) {
         ${feederTuningHtml(d, disabled, busy)}`;
 }
 
+const hex = (c: [number, number, number]) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+const rgbOf = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+
+// the swatches of a kibbl. light, besides the picker
+const quickColors = ['warm', 'white', 'orange', 'red', 'purple', 'blue', 'cyan', 'green'];
+
+// a kibbl. light: on or off, its colour and its brightness
+function rgbHtml(d: DeviceSummary, disabled: string) {
+    const s = d.rgb;
+    const color = s ? hex(s.color) : '#ffffff';
+    const brightness = s?.brightness ?? 60;
+    return `<div class="mb-3">
+        <div class="d-flex align-items-center mb-2">
+            <label class="form-check form-switch mb-0 flex-fill">
+                <input class="form-check-input" type="checkbox" data-control="rgb-on" data-device="${d._id}" ${s?.on ? 'checked' : ''} ${disabled} />
+                <span class="form-check-label"><i class="ti ti-bulb me-1"></i> Light</span>
+            </label>
+            <input type="color" class="form-control form-control-color" value="${color}" data-control="rgb-color" data-device="${d._id}" title="Colour" ${disabled} />
+        </div>
+        <div class="d-flex flex-wrap gap-1 mb-2">${quickColors
+            .map(
+                (name) =>
+                    `<button class="btn btn-icon btn-sm" style="background:${hex(rgbPresets[name])}" title="${name}" aria-label="${name}" data-control="rgb-preset" data-color="${name}" data-device="${d._id}" ${disabled}></button>`,
+            )
+            .join('')}</div>
+        <label class="form-label d-flex"><span class="flex-fill">Brightness</span><span class="text-secondary" data-rgb-value="${d._id}">${brightness} %</span></label>
+        <input type="range" class="form-range" min="1" max="100" value="${brightness}" data-control="rgb-brightness" data-device="${d._id}" ${disabled} />
+    </div>`;
+}
+
 // airNow: the air values on top; the home card of a kibbl. air shows them itself
 export function controlsHtml(d: DeviceSummary, airNow = true) {
     const disabled = d.online ? '' : 'disabled';
@@ -155,6 +195,9 @@ export function controlsHtml(d: DeviceSummary, airNow = true) {
     }
     if (d.caps.includes('feeder')) {
         blocks.push(feederHtml(d, disabled));
+    }
+    if (d.caps.includes('rgb')) {
+        blocks.push(rgbHtml(d, disabled));
     }
     if (d.caps.includes('switch')) {
         blocks.push(`<div class="mb-3">
@@ -201,9 +244,24 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         return resp;
     };
 
+    // the colour while the picker is dragged: at most a few changes a second, the last one always
+    const colorTimers = new Map<string, number>();
+    const sendColor = (deviceId: string, value: string, fadeMs: number) => {
+        window.clearTimeout(colorTimers.get(deviceId));
+        colorTimers.set(
+            deviceId,
+            window.setTimeout(() => send(deviceId, { cmd: 'rgb', on: true, color: rgbOf(value), fadeMs }), 150),
+        );
+    };
+
     root.addEventListener('input', (e) => {
         const el = e.target as HTMLInputElement;
-        if (el.dataset.control === 'light') {
+        if (el.dataset.control === 'rgb-color' && el.dataset.device) {
+            sendColor(el.dataset.device, el.value, 150);
+        } else if (el.dataset.control === 'rgb-brightness') {
+            const value = root.querySelector(`[data-rgb-value="${el.dataset.device}"]`);
+            if (value) value.textContent = `${el.value} %`;
+        } else if (el.dataset.control === 'light') {
             const value = root.querySelector(`[data-light-value="${el.dataset.device}"]`);
             if (value) value.textContent = `${el.value} %`;
         } else if (el.dataset.control === 'iris') {
@@ -227,6 +285,12 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'light', level: Number(el.value) });
         } else if (el.dataset.control === 'switch') {
             send(deviceId, { cmd: 'switch', channel: 'main', on: el.checked });
+        } else if (el.dataset.control === 'rgb-on') {
+            send(deviceId, { cmd: 'rgb', on: el.checked });
+        } else if (el.dataset.control === 'rgb-color') {
+            sendColor(deviceId, el.value, 400);
+        } else if (el.dataset.control === 'rgb-brightness') {
+            send(deviceId, { cmd: 'rgb', on: true, brightness: Number(el.value) });
         } else if (el.dataset.control === 'night') {
             send(deviceId, { cmd: 'night', on: el.checked });
         } else if (el.dataset.control === 'iris') {
@@ -268,6 +332,9 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             void send(deviceId, { cmd: 'lamp', mode: el.dataset.mode }).then((resp) => {
                 if (resp.ok) el.parentElement?.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === el));
             });
+        } else if (el.dataset.control === 'rgb-preset') {
+            const color = rgbPresets[el.dataset.color ?? ''];
+            if (color) send(deviceId, { cmd: 'rgb', on: true, color });
         } else if (el.dataset.control === 'thermostat') {
             const input = root.querySelector<HTMLInputElement>(`[data-thermostat-input="${deviceId}"]`);
             send(deviceId, { cmd: 'thermostat', target: Number(input?.value) });

@@ -293,6 +293,9 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
     const i = devices.findIndex((d) => d._id === device._id);
     if (i >= 0) devices[i] = device;
     else devices.push(device);
+    // the colour picker of a light is open: a redraw would close it under the finger
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.dataset.control?.startsWith('rgb-') && active.dataset.device === device._id) return;
     if (rendered) {
         renderStats();
         renderCameras();
