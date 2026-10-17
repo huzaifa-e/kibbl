@@ -1,4 +1,19 @@
-import { FEEDER_ACCEL, FEEDER_MAX_MM, FEEDER_MIN_MM, FEEDER_MOVE_MAX, FEEDER_SPEED, fanModes, framesizes, lampColors, lampModes, ZOOM_MAX, type CameraView, type MotionSettings } from '../../../shared/protocol';
+import {
+    FEEDER_ACCEL,
+    FEEDER_MAX_MM,
+    FEEDER_MIN_MM,
+    FEEDER_MOVE_MAX,
+    FEEDER_SPEED,
+    RGB_FADE_MAX_MS,
+    fanModes,
+    framesizes,
+    lampColors,
+    lampModes,
+    rgbOrders,
+    ZOOM_MAX,
+    type CameraView,
+    type MotionSettings,
+} from '../../../shared/protocol';
 import { setNightOverride } from './air';
 import { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
@@ -199,6 +214,32 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
         }
         case 'night':
             return typeof command.on === 'boolean' ? { cmd, on: command.on } : undefined;
+        // kibbl. light: only the keys present, at least one
+        case 'rgb': {
+            const out: Record<string, unknown> = { cmd };
+            if (command.on !== undefined) {
+                if (typeof command.on !== 'boolean') return undefined;
+                out.on = command.on;
+            }
+            if (command.color !== undefined) {
+                const c = command.color;
+                if (!Array.isArray(c) || c.length !== 3 || !c.every((v) => int(v, 0, 255))) return undefined;
+                out.color = [...c];
+            }
+            if (command.brightness !== undefined) {
+                if (!int(command.brightness, 1, 100)) return undefined;
+                out.brightness = command.brightness;
+            }
+            if (command.fadeMs !== undefined) {
+                if (!int(command.fadeMs, 0, RGB_FADE_MAX_MS)) return undefined;
+                out.fadeMs = command.fadeMs;
+            }
+            if (command.order !== undefined) {
+                if (!rgbOrders.includes(command.order as never)) return undefined;
+                out.order = command.order;
+            }
+            return Object.keys(out).length > 1 ? out : undefined;
+        }
         case 'calibrate':
             return int(command.ppm ?? 420, 400, 2000) ? { cmd, ppm: command.ppm ?? 420 } : undefined;
         default:

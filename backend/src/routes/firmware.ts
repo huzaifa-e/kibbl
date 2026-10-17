@@ -17,12 +17,27 @@ const APP_DESC_OFFSET = 24 + 8;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES, files: 1 } });
 
 // the project each product is built as (project() in firmware/<product>/CMakeLists.txt)
-const PROJECTS: Record<string, string> = { 'kibbl-cam': 'KIBBL-FW', 'kibbl-air': 'KIBBL-AIR', 'kibbl-feeder': 'KIBBL-FEEDER' };
+const PROJECTS: Record<string, string> = { 'kibbl-cam': 'KIBBL-FW', 'kibbl-air': 'KIBBL-AIR', 'kibbl-feeder': 'KIBBL-FEEDER', 'kibbl-light': 'KIBBL-LIGHT' };
+
+/* An ESP8266 image (kibbl. light, Arduino core) has no esp_app_desc_t: it carries
+ * "KIBBL-APP:<project>:<version>" (firmware/light/main/KL_product.cpp) instead. */
+const APP_MARKER = Buffer.from('KIBBL-APP:');
+
+function markerInfo(image: Buffer) {
+    const at = image.indexOf(APP_MARKER);
+    if (at < 0) return undefined;
+    const end = image.indexOf(0, at);
+    const m = /^KIBBL-APP:([A-Z0-9-]{1,31}):([A-Za-z0-9.-]{1,31})$/.exec(image.subarray(at, end < 0 ? at + 80 : end).toString('latin1'));
+    return m ? { project: m[1], version: m[2] } : undefined;
+}
 
 // version and project of an application image, undefined when it is none
-function appInfo(image: Buffer) {
-    if (image.length < APP_DESC_OFFSET + 80 || image[0] !== ESP_IMAGE_MAGIC || image.readUInt32LE(APP_DESC_OFFSET) !== APP_DESC_MAGIC) {
+export function appInfo(image: Buffer) {
+    if (image.length < APP_DESC_OFFSET + 80 || image[0] !== ESP_IMAGE_MAGIC) {
         return undefined;
+    }
+    if (image.readUInt32LE(APP_DESC_OFFSET) !== APP_DESC_MAGIC) {
+        return markerInfo(image);
     }
     // esp_app_desc_t: magic, secure_version, reserv1[2], version[32], project_name[32]
     const text = (from: number) =>

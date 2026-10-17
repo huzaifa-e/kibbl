@@ -13,6 +13,7 @@ import {
     type DeviceTelemetry,
     type FeederState,
     type MotionSettings,
+    type RgbState,
 } from '../../../shared/protocol';
 import { pairedRoom } from '../tado/service';
 import { roomKindOf } from './rooms';
@@ -115,6 +116,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         wifiChangeFailed: str('wifiChangeFailed'),
         light: typeof info.light === 'number' ? info.light : undefined,
         feeder: dev ? parseFeederState(info.feeder) : undefined,
+        rgb: dev ? parseRgbState(info.rgb) : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         air: airSummary(doc, dev),
         update: updateSummary(doc),
@@ -286,6 +288,36 @@ function parseFeed(v: unknown): FeederState['feed'] {
     return { portions: f.portions as number, opening: f.opening as number, openMs: f.openMs as number };
 }
 
+// the light of a kibbl. light as the device reports it, or undefined when it does not
+export function parseRgbState(v: unknown): RgbState | undefined {
+    if (typeof v !== 'object' || v === null) return undefined;
+    const r = v as Record<string, unknown>;
+    const byte = (x: unknown) => typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= 255;
+    const color = r.color;
+    if (typeof r.on !== 'boolean' || !Array.isArray(color) || color.length !== 3 || !color.every(byte)) return undefined;
+    if (typeof r.brightness !== 'number' || !Number.isInteger(r.brightness) || r.brightness < 1 || r.brightness > 100) return undefined;
+    return {
+        on: r.on,
+        color: color as [number, number, number],
+        brightness: r.brightness,
+        order: typeof r.order === 'string' && /^[rgb]{3}$/.test(r.order) ? r.order : undefined,
+    };
+}
+
+const rgbShown = (s: RgbState | undefined) => (s ? `${s.on}|${s.color.join(',')}|${s.brightness}` : '');
+
+// a change of the light, logged once: from the app or an assistant (via), or on the device itself
+function logRgb(deviceId: string, before: RgbState | undefined, after: RgbState, via: string) {
+    if (rgbShown(before) === rgbShown(after)) return;
+    log.info('light changed', {
+        device: deviceId,
+        on: after.on,
+        color: '#' + after.color.map((c) => c.toString(16).padStart(2, '0')).join(''),
+        brightness: after.brightness,
+        via,
+    });
+}
+
 // what redraws the controls: the iris moving is sent with the telemetry, only its start and end are
 function feederShown(f: FeederState | undefined) {
     if (!f) return '';
@@ -305,6 +337,16 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
         dev.info.feeder = feeder;
         if (changed) void publishDevice(deviceId);
     }
+    // a kibbl. light: kept with the hello's info, shown at once when it changed on the device
+    const rgb = parseRgbState(msg.rgb);
+    if (rgb) {
+        const before = parseRgbState(dev.info.rgb);
+        dev.info.rgb = { ...rgb, order: before?.order ?? rgb.order };
+        if (rgbShown(before) !== rgbShown(rgb)) {
+            logRgb(deviceId, before, rgb, 'device');
+            void publishDevice(deviceId);
+        }
+    }
     const num = (key: string) => (typeof msg[key] === 'number' ? (msg[key] as number) : 0);
     dev.telemetry = {
         uptime: num('uptime'),
@@ -316,6 +358,7 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
         frameBytes: num('frameBytes'),
         air: parseAirState(msg),
         feeder,
+        rgb,
         time: Date.now(),
     };
     hub.emit('telemetry', deviceId, dev.telemetry);
@@ -391,6 +434,12 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
         );
     } else if ((cmd === 'feed' || cmd === 'iris' || cmd.startsWith('feeder_')) && dev && parseFeederState(resp.feeder)) {
         dev.info.feeder = resp.feeder;
+    } else if (cmd === 'rgb' && dev) {
+        const rgb = parseRgbState(resp.rgb);
+        if (rgb) {
+            logRgb(deviceId, parseRgbState(dev.info.rgb), rgb, 'command');
+            dev.info.rgb = rgb;
+        }
     } else if (cmd === 'night' && typeof resp.night === 'boolean' && dev) {
         // shown at once, not only with the next telemetry
         dev.info.night = resp.night;
