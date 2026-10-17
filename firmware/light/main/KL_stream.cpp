@@ -28,7 +28,7 @@
 #define RECONNECT_MS          5000
 #define RESPONSE_MAX          1024 // the upgrade response, its headers included
 
-static const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC11B85";
+static const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"; // RFC 6455, 1.3
 
 static BearSSL::WiFiClientSecure tls_client;
 static WiFiClient plain_client;
