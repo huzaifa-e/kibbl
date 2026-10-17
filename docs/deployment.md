@@ -175,9 +175,16 @@ idf.py -B ~/esp/builds/kibbl-air set-target esp32c3
 idf.py -B ~/esp/builds/kibbl-air -p /dev/cu.usbserial-XXXX -b 115200 flash monitor
 ```
 
+kibbl. light (Magic Home controller, `docs/light.md`) is an Arduino sketch, built with `arduino-cli` (the core and libraries of `firmware/light/main/sketch.yaml` are fetched once):
+
+```bash
+firmware/light/build.sh                                  # build/main.ino.bin
+firmware/light/build.sh upload /dev/cu.usbserial-XXXX    # IO0 held while the 12 V comes on
+```
+
 `-B` puts the build outside the repository folder: ESP-IDF 5.1 cannot build in a path with parentheses (`(39) home-monitor`). In a checkout without them `idf.py build` works as usual. 921600 baud is too fast for the ESP32-CAM-MB adapter.
 
-Updates after the first flash: Devices → **Update all** with `KIBBL-FW.bin` (cam) or `KIBBL-AIR.bin` (air) from the build folder, or `KIBBL-AIR-<version>-<commit>.bin` from the `firmware-air-…` artifact of the CI build. The file becomes the release of its product on the server (`data/app/firmware/releases/`, one per account and product): every device of the product on an older version number takes it, an online one right away, an offline one when it connects next. A device never goes back to an older number. Until it runs the release its page and the device list say *update available*, with *Install now*. Actions → *Update from a file* puts a file on a single device without storing it. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
+Updates after the first flash: Devices → **Update all** with `KIBBL-FW.bin` (cam), `KIBBL-AIR.bin` (air) or `main.ino.bin` (light) from the build folder, or `KIBBL-AIR-<version>-<commit>.bin` from the `firmware-air-…` artifact of the CI build. The file becomes the release of its product on the server (`data/app/firmware/releases/`, one per account and product): every device of the product on an older version number takes it, an online one right away, an offline one when it connects next. A device never goes back to an older number. Until it runs the release its page and the device list say *update available*, with *Install now*. Actions → *Update from a file* puts a file on a single device without storing it. A new image that resets before it reached the server or ran for 5 minutes is rolled back to the previous one.
 
 The rules of a release are in MongoDB, collection `firmwarereleases` (`_id` is `<ownerID>|<model>`), and can be changed there; the server reads them every minute:
 
@@ -196,6 +203,6 @@ Each device keeps its last try in `devices.ota` (`version`, `attempts`, `lastAt`
 Every change raises a version number, so what runs where can be told apart:
 
 * the app: `version` in `package.json`, `backend/package.json` and `frontend/package.json` (and their entries in `package-lock.json`), all the same. The sidebar shows it, `GET /api/version` returns it without a login (`curl http://jhubuntu:8790/api/version` after a deployment), the server logs it at start.
-* the firmware: `firmware/air/VERSION` and `firmware/cam/VERSION`, one per product. The image carries `KIBBL-AIR-<version>-<commit>` (CI) or `KIBBL-AIR-<version>-WIP` (a local build), which the device list shows.
+* the firmware: `firmware/air/VERSION`, `firmware/cam/VERSION` and `firmware/light/VERSION`, one per product. The image carries `KIBBL-AIR-<version>-<commit>` (CI) or `KIBBL-AIR-<version>-WIP` (a local build), which the device list shows.
 
 A fix raises the last number, a new feature the middle one.

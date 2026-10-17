@@ -54,6 +54,8 @@ The device pings every 10 s; the server closes a connection that was silent for 
 }
 ```
 
+A kibbl. light adds `rgb` to the hello and to every telemetry: `on`, `color` `[r, g, b]` (0–255, the colour at full brightness), `brightness` (1–100 %), in the hello also `order` (the order of the strip's wires). The light is stored on the device and comes back after a power cut. Its hello has `safeMode` after 3 crashes in a row: then only the network and updates run (`firmware/light`).
+
 `model` is the product (`kibbl-cam`, `kibbl-feeder`, …): the app names a device by it (`productNames` in `shared/protocol.ts`) and never shows `board` or `sensor`, which are there for diagnosis. `caps` decides which controls the app shows and which commands the server lets through (`shared/protocol.ts`). `wifiChangeFailed` is only present after a `wifi` change from the app that did not work: the device went back to `ssid`.
 
 ### `telemetry` (every 10 s)
@@ -104,7 +106,8 @@ Every command has a numeric `id` that the response repeats; the device's own id 
 | `stream`      | camera     | `fps` 0–255 (capped by the device, 15 on the ESP32-CAM); 0 stops             | – |
 | `camera`      | camera     | any of `framesize` (`QVGA` … `UXGA`), `quality` 4–63, `vflip`, `hmirror`, `brightness`/`contrast`/`saturation` −2…2. From the app also `turn90` and `view` (zoom), which the server keeps and never sends (see below) | `camera`: all settings |
 | `light`       | light      | `level` 0–100                                                                | `light` |
-| `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level (air: `count` only) | – |
+| `blink`       | blink      | `count` 1–10 (2), `level` 1–100 (30): flashes the white light, then back to its level (air: `count` only; light: white flashes of the strip) | – |
+| `rgb`         | rgb        | any of `on` (bool), `color` `[r, g, b]` 0–255, `brightness` 1–100, `fadeMs` 0–10000 (400: how long the change fades, as the eye sees it), `order` (`rgb`, `rbg`, `grb`, `gbr`, `brg`, `bgr`: the colour each of the board's red, green and blue channels shows, for a strip wired otherwise) | `rgb` |
 | `ota`         | ota        | `url`: http(s) url of an application image                                   | – (downloads, restarts) |
 | `switch`      | switch     | `channel` (string), `on` (bool)                                              | – |
 | `feed`        | feeder     | `portions` 1–10, and for this feed only `opening` 4–42 (mm) and `openMs` 100–20000: the feeding levels of the app (`feedLevels` in `shared/protocol.ts`) | `feeder` |

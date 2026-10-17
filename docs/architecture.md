@@ -56,6 +56,24 @@ ISIS IC EHW0001-0013 with a new firmware (the original ESW0002 is backed up in `
 | `KL_button`     | short press: a cigarette logged; held 10 s: the Wi-Fi forgotten |
 | `KL_air_config` | thresholds, buzzer, asc, altitude, lamp, fan, smoke, night fan in nvs |
 
+### kibbl. light (`light/`): the Magic Home controller of the TV's RGB strip
+
+A Magic Home ZJ-WFMN-A V1.1 (ESP8285, 1 MB flash, three low side MOSFETs on GPIO 12/5/13) behind the TV, reflashed (`docs/light.md`). ESP-IDF 5 has no ESP8266, and the ESP8266_RTOS_SDK with TLS does not fit two images into 1 MB (about 615 KB each), so this one is an Arduino sketch (`main/main.ino`, esp8266 core 3.1.2, `main/sketch.yaml`) with its own counterparts of the core's modules: the same protocol, commands, pairing code, setup page (`kibbl_core/portal.html`, gzipped) and conventions. The image is about 490 KB: two fit, which updates need. Everything below runs from the loop, without tasks.
+
+| Module          | Task |
+| --------------- | ---- |
+| `main.ino`      | boot order: the crash count, the settings, the light of before the power cut, the network |
+| `KL_product`    | the hooks: info, `rgb` and `blink`, telemetry, the update; `KIBBL-APP:KIBBL-LIGHT:<version>` in the image for the server (an ESP8266 image has no `esp_app_desc_t`) |
+| `KL_strip`      | the strip: one colour, fades as the eye sees them (gamma 2.2, pwm 1 kHz, 1000 steps), blinks, provisioning in blue, the breathing of an update; stored 3 s after it last changed |
+| `KL_stream`     | websocket to the server over BearSSL: hello, telemetry, commands, ping |
+| `KL_tls`        | the roots of `KL_certs.h` (Let's Encrypt, Google Trust Services, SSL.com; `tools/certs.py`), the time from NTP for their validity |
+| `KL_commands`   | the command set of serial and server (`docs/protocol.md`) |
+| `KL_wifi`       | station with the network the sdk keeps, the setup portal without one, scan, network change with fallback |
+| `KL_portal`     | the setup page on the Wi-Fi `kibbl-xxxx`, a minimal http server and a name server for every name |
+| `KL_ota`        | the image next to the running one, copied over it at the restart by the loader of the core |
+| `KL_recovery`   | 3 crashes in a row before the server was reached: safe mode, only the network and updates (there is no image to go back to) |
+| `KL_config`     | the secret, pairing code, server, debug and the light in one EEPROM sector with a crc |
+
 Memory: frames live in PSRAM (4 MB on the ESP32-CAM); the driver keeps two UXGA-sized jpeg buffers, the hub and each consumer one copy that grows with the frame.
 
 ## Server (`backend/`, TypeScript, Express)
