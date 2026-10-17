@@ -117,6 +117,10 @@ static const char *cmd_ota(JsonObjectConst req) {
 }
 
 void commands_handle(JsonObjectConst req, JsonDocument &resp, cmd_source_t source) {
+    // an object from the start: the info of the core and the product goes into it
+    if (resp.isNull()) {
+        resp.to<JsonObject>();
+    }
     if (!req["id"].isNull()) {
         resp["id"] = req["id"];
     }
