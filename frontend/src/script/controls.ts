@@ -156,6 +156,10 @@ function rgbHtml(d: DeviceSummary, disabled: string) {
             .join('')}</div>
         <label class="form-label d-flex"><span class="flex-fill">Brightness</span><span class="text-secondary" data-rgb-value="${d._id}">${brightness} %</span></label>
         <input type="range" class="form-range" min="1" max="100" value="${brightness}" data-control="rgb-brightness" data-device="${d._id}" ${disabled} />
+        <label class="form-check form-switch mt-2 mb-0">
+            <input class="form-check-input" type="checkbox" data-control="rgb-vivid" data-device="${d._id}" ${s?.vivid ? 'checked' : ''} ${disabled} />
+            <span class="form-check-label">Vivid colours <span class="text-secondary small">· mixed colours brighter</span></span>
+        </label>
         <details class="mt-2">
             <summary class="text-secondary small">Strip wiring</summary>
             <div class="text-secondary small my-1">If red shows another colour: the colours the strip shows for red, green and blue.</div>
@@ -301,6 +305,8 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'rgb', on: true, brightness: Number(el.value) });
         } else if (el.dataset.control === 'rgb-order') {
             send(deviceId, { cmd: 'rgb', order: el.value });
+        } else if (el.dataset.control === 'rgb-vivid') {
+            send(deviceId, { cmd: 'rgb', vivid: el.checked });
         } else if (el.dataset.control === 'night') {
             send(deviceId, { cmd: 'night', on: el.checked });
         } else if (el.dataset.control === 'iris') {
