@@ -217,7 +217,7 @@ export function createMcpServer(session: SessionInfo) {
                 "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), the lights (kibbl. light, RGB strips), " +
                 'utility meters, the heat used (radiator readings, Techem), health data from a fitness tracker, and the workouts of every kind (gym sets, runs, rides, Pilates; kibbl_gym_workouts, kibbl_gym_progress). ' +
                 "Start with kibbl_overview; kibbl_analysis says what stands out across all of it (alerts, things worth a look, hints). All times are the home's local time; ranges of days include both ends. " +
-                'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise.',
+                'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise, mode adaptive holds a temperature until changed.',
         },
     );
 
@@ -711,7 +711,7 @@ export function createMcpServer(session: SessionInfo) {
             title: 'Heating',
             description:
                 'The heating through tado: each tado room with its temperature and humidity (measured by tado), what it heats to (null: off), heating power in %, manual or schedule, ' +
-                "tado's open window detection, and the room of the home it is in (a kibbl. air in the same room shares its temperature and humidity). With hours, the readings of a room (every 2 to 20 min).",
+                "tado's open window detection, the room of the home it is in (a kibbl. air in the same room shares its temperature and humidity), and the adaptive control holding it (kibbl_heating_set mode adaptive). With hours, the readings of a room (every 2 to 20 min).",
             inputSchema: {
                 room: z.string().optional().describe('a tado room by name, for its readings'),
                 hours: z
@@ -740,6 +740,9 @@ export function createMcpServer(session: SessionInfo) {
                     heating_percent: r.heating,
                     manual: r.manual,
                     window_open: r.openWindow,
+                    adaptive: r.auto
+                        ? { holds: r.auto.celsius, tado_set_to: r.auto.setTo ?? null, off_for_window: r.auto.window, room_time_constant_min: r.auto.tau, since: localTime(r.auto.since) }
+                        : null,
                 })),
             };
             if (room) {

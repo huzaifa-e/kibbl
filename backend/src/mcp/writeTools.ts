@@ -64,11 +64,14 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             title: 'Set the heating',
             description:
                 'Changes a tado room: a temperature, off, or back to its schedule. A temperature or off lasts 60 minutes unless until says otherwise ' +
-                '(until next_change: to the next change of the schedule; until_changed: until changed again). The room is a tado room name or the room of the home it is in (kibbl_heating lists them).',
+                '(until next_change: to the next change of the schedule; until_changed: until changed again). ' +
+                'adaptive holds the room at the temperature by the adaptive PID control of the server: tado is set above or below it until the room measures it, ' +
+                'off while a window is open (tado or a kibbl. air in the room), until another mode is set for the room (until is not used). ' +
+                'The room is a tado room name or the room of the home it is in (kibbl_heating lists them).',
             inputSchema: {
                 room: z.string().describe('tado room or room of the home, e.g. "Living Room"'),
-                mode: z.enum(['temperature', 'off', 'schedule']),
-                temperature: z.number().min(5).max(25).optional().describe('°C, for mode temperature'),
+                mode: z.enum(['temperature', 'adaptive', 'off', 'schedule']),
+                temperature: z.number().min(5).max(25).optional().describe('°C, for mode temperature or adaptive'),
                 until: z.enum(['timer', 'next_change', 'until_changed']).default('timer'),
                 minutes: z.number().int().min(5).max(1440).default(60).describe('for until timer'),
             },
@@ -80,21 +83,27 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             const home = await findRoom(session.userID, room);
             const target = h.rooms.find((x) => lower(x.name) === lower(room)) ?? (home ? h.rooms.find((x) => x.roomId === home._id) : undefined);
             if (!target) return fail(`No tado room "${room}". tado rooms: ${h.rooms.map((x) => x.name).join(', ') || 'none'}.`);
-            if (mode === 'temperature' && temperature === undefined) return fail('mode temperature needs a temperature (5-25 °C).');
+            if ((mode === 'temperature' || mode === 'adaptive') && temperature === undefined) return fail(`mode ${mode} needs a temperature (5-25 °C).`);
             const u = until === 'next_change' ? 'next' : until === 'until_changed' ? 'manual' : 'timer';
             const cmd: HeatingCommand =
                 mode === 'schedule'
                     ? { mode: 'schedule' }
-                    : mode === 'off'
-                      ? { mode: 'off', until: u, minutes }
-                      : { mode: 'temperature', celsius: Math.round(temperature! * 2) / 2, until: u, minutes };
+                    : mode === 'adaptive'
+                      ? { mode: 'auto', celsius: Math.round(temperature! * 10) / 10 }
+                      : mode === 'off'
+                        ? { mode: 'off', until: u, minutes }
+                        : { mode: 'temperature', celsius: Math.round(temperature! * 2) / 2, until: u, minutes };
             try {
                 await heatingCommand(session.userID, target.id, cmd);
             } catch (err) {
                 return fail((err as Error).message);
             }
             log.info('heating set', { room: target.name, ...cmd, user: who, via: VIA });
-            return json({ ok: true, room: target.name, set: cmd, note: 'tado reports the new state within a minute (kibbl_heating)' });
+            const note =
+                cmd.mode === 'auto'
+                    ? 'the adaptive control sets tado now and after every read; it learns the room over the first hours (kibbl_heating shows what tado is set to)'
+                    : 'tado reports the new state within a minute (kibbl_heating)';
+            return json({ ok: true, room: target.name, set: cmd, note });
         },
     );
 
