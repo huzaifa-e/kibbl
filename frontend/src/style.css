@@ -684,6 +684,12 @@ html[data-bs-theme='dark'] .theme-label-dark {
     border-radius: 1rem;
     background: rgba(0, 0, 0, 0.55);
 }
+.heat-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+}
 .heat-resume {
     border-radius: 2rem;
     padding: 0.45rem 1.4rem;

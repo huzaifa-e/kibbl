@@ -4,7 +4,9 @@ import { errorAlert, escapeHtml } from './utils';
 /* A card per room of tado on the home page, as tado's own app shows a room: what it measures,
  * the temperature it heats to in large, a bar to slide it (at the bottom: off) and how long a
  * change lasts. A change is sent a moment after the bar is let go, not while it moves: each
- * one is one of tado's requests of the day. */
+ * one is one of tado's requests of the day. Adaptive control: the server holds the room at
+ * the temperature on the bar (it sets tado above or below it until the room measures it,
+ * off while a window is open); the bar then changes what it holds. */
 
 let status: HeatingStatus | undefined;
 const MIN = 5;
@@ -55,7 +57,9 @@ export async function loadHeatingCard() {
 
 /* ----------------------------------------------------------------------- */
 
-const current = (r: HeatingRoom): Choice => chosen.get(r.id) ?? (r.power === 'ON' && r.target ? r.target : 'off');
+const DEFAULT_AUTO = 20; // what the adaptive control starts at from a room that is off
+const shown = (r: HeatingRoom): Choice => (r.auto ? r.auto.celsius : r.power === 'ON' && r.target ? r.target : 'off');
+const current = (r: HeatingRoom): Choice => chosen.get(r.id) ?? shown(r);
 
 // how full the bar is, 0 to 1
 function level(c: Choice) {
@@ -80,12 +84,15 @@ const hhmm = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digi
 function stateLine(r: HeatingRoom, c: Choice) {
     if (sending.has(r.id)) return 'Sending to tado…';
     if (chosen.has(r.id)) return c === 'off' ? 'Frost protection' : 'Let go to set';
+    if (r.auto?.window) return 'Off · window open';
+    if (r.auto) return `Adaptive · tado at ${r.auto.setTo !== undefined ? `${r.auto.setTo.toFixed(1)}°` : '–'}${r.heating ? ` · ${r.heating} %` : ''}`;
     if (r.openWindow) return 'Window open';
     if (c === 'off') return 'Frost protection';
     return r.heating ? `Heating · ${r.heating} %` : 'Warm enough';
 }
 
 function untilLine(r: HeatingRoom) {
+    if (r.auto) return `<i class="ti ti-adjustments-bolt"></i> Adaptive control since ${hhmm(r.auto.since)}`;
     if (!r.manual) return '<i class="ti ti-calendar-event"></i> Following the schedule';
     if (r.manualUntil) return `<i class="ti ti-hand-click"></i> Until ${hhmm(r.manualUntil)}`;
     return '<i class="ti ti-hand-click"></i> Until you resume the schedule';
@@ -111,7 +118,10 @@ function roomHtml(r: HeatingRoom) {
                 aria-valuetext="${c === 'off' ? 'off' : `${c} degrees`}" data-heat-pill>
                 <div class="heat-fill" style="height:calc(${(level(c) * 100).toFixed(1)}% + 2.6rem);background:${colour(c)}"><span></span></div>
             </div>
-            ${r.manual ? '<button class="btn heat-resume" data-heat-schedule><i class="ti ti-calendar-repeat me-2"></i> Resume schedule</button>' : ''}
+            <div class="heat-actions">
+                ${r.auto ? '' : '<button class="btn heat-resume" data-heat-auto title="The server holds the room at this temperature, off while a window is open"><i class="ti ti-adjustments-bolt me-2"></i> Adaptive</button>'}
+                ${r.manual || r.auto ? '<button class="btn heat-resume" data-heat-schedule><i class="ti ti-calendar-repeat me-2"></i> Resume schedule</button>' : ''}
+            </div>
             <div class="heat-until">
                 <span>${untilLine(r)}</span>
                 <div class="dropdown">
@@ -153,7 +163,9 @@ async function send(id: number, body: object, card: HTMLElement | null, redraw: 
     redraw();
 }
 
-function command(c: Choice, d: Duration) {
+// off ends the adaptive control, a temperature changes what it holds
+function command(r: HeatingRoom, c: Choice, d: Duration) {
+    if (c !== 'off' && r.auto) return { mode: 'auto', celsius: c };
     return c === 'off' ? { mode: 'off', ...d } : { mode: 'temperature', celsius: c, ...d };
 }
 
@@ -186,13 +198,12 @@ export function bindHeatingCard(root: HTMLElement, redraw: () => void) {
             setTimeout(() => {
                 timers.delete(r.id);
                 const c = chosen.get(r.id);
-                const was: Choice = r.power === 'ON' && r.target ? r.target : 'off';
-                if (c === undefined || c === was) {
+                if (c === undefined || c === shown(r)) {
                     chosen.delete(r.id);
                     redraw();
                     return;
                 }
-                void send(r.id, command(c, duration(r.id)), card, redraw);
+                void send(r.id, command(r, c, duration(r.id)), card, redraw);
             }, SEND_AFTER_MS),
         );
     };
@@ -235,7 +246,7 @@ export function bindHeatingCard(root: HTMLElement, redraw: () => void) {
     });
 
     root.addEventListener('click', (e) => {
-        const el = (e.target as HTMLElement).closest<HTMLElement>('[data-heat-schedule],[data-heat-duration]');
+        const el = (e.target as HTMLElement).closest<HTMLElement>('[data-heat-schedule],[data-heat-auto],[data-heat-duration]');
         const at = roomOf(el);
         if (!el || !at || sending.has(at.room.id)) return;
         e.preventDefault();
@@ -243,10 +254,15 @@ export function bindHeatingCard(root: HTMLElement, redraw: () => void) {
             void send(at.room.id, { mode: 'schedule' }, at.card, redraw);
             return;
         }
+        if (el.hasAttribute('data-heat-auto')) {
+            const c = current(at.room);
+            void send(at.room.id, { mode: 'auto', celsius: c === 'off' ? DEFAULT_AUTO : c }, at.card, redraw);
+            return;
+        }
         const { until, minutes } = DURATIONS[Number(el.dataset.heatDuration)];
         saveDuration(at.room.id, { until, minutes });
         // a change already made by hand lasts as now chosen: sent again, otherwise only for the next one
-        if (at.room.manual) void send(at.room.id, command(current(at.room), { until, minutes }), at.card, redraw);
+        if (at.room.manual && !at.room.auto) void send(at.room.id, command(at.room, current(at.room), { until, minutes }), at.card, redraw);
         else redraw();
     });
 }
