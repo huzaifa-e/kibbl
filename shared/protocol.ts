@@ -170,7 +170,7 @@ export const rgbOrders = ['rgb', 'rbg', 'grb', 'gbr', 'brg', 'bgr'] as const;
 
 // colours the app and an assistant offer by name
 export const rgbPresets: Record<string, [number, number, number]> = {
-    warm: [255, 150, 70],
+    warm: [255, 165, 0], // the warm light behind the TV, the default of a kibbl. light
     white: [255, 255, 255],
     red: [255, 0, 0],
     orange: [255, 90, 0],
