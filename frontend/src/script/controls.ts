@@ -1,5 +1,6 @@
 import { climateHints } from '../../../shared/climate';
 import {
+    rgbOrders,
     FEEDER_ACCEL,
     FEEDER_MAX_MM,
     FEEDER_MIN_MM,
@@ -155,6 +156,13 @@ function rgbHtml(d: DeviceSummary, disabled: string) {
             .join('')}</div>
         <label class="form-label d-flex"><span class="flex-fill">Brightness</span><span class="text-secondary" data-rgb-value="${d._id}">${brightness} %</span></label>
         <input type="range" class="form-range" min="1" max="100" value="${brightness}" data-control="rgb-brightness" data-device="${d._id}" ${disabled} />
+        <details class="mt-2">
+            <summary class="text-secondary small">Strip wiring</summary>
+            <div class="text-secondary small my-1">If red shows another colour: the colours the strip shows for red, green and blue.</div>
+            <select class="form-select form-select-sm" data-control="rgb-order" data-device="${d._id}" ${disabled}>${rgbOrders
+                .map((o) => `<option value="${o}" ${(s?.order ?? 'rgb') === o ? 'selected' : ''}>${o.toUpperCase()}</option>`)
+                .join('')}</select>
+        </details>
     </div>`;
 }
 
@@ -291,6 +299,8 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             sendColor(deviceId, el.value, 400);
         } else if (el.dataset.control === 'rgb-brightness') {
             send(deviceId, { cmd: 'rgb', on: true, brightness: Number(el.value) });
+        } else if (el.dataset.control === 'rgb-order') {
+            send(deviceId, { cmd: 'rgb', order: el.value });
         } else if (el.dataset.control === 'night') {
             send(deviceId, { cmd: 'night', on: el.checked });
         } else if (el.dataset.control === 'iris') {
