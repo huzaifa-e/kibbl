@@ -163,6 +163,7 @@ export interface RgbState {
     color: [number, number, number]; // 0-255 each, the colour at full brightness
     brightness: number; // 1-100 %
     order?: string; // the order of the strip's wires on the board's red, green and blue
+    vivid?: boolean; // the gamma on the brightness only: mixed colours give the strip's full light (firmware 1.0.4 on)
 }
 
 export const RGB_FADE_MAX_MS = 10000;
