@@ -19,7 +19,18 @@ export interface HeatingRoom {
     openWindow: boolean; // tado's own open window detection
     manual: boolean; // a manual setting (overlay) instead of the schedule
     manualUntil?: number | null; // when it ends, null: until changed
+    auto?: HeatingAuto; // held by the server's adaptive control
     at: number; // when it was read
+}
+
+/* A room held at a temperature by the server's adaptive PID control (backend/src/tado/pid.ts):
+ * tado is set above or below the wish until the room measures it; off while a window is open. */
+export interface HeatingAuto {
+    celsius: number; // what the room should measure
+    setTo?: number; // what tado is set to now by the control
+    window: boolean; // off for an open window (tado's detection or a kibbl. air in the room)
+    tau: number; // minutes, how fast the room follows tado as learned
+    since: number;
 }
 
 export type HeatingUntil = 'next' | 'manual' | 'timer'; // next schedule change, until changed, for minutes
@@ -27,6 +38,7 @@ export type HeatingUntil = 'next' | 'manual' | 'timer'; // next schedule change,
 export type HeatingCommand =
     | { mode: 'temperature'; celsius: number; until: HeatingUntil; minutes?: number }
     | { mode: 'off'; until: HeatingUntil; minutes?: number }
+    | { mode: 'auto'; celsius: number } // adaptive control until another command
     | { mode: 'schedule' };
 
 export interface HeatingStatus {
