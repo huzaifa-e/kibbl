@@ -238,6 +238,10 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
                 if (!rgbOrders.includes(command.order as never)) return undefined;
                 out.order = command.order;
             }
+            if (command.vivid !== undefined) {
+                if (typeof command.vivid !== 'boolean') return undefined;
+                out.vivid = command.vivid;
+            }
             return Object.keys(out).length > 1 ? out : undefined;
         }
         case 'calibrate':

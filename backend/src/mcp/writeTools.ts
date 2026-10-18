@@ -228,6 +228,10 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
                 color: z.string().optional().describe('#rrggbb, or a name such as warm or blue'),
                 brightness: z.number().int().min(1).max(100).optional().describe('%'),
                 fade_ms: z.number().int().min(0).max(RGB_FADE_MAX_MS).optional().describe('how long the change takes, 400 ms unless given'),
+                vivid: z
+                    .boolean()
+                    .optional()
+                    .describe('vivid colours: mixed colours (warm, white) at the full light of the strip; false: natural, the hues as the eye expects them'),
                 blink: z.boolean().optional().describe('flash white 3 times'),
             },
             annotations: writes,
@@ -248,6 +252,7 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             }
             if (args.brightness !== undefined) cmd.brightness = args.brightness;
             if (args.fade_ms !== undefined) cmd.fadeMs = args.fade_ms;
+            if (args.vivid !== undefined) cmd.vivid = args.vivid;
             const results: { change: string; ok: boolean; error?: string; rgb?: unknown }[] = [];
             if (Object.keys(cmd).length > 1) {
                 const r = await runDeviceCommand(doc, cmd, who, VIA);

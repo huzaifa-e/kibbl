@@ -301,10 +301,11 @@ export function parseRgbState(v: unknown): RgbState | undefined {
         color: color as [number, number, number],
         brightness: r.brightness,
         order: typeof r.order === 'string' && /^[rgb]{3}$/.test(r.order) ? r.order : undefined,
+        vivid: typeof r.vivid === 'boolean' ? r.vivid : undefined,
     };
 }
 
-const rgbShown = (s: RgbState | undefined) => (s ? `${s.on}|${s.color.join(',')}|${s.brightness}` : '');
+const rgbShown = (s: RgbState | undefined) => (s ? `${s.on}|${s.color.join(',')}|${s.brightness}|${s.vivid}` : '');
 
 // a change of the light, logged once: from the app or an assistant (via), or on the device itself
 function logRgb(deviceId: string, before: RgbState | undefined, after: RgbState, via: string) {
@@ -314,6 +315,7 @@ function logRgb(deviceId: string, before: RgbState | undefined, after: RgbState,
         on: after.on,
         color: '#' + after.color.map((c) => c.toString(16).padStart(2, '0')).join(''),
         brightness: after.brightness,
+        vivid: after.vivid,
         via,
     });
 }

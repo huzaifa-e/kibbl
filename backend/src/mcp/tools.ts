@@ -130,6 +130,7 @@ function lightInfo(rgb: RgbState) {
         color: rgb.color,
         hex: '#' + rgb.color.map((c) => c.toString(16).padStart(2, '0')).join(''),
         brightness_percent: rgb.brightness,
+        vivid: rgb.vivid ?? false,
     };
 }
 

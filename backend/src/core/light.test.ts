@@ -13,6 +13,7 @@ test('a light change passes with the keys given, at least one', () => {
         fadeMs: 1000,
     });
     assert.deepEqual(cleanCommand({ cmd: 'rgb', order: 'grb' }), { cmd: 'rgb', order: 'grb' });
+    assert.deepEqual(cleanCommand({ cmd: 'rgb', vivid: true }), { cmd: 'rgb', vivid: true });
     assert.equal(cleanCommand({ cmd: 'rgb' }), undefined);
 });
 
@@ -25,6 +26,7 @@ test('a light change out of range is refused', () => {
     assert.equal(cleanCommand({ cmd: 'rgb', fadeMs: 10001 }), undefined);
     assert.equal(cleanCommand({ cmd: 'rgb', on: 'yes' }), undefined);
     assert.equal(cleanCommand({ cmd: 'rgb', order: 'rrb' }), undefined);
+    assert.equal(cleanCommand({ cmd: 'rgb', vivid: 'yes' }), undefined);
 });
 
 test('the light a device reports is taken only when it is whole', () => {
@@ -33,7 +35,9 @@ test('the light a device reports is taken only when it is whole', () => {
         color: [1, 2, 3],
         brightness: 60,
         order: 'rgb',
+        vivid: undefined,
     });
+    assert.equal(parseRgbState({ on: true, color: [1, 2, 3], brightness: 60, vivid: true })?.vivid, true);
     assert.equal(parseRgbState({ on: true, color: [1, 2], brightness: 60 }), undefined);
     assert.equal(parseRgbState({ on: true, color: [1, 2, 3], brightness: 0 }), undefined);
     assert.equal(parseRgbState({ color: [1, 2, 3], brightness: 50 }), undefined);
