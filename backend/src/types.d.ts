@@ -3,6 +3,7 @@ import type express from 'express';
 import type { HomeLocation } from '../../shared/climate';
 import type { HeatCostSettings, HeatReportData } from '../../shared/heat';
 import type { GymExerciseLog, Muscle, TemplateExercise, WorkoutKind, Equipment, ExerciseKind } from '../../shared/gym';
+import type { PidState } from './tado/pid';
 
 declare global {
     interface User {
@@ -69,6 +70,19 @@ declare global {
         lastError?: string;
         rateRemaining?: number;
         rateResetAt?: number;
+        // the rooms held by the adaptive control (tado/pid.ts), with what it learned of each
+        auto?: TadoAutoRoom[];
+    }
+
+    interface TadoAutoRoom {
+        id: number; // tado's room
+        celsius: number; // what the room should measure
+        since: number;
+        state: PidState;
+        setTo?: number; // what tado was set to by the control, none while off
+        sentAt?: number;
+        window: boolean; // off for an open window
+        windowAt?: number; // when the window was last seen open
     }
 
     interface RoomDoc {

@@ -21,6 +21,8 @@ function cleanCommand(body: unknown): HeatingCommand | undefined {
     const until = b?.until === 'next' || b?.until === 'manual' || b?.until === 'timer' ? b.until : 'next';
     const minutes = typeof b?.minutes === 'number' && b.minutes >= 5 && b.minutes <= 24 * 60 ? b.minutes : undefined;
     if (b?.mode === 'schedule') return { mode: 'schedule' };
+    if (b?.mode === 'auto' && typeof b.celsius === 'number' && b.celsius >= 5 && b.celsius <= 25)
+        return { mode: 'auto', celsius: Math.round(b.celsius * 10) / 10 };
     if (b?.mode === 'off') return { mode: 'off', until, minutes };
     if (b?.mode === 'temperature' && typeof b.celsius === 'number' && b.celsius >= 5 && b.celsius <= 25) {
         return { mode: 'temperature', celsius: Math.round(b.celsius * 2) / 2, until, minutes };
@@ -29,7 +31,7 @@ function cleanCommand(body: unknown): HeatingCommand | undefined {
 }
 
 function fail(res: express.Response, err: unknown) {
-    const status = err instanceof TadoError && err.status === 429 ? 429 : err instanceof TadoError && err.status === 401 ? 401 : 502;
+    const status = err instanceof TadoError && (err.status === 429 || err.status === 401 || err.status === 404) ? err.status : 502;
     res.status(status).send((err as Error).message);
 }
 
@@ -60,7 +62,7 @@ export default function initHeatingRoutes(app: express.Application) {
         const cmd = cleanCommand(req.body);
         const id = Number(req.params.id);
         if (!cmd || !Number.isInteger(id)) {
-            res.status(400).send('mode temperature (5-25 °C), off or schedule');
+            res.status(400).send('mode temperature or auto (5-25 °C), off or schedule');
             return;
         }
         try {

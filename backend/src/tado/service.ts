@@ -5,6 +5,7 @@ import { hub } from '../core/hub';
 import { roomByName } from '../core/rooms';
 import { logger } from '../core/logger';
 import { HOPS_API, MY_API, TadoError, forgetTokens, pollDeviceLogin, startDeviceLogin, tadoRequest, type DeviceLogin } from './client';
+import { STEP_C, newPidState, pidStep, tauOf } from './pid';
 
 /*
  * Heating through tado for each account that connected it (Devices). The server reads all
@@ -18,6 +19,12 @@ import { HOPS_API, MY_API, TadoError, forgetTokens, pollDeviceLogin, startDevice
  * connects. A kibbl. air in the same room shows tado's temperature and humidity; when it
  * sees a window open while the room heats, the heating is switched off for at most
  * WINDOW_OFF_MIN minutes and back to its schedule when the window closes.
+ *
+ * A room may be held at a temperature by the adaptive PID control (pid.ts) instead: after
+ * every read tado is set above or below the wish until the room measures it, for AUTO_HOLD_MIN
+ * at a time (renewed; should the server stop, tado goes back to its schedule). An open window
+ * (tado's detection or a kibbl. air in the room) switches it off until the window closes.
+ * Any other command for the room, from the app, an assistant or tado's own app, ends it.
  */
 
 const log = logger('tado');
@@ -32,6 +39,13 @@ const SLOW_POLL_MINUTES = 60;
 const LOW_BUDGET = 20;
 const RESERVE = 8;
 const WINDOW_OFF_MIN = 30;
+const AUTO_HOLD_MIN = 120; // each setting of the control lasts this long, renewed before it ends
+const AUTO_RENEW_MS = 20 * 60_000;
+const AUTO_GAP_MIN = 10; // between two changes of the control, 30 with fewer than AUTO_SPARE_BUDGET left
+const AUTO_SPARE_BUDGET = 150;
+const AUTO_WINDOW_HOLD_MS = 10 * 60_000; // off at least this long after a window was seen open
+const AUTO_WINDOW_MAX_MS = 3 * 3600_000; // a closing of a kibbl. air's window missed: back on after this
+const AUTO_TAKEN_MS = 5 * 60_000; // tado X reports a new setting late: a differing one counts after this
 const TICK_MS = 60_000;
 
 interface Session {
@@ -45,6 +59,16 @@ const sessions = new Map<string, Session>();
 let rawLogged = false;
 // the rooms the server switched off for an open window: back to the schedule when it closes
 const windowOff = new Map<string, number>(); // userID|roomId -> until
+// the windows of kibbl. airs in rooms held by the control: userID|roomId -> open since
+const airWindow = new Map<string, number>();
+// the control of an account runs one at a time (a read and a window at once)
+const locks = new Map<string, Promise<unknown>>();
+
+function locked<T>(userID: string, fn: () => Promise<T>): Promise<T> {
+    const next = (locks.get(userID) ?? Promise.resolve()).catch(() => undefined).then(fn);
+    locks.set(userID, next);
+    return next;
+}
 
 function session(userID: string) {
     let s = sessions.get(userID);
@@ -179,6 +203,7 @@ async function poll(userID: string) {
     await TadoLink.updateOne({ _id: userID }, { lastPoll: Date.now(), $unset: { lastError: 1 } });
     await storeReadings(userID, rooms);
     hub.emit('heatingUpdate', userID);
+    if (link.auto?.length) await control(userID);
 }
 
 export function pollMinutes(remaining: number | undefined) {
@@ -263,6 +288,7 @@ async function waitForLogin(userID: string, login: DeviceLogin) {
 
 export async function disconnect(userID: string) {
     sessions.delete(userID);
+    for (const key of airWindow.keys()) if (key.startsWith(`${userID}|`)) airWindow.delete(key);
     forgetTokens(userID);
     // the rooms of the home and the devices in them stay
     await Promise.all([TadoLink.deleteOne({ _id: userID }), TadoReading.deleteMany({ userID })]);
@@ -278,7 +304,7 @@ export async function status(userID: string): Promise<HeatingStatus> {
         connected: !!link?.homeId,
         pending: s.pending ? { userCode: s.pending.userCode, url: s.pending.url, expiresAt: s.pending.expiresAt } : undefined,
         home: link?.homeId ? { id: link.homeId, name: link.homeName ?? 'Home', generation: link.generation ?? 'classic' } : undefined,
-        rooms: [...s.rooms.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        rooms: [...s.rooms.values()].map((r) => withAuto(r, link?.auto)).sort((a, b) => a.name.localeCompare(b.name)),
         budget: link
             ? {
                   remaining: link.rateRemaining,
@@ -289,6 +315,11 @@ export async function status(userID: string): Promise<HeatingStatus> {
         lastPoll: link?.lastPoll,
         error: s.error ?? link?.lastError,
     };
+}
+
+function withAuto(r: HeatingRoom, auto: TadoAutoRoom[] | undefined): HeatingRoom {
+    const a = auto?.find((x) => x.id === r.id);
+    return a ? { ...r, auto: { celsius: a.celsius, setTo: a.setTo, window: a.window, tau: Math.round(tauOf(a.state)), since: a.since } } : r;
 }
 
 async function loadLastReadings(userID: string, link: TadoLinkDoc) {
@@ -316,7 +347,7 @@ async function loadLastReadings(userID: string, link: TadoLinkDoc) {
 export function pairedRoom(ownerID: string | undefined, homeRoomId: string | undefined): PairedRoom | undefined {
     if (!ownerID || !homeRoomId) return undefined;
     const room = [...(sessions.get(ownerID)?.rooms.values() ?? [])].find((r) => r.roomId === homeRoomId);
-    return room ? { ...room, source: 'tado' } : undefined;
+    return room ? { ...room, auto: undefined, source: 'tado' } : undefined;
 }
 
 function tadoRoomIn(ownerID: string, homeRoomId: string | undefined) {
@@ -345,9 +376,17 @@ export async function readings(userID: string, roomId: number, from: Date, to: D
 
 /* ----------------------------------------------------------------------- */
 
-/* A command for a room: one request. The room is shown with it at once (a read would cost
- * another request); the next poll confirms it. */
+/* A command for a room from the app or an assistant: auto starts the adaptive control (or
+ * changes its wish), anything else ends it and goes to tado. */
 export async function command(userID: string, roomId: number, cmd: HeatingCommand) {
+    if (cmd.mode === 'auto') return startAuto(userID, roomId, cmd.celsius);
+    await stopAuto(userID, roomId);
+    await send(userID, roomId, cmd);
+}
+
+/* A command to tado for a room: one request. The room is shown with it at once (a read would
+ * cost another request); the next poll confirms it. */
+async function send(userID: string, roomId: number, cmd: Exclude<HeatingCommand, { mode: 'auto' }>) {
     const link = await TadoLink.findById(userID).lean();
     if (!link?.homeId) throw new TadoError('tado is not connected');
     if (link.rateRemaining !== undefined && link.rateRemaining <= 0) throw new TadoError('tado allows no more requests today', 429);
@@ -375,6 +414,7 @@ export async function command(userID: string, roomId: number, cmd: HeatingComman
     const room = session(userID).rooms.get(roomId);
     if (room) {
         room.manual = cmd.mode !== 'schedule';
+        if (cmd.mode !== 'schedule' && cmd.until !== 'next') room.manualUntil = cmd.until === 'timer' ? Date.now() + (cmd.minutes ?? 60) * 60_000 : null;
         if (cmd.mode === 'temperature') {
             room.power = 'ON';
             room.target = cmd.celsius;
@@ -408,6 +448,112 @@ function confirmSoon(userID: string, remaining: number | undefined) {
 
 /* ----------------------------------------------------------------------- */
 
+async function startAuto(userID: string, roomId: number, celsius: number) {
+    await locked(userID, async () => {
+        const link = await TadoLink.findById(userID, { homeId: 1, auto: 1 }).lean();
+        if (!link?.homeId) throw new TadoError('tado is not connected');
+        if (!session(userID).rooms.has(roomId)) throw new TadoError('no such tado room', 404);
+        const auto = link.auto ?? [];
+        const a = auto.find((x) => x.id === roomId);
+        // a new wish keeps what was learned of the room
+        if (a) a.celsius = celsius;
+        else auto.push({ id: roomId, celsius, since: Date.now(), state: newPidState(), window: false });
+        await TadoLink.updateOne({ _id: userID }, { auto });
+        log.info('adaptive control', { user: userID, room: roomId, celsius });
+    });
+    await control(userID, roomId);
+}
+
+async function stopAuto(userID: string, roomId: number) {
+    await locked(userID, async () => {
+        const res = await TadoLink.updateOne({ _id: userID }, { $pull: { auto: { id: roomId } } });
+        airWindow.delete(`${userID}|${roomId}`);
+        if (res.modifiedCount) log.info('adaptive control ended', { user: userID, room: roomId });
+    });
+}
+
+/* A step of the adaptive control for the rooms it holds (only: one of them), after a read or
+ * a window: off while a window is open, else what pid.ts says, sent when it moved by a step
+ * or the last setting is about to end. */
+async function control(userID: string, only?: number) {
+    await locked(userID, async () => {
+        const link = await TadoLink.findById(userID, { auto: 1, rateRemaining: 1 }).lean();
+        const auto = link?.auto ?? [];
+        const now = Date.now();
+        const ended: number[] = [];
+        for (const a of auto) {
+            if (only !== undefined && a.id !== only) continue;
+            const room = session(userID).rooms.get(a.id);
+            if (!room || room.temperature === undefined) continue;
+            const key = `${userID}|${a.id}`;
+            const airOpen = (airWindow.get(key) ?? 0) > now - AUTO_WINDOW_MAX_MS;
+            if (room.openWindow || airOpen) a.windowAt = now;
+            const open = room.openWindow || airOpen || (a.window && now - (a.windowAt ?? 0) < AUTO_WINDOW_HOLD_MS);
+            // what tado reports is the last command only after a while (tado X): until then it is not sent again
+            const settled = now - (a.sentAt ?? 0) > AUTO_TAKEN_MS;
+
+            // changed in tado's own app (a setting the control did not send): the person decides now
+            if (
+                !a.window &&
+                a.setTo !== undefined &&
+                room.manual &&
+                settled &&
+                (room.power === 'OFF' ? !open : Math.abs((room.target ?? 0) - a.setTo) > 0.05)
+            ) {
+                ended.push(a.id);
+                log.info('adaptive control ended, changed in tado', { user: userID, room: room.name, target: room.target, setTo: a.setTo });
+                continue;
+            }
+            try {
+                if (open) {
+                    pidStep(a.state, room.temperature, a.celsius, undefined, now, false);
+                    if (!a.window || (room.power === 'ON' && settled)) {
+                        await send(userID, a.id, { mode: 'off', until: 'timer', minutes: WINDOW_OFF_MIN });
+                        log.info('adaptive control: off for an open window', { user: userID, room: room.name, by: airOpen ? 'kibbl. air' : 'tado' });
+                        a.sentAt = now;
+                    }
+                    a.window = true;
+                    a.setTo = undefined;
+                    continue;
+                }
+                const step = pidStep(a.state, room.temperature, a.celsius, room.power === 'ON' ? (room.target ?? undefined) : undefined, now);
+                const moved = a.setTo === undefined || Math.abs(step.output - a.setTo) >= STEP_C - 1e-9;
+                const ending =
+                    settled &&
+                    (!room.manual ||
+                        room.power === 'OFF' ||
+                        (room.manualUntil !== null && room.manualUntil !== undefined && room.manualUntil < now + AUTO_RENEW_MS));
+                const gap = (link?.rateRemaining ?? Infinity) < AUTO_SPARE_BUDGET ? 3 * AUTO_GAP_MIN : AUTO_GAP_MIN;
+                const early = a.sentAt !== undefined && now - a.sentAt < gap * 60_000;
+                const low = link?.rateRemaining !== undefined && link.rateRemaining < LOW_BUDGET;
+                if (a.window || ending || (moved && !early && !low)) {
+                    await send(userID, a.id, { mode: 'temperature', celsius: step.output, until: 'timer', minutes: AUTO_HOLD_MIN });
+                    if (a.window) log.info('adaptive control: the window closed', { user: userID, room: room.name });
+                    a.window = false;
+                    a.setTo = step.output;
+                    a.sentAt = now;
+                }
+                log.debug('adaptive control step', {
+                    room: room.name,
+                    measured: room.temperature,
+                    wish: a.celsius,
+                    out: step.output,
+                    raw: step.raw,
+                    tau: step.tau,
+                    kp: step.kp,
+                    integral: a.state.integral,
+                });
+            } catch (err) {
+                log.warn('adaptive control not sent', { user: userID, room: room.name }, err);
+            }
+        }
+        await TadoLink.updateOne({ _id: userID }, { auto: auto.filter((a) => !ended.includes(a.id)) });
+        hub.emit('heatingUpdate', userID);
+    });
+}
+
+/* ----------------------------------------------------------------------- */
+
 // the devices that stand in a room show its tado values: they are sent to the app again
 export async function publishPaired(userID: string) {
     const devices = await Device.find({ ownerID: userID, roomId: { $exists: true } }, { _id: 1 }).lean();
@@ -425,14 +571,21 @@ async function onAirEvent(event: AirEvent) {
     const room = tadoRoomIn(device.ownerID, device.roomId);
     if (!room) return; // no tado in its room
     const key = `${device.ownerID}|${room.id}`;
+    // a room held by the adaptive control: the control switches it
+    if ((await TadoLink.countDocuments({ _id: device.ownerID, 'auto.id': room.id })) > 0) {
+        if (event.state === 'open') airWindow.set(key, event.at);
+        else airWindow.delete(key);
+        await control(device.ownerID, room.id).catch((err) => log.warn('adaptive control: window not handled', { device: event.deviceId }, err));
+        return;
+    }
     try {
         if (event.state === 'open' && room.power === 'ON' && !room.manual) {
-            await command(device.ownerID, room.id, { mode: 'off', until: 'timer', minutes: WINDOW_OFF_MIN });
+            await send(device.ownerID, room.id, { mode: 'off', until: 'timer', minutes: WINDOW_OFF_MIN });
             windowOff.set(key, Date.now() + WINDOW_OFF_MIN * 60_000);
             log.info('heating off for an open window', { device: event.deviceId, room: room.name });
         } else if (event.state === 'closed' && (windowOff.get(key) ?? 0) > Date.now()) {
             windowOff.delete(key);
-            await command(device.ownerID, room.id, { mode: 'schedule' });
+            await send(device.ownerID, room.id, { mode: 'schedule' });
             log.info('heating back to its schedule, the window closed', { device: event.deviceId, room: room.name });
         }
     } catch (err) {

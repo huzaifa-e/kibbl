@@ -326,6 +326,10 @@ async function init() {
             lastError: String,
             rateRemaining: Number,
             rateResetAt: Number,
+            auto: {
+                type: [{ id: Number, celsius: Number, since: Number, state: Schema.Types.Mixed, setTo: Number, sentAt: Number, window: Boolean, windowAt: Number, _id: false }],
+                default: undefined,
+            },
         },
         { versionKey: false },
     );
