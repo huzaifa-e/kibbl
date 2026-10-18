@@ -15,8 +15,8 @@
 #define STATUS_LEVEL  0.3f // the blue of provisioning, the green of the joined Wi-Fi
 #define BREATH_MS     2000
 
-// a warm white at first power up, so a flashed controller shows that it runs
-static const light_t default_light = {true, 255, 150, 70, 60};
+// the warm light at first power up (the warm of the app), so a flashed controller shows that it runs
+static const light_t default_light = {true, 255, 165, 0, 100};
 
 static const uint8_t pins[3] = {RED_PIN, GREEN_PIN, BLUE_PIN};
 
