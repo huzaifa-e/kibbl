@@ -50,4 +50,10 @@ bool config_set_light(const light_t *light);
 const char *config_order(void);
 bool config_set_order(const char *order);
 
+/* How the colours are mixed (KL_strip): false natural (the gamma on every channel, the hues
+ * as the eye expects them), true vivid (the gamma on the brightness only, mixed colours give
+ * the strip's full light) */
+bool config_vivid(void);
+bool config_set_vivid(bool vivid);
+
 #endif /* KL_CONFIG_H */

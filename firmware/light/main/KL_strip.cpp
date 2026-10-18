@@ -22,6 +22,7 @@ static const uint8_t pins[3] = {RED_PIN, GREEN_PIN, BLUE_PIN};
 
 static light_t light;
 static char order[4] = "rgb";
+static bool vivid    = false;
 static uint32_t save_at = 0; // 0: nothing to store
 
 // the fade, in levels of 0..1 as the eye sees them (before the gamma)
@@ -68,11 +69,17 @@ static void output_color(float r, float g, float b) {
     output(rgb);
 }
 
+/* The levels of a light as the eye sees them, which output() takes through the gamma.
+ * Natural: the colour and the brightness both, each channel on the curve of the eye. Vivid:
+ * the colour as the share of the channel's light (the gamma undone), the curve on the
+ * brightness only: mixed colours give the strip's full light. */
 static void target_of(const light_t *l, float out[3]) {
-    float scale = l->on ? l->brightness / 100.0f : 0;
-    out[0]      = l->red / 255.0f * scale;
-    out[1]      = l->green / 255.0f * scale;
-    out[2]      = l->blue / 255.0f * scale;
+    float scale           = l->on ? l->brightness / 100.0f : 0;
+    const uint8_t rgb[3]  = {l->red, l->green, l->blue};
+    for (int i = 0; i < 3; i++) {
+        float c = rgb[i] / 255.0f;
+        out[i]  = (vivid ? powf(c, 1 / GAMMA) : c) * scale;
+    }
 }
 
 static void start_flashes(uint8_t count, float r, float g, float b) {
@@ -150,6 +157,7 @@ void strip_setup(void) {
         light = default_light;
     }
     strlcpy(order, config_order(), sizeof(order));
+    vivid = config_vivid();
     if (strlen(order) != 3) {
         strlcpy(order, "rgb", sizeof(order));
     }
@@ -229,6 +237,15 @@ const char *strip_order(void) {
     return order;
 }
 
+bool strip_set_vivid(bool on) {
+    vivid = on; // the fade of show_light() goes to the light in the new mix
+    return config_set_vivid(on);
+}
+
+bool strip_vivid(void) {
+    return vivid;
+}
+
 void strip_blink(uint8_t count, uint8_t level) {
     float l = level / 100.0f;
     start_flashes(count, l, l, l);
@@ -268,6 +285,7 @@ void strip_to_json(JsonObject json) {
     color.add(light.green);
     color.add(light.blue);
     json["brightness"] = light.brightness;
+    json["vivid"]      = vivid;
 }
 
 static bool int_in_range(JsonObjectConst json, const char *key, int min, int max, int *out) {

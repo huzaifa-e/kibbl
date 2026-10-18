@@ -34,6 +34,11 @@ void strip_set(const light_t *light, uint16_t fade_ms);
 bool strip_set_order(const char *order);
 const char *strip_order(void);
 
+/* Vivid colours: the gamma on the brightness only, so mixed colours (warm, white) give the
+ * strip's full light; natural: on every channel, the hues as the eye expects them. Stored. */
+bool strip_set_vivid(bool vivid);
+bool strip_vivid(void);
+
 // count white flashes at level % (find the device), then back to the light
 void strip_blink(uint8_t count, uint8_t level);
 
@@ -41,7 +46,7 @@ void strip_blink(uint8_t count, uint8_t level);
 void strip_set_updating(bool updating);
 void strip_update_progress(void);
 
-// the light as on, color [r, g, b] and brightness, for the hello, telemetry and responses
+// the light as on, color [r, g, b], brightness and vivid, for the hello, telemetry and responses
 void strip_to_json(JsonObject json);
 
 /* The keys present of {"on", "color", "brightness"} on top of light; false when one is out

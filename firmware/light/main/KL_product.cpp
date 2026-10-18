@@ -40,8 +40,8 @@ void product_add_info(JsonObject json, cmd_source_t source) {
 
 /* ----------------------------------------------------------------------- */
 
-/* {"cmd":"rgb"} with any of on, color [r, g, b], brightness 1-100, fadeMs and order: the
- * keys given change, the others stay */
+/* {"cmd":"rgb"} with any of on, color [r, g, b], brightness 1-100, fadeMs, order and vivid:
+ * the keys given change, the others stay */
 static const char *cmd_rgb(JsonObjectConst req, JsonDocument &resp) {
     if (recovery_active()) {
         return "safe mode after crashes: send an update";
@@ -55,6 +55,10 @@ static const char *cmd_rgb(JsonObjectConst req, JsonDocument &resp) {
     JsonVariantConst order = req["order"];
     if (!order.isNull() && (!order.is<const char *>() || !strip_set_order(order.as<const char *>()))) {
         return "order is rgb, rbg, grb, gbr, brg or bgr";
+    }
+    JsonVariantConst vivid = req["vivid"];
+    if (!vivid.isNull() && (!vivid.is<bool>() || !strip_set_vivid(vivid.as<bool>()))) {
+        return "vivid is true or false";
     }
     strip_set(&light, fade_ms);
 

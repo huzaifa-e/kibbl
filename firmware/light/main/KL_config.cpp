@@ -7,7 +7,7 @@
 #include "KL_serial.h"
 
 #define STORE_MAGIC   0x4b4c4c54 // "KLLT"
-#define STORE_VERSION 1
+#define STORE_VERSION 2 // 2: vivid; a store of 1 is taken over
 
 #define DEFAULT_SERVER_URL "wss://kibbl.uk/device/socket"
 
@@ -26,8 +26,26 @@ typedef struct {
     uint8_t has_light;
     light_t light;
     char order[4];
+    uint8_t vivid; // 1: vivid colours
+    uint8_t reserved[7]; // for the settings to come, so the layout stays
     uint32_t crc;
 } store_t;
+
+// the layout of firmware 1.0.0-1.0.3: what it stored is taken over, the device secret above all
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    char device_secret[DEVICE_SECRET_LEN + 1];
+    char local_key[LOCAL_KEY_LEN + 1];
+    char claim_code[CLAIM_CODE_LEN + 1];
+    char server_url[SERVER_URL_MAX];
+    uint8_t debug;
+    uint8_t has_light;
+    light_t light;
+    char order[4];
+    uint32_t crc;
+} store_v1_t;
 
 static store_t store;
 static char device_id[DEVICE_ID_LEN + 1];
@@ -35,17 +53,21 @@ static char claim_hash[65];
 
 /* ----------------------------------------------------------------------- */
 
-static uint32_t store_crc(const store_t *s) {
-    // crc32 of everything before the crc itself
+// crc32 of the len bytes before the crc
+static uint32_t crc32_of(const void *s, size_t len) {
     uint32_t crc        = 0xffffffff;
     const uint8_t *data = (const uint8_t *)s;
-    for (size_t i = 0; i < offsetof(store_t, crc); i++) {
+    for (size_t i = 0; i < len; i++) {
         crc ^= data[i];
         for (int k = 0; k < 8; k++) {
             crc = (crc >> 1) ^ (0xedb88320 & (0 - (crc & 1)));
         }
     }
     return ~crc;
+}
+
+static uint32_t store_crc(const store_t *s) {
+    return crc32_of(s, offsetof(store_t, crc));
 }
 
 static bool save(void) {
@@ -98,11 +120,37 @@ static void hash_claim_code(void) {
     }
 }
 
+// a store of firmware 1.0.0-1.0.3 into the current layout; false when there is none
+static bool take_over_v1(void) {
+    store_v1_t old;
+    EEPROM.get(0, old);
+    if (old.magic != STORE_MAGIC || old.version != 1 || old.size != sizeof(old) || old.crc != crc32_of(&old, offsetof(store_v1_t, crc))) {
+        return false;
+    }
+    memset(&store, 0, sizeof(store));
+    store.magic   = STORE_MAGIC;
+    store.version = STORE_VERSION;
+    store.size    = sizeof(store);
+    memcpy(store.device_secret, old.device_secret, sizeof(store.device_secret));
+    memcpy(store.local_key, old.local_key, sizeof(store.local_key));
+    memcpy(store.claim_code, old.claim_code, sizeof(store.claim_code));
+    memcpy(store.server_url, old.server_url, sizeof(store.server_url));
+    store.debug     = old.debug;
+    store.has_light = old.has_light;
+    store.light     = old.light;
+    memcpy(store.order, old.order, sizeof(store.order));
+    memset(&old, 0, sizeof(old));
+    DEBUG_F("settings of an older firmware taken over\n");
+    return save();
+}
+
 void config_load(void) {
-    EEPROM.begin(sizeof(store_t));
+    EEPROM.begin(sizeof(store_t) > sizeof(store_v1_t) ? sizeof(store_t) : sizeof(store_v1_t));
     EEPROM.get(0, store);
 
-    if (store.magic != STORE_MAGIC || store.version != STORE_VERSION || store.size != sizeof(store) || store.crc != store_crc(&store)) {
+    if ((store.version != STORE_VERSION || store.size != sizeof(store)) && take_over_v1()) {
+        // the device keeps its secret: the server knows it as before
+    } else if (store.magic != STORE_MAGIC || store.version != STORE_VERSION || store.size != sizeof(store) || store.crc != store_crc(&store)) {
         DEBUG_F("no stored settings, new device secret and pairing code\n");
         create();
         save();
@@ -186,6 +234,15 @@ bool config_set_light(const light_t *light) {
 
 const char *config_order(void) {
     return store.order;
+}
+
+bool config_vivid(void) {
+    return store.vivid != 0;
+}
+
+bool config_set_vivid(bool vivid) {
+    store.vivid = vivid ? 1 : 0;
+    return save();
 }
 
 bool config_set_order(const char *order) {
