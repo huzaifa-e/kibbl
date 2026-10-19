@@ -279,36 +279,68 @@ function render() {
 /* ----------------------------------------------------------------------- */
 /* Rest timer                                                               */
 
-function beep() {
+// one context, made on a tap so the browser lets it play when the rest ends later
+let audio: AudioContext | undefined;
+function unlockAudio() {
     try {
-        const ctx = new AudioContext();
-        for (const [at, f] of [
-            [0, 880],
-            [0.25, 880],
-            [0.5, 1320],
-        ]) {
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.frequency.value = f;
-            g.gain.setValueAtTime(0.18, ctx.currentTime + at);
-            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + at + 0.2);
-            o.connect(g).connect(ctx.destination);
-            o.start(ctx.currentTime + at);
-            o.stop(ctx.currentTime + at + 0.22);
+        audio ??= new AudioContext();
+        if (audio.state === 'suspended') void audio.resume();
+    } catch {
+        /* no sound */
+    }
+}
+
+// a bell: a few inharmonic partials struck together, the high ones dying first
+function ringBell(ctx: AudioContext, at: number) {
+    for (const [ratio, gain, decay] of [
+        [1, 0.22, 2.4],
+        [2, 0.12, 1.6],
+        [2.76, 0.08, 1.1],
+        [5.4, 0.05, 0.6],
+        [8.9, 0.03, 0.35],
+    ]) {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.frequency.value = 660 * ratio;
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(gain, at + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+        o.connect(g).connect(ctx.destination);
+        o.start(at);
+        o.stop(at + decay + 0.05);
+    }
+}
+
+function restOver() {
+    try {
+        unlockAudio();
+        if (audio) {
+            ringBell(audio, audio.currentTime);
+            ringBell(audio, audio.currentTime + 0.45);
         }
     } catch {
         /* no sound */
     }
     navigator.vibrate?.([200, 100, 200]);
+    toast('Rest over');
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+            new Notification('kibbl. gym', { body: 'Rest over, next set', tag: 'gym-rest' });
+        } catch {
+            /* notifications from the page itself are not allowed here */
+        }
+    }
 }
 
 function startRest(seconds: number) {
     if (!seconds) return;
+    unlockAudio();
+    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission();
     stopRest();
     rest = { until: Date.now() + seconds * 1000, total: seconds };
     rest.timer = window.setInterval(() => {
         if (rest && Date.now() >= rest.until) {
-            beep();
+            restOver();
             stopRest();
         }
         drawRest();
