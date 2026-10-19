@@ -39,6 +39,7 @@ import {
     updateWorkout,
     type WorkoutFields,
 } from '../gym/service';
+import { setRest } from '../gym/rest';
 
 const log = logger('gym');
 const NAME_MAX = 80;
@@ -395,6 +396,19 @@ export default function initGymRoutes(app: express.Application) {
             next();
         });
     };
+
+    // until: when the running rest ends (ms), null when it is over or skipped
+    app.put(
+        '/api/gym/rest',
+        auth,
+        handle(async (req) => {
+            const until = (req.body ?? {}).until as unknown;
+            if (until !== null && !(typeof until === 'number' && Number.isFinite(until) && until > Date.now() - 60_000 && until < Date.now() + 3600_000))
+                throw new Bad('until: a time within the hour, or null');
+            setRest(user(req), until);
+            return { ok: true };
+        }),
+    );
 
     // multipart: file; what it holds, each exercise with its unit where the file proves it
     app.post(

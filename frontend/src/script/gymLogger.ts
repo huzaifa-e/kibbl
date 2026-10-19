@@ -323,35 +323,40 @@ function restOver() {
     }
     navigator.vibrate?.([200, 100, 200]);
     toast('Rest over');
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-        try {
-            new Notification('kibbl. gym', { body: 'Rest over, next set', tag: 'gym-rest' });
-        } catch {
-            /* notifications from the page itself are not allowed here */
-        }
-    }
 }
 
 function startRest(seconds: number) {
     if (!seconds) return;
     unlockAudio();
-    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission();
-    stopRest();
+    clearRest();
     rest = { until: Date.now() + seconds * 1000, total: seconds };
     rest.timer = window.setInterval(() => {
         if (rest && Date.now() >= rest.until) {
-            restOver();
+            // back from the background long after the end: the push message has rung it already
+            if (Date.now() - rest.until < 5000) restOver();
             stopRest();
         }
         drawRest();
     }, 250);
     drawRest();
+    syncRest();
+}
+
+function clearRest() {
+    if (rest?.timer) clearInterval(rest.timer);
+    rest = null;
 }
 
 function stopRest() {
-    if (rest?.timer) clearInterval(rest.timer);
-    rest = null;
+    const running = !!rest;
+    clearRest();
     drawRest();
+    if (running) syncRest();
+}
+
+// the server rings the end of the rest too, for a phone that has the app in the background
+function syncRest() {
+    void api('PUT', '/api/gym/rest', { until: rest?.until ?? null }).catch(() => {});
 }
 
 function drawRest() {
@@ -614,13 +619,17 @@ async function onClick(ev: Event) {
             }
             return;
         case 'rest-minus':
-            if (rest) rest.until -= 15_000;
+            if (rest) {
+                rest.until -= 15_000;
+                syncRest();
+            }
             drawRest();
             return;
         case 'rest-plus':
             if (rest) {
                 rest.until += 15_000;
                 rest.total += 15;
+                syncRest();
             }
             drawRest();
             return;

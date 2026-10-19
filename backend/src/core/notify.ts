@@ -53,6 +53,13 @@ async function sendEmail(ownerID: string, alert: Alert) {
     await sendMail(user.email, `${alert.urgent ? '⚠ ' : ''}${alert.title}`, text, html, pictures);
 }
 
+// a push message alone, not about a device (the gym's rest timer); false when ntfy is not set up
+export async function pushMessage(alert: Alert) {
+    if (!process.env.NTFY_URL) return false;
+    await sendNtfy(alert);
+    return true;
+}
+
 // to the owner of the device, on every channel that is set up; a failing one does not stop the others
 export async function notifyOwner(deviceId: string, alert: Alert) {
     const doc = await Device.findById(deviceId, { ownerID: 1 }).lean();
