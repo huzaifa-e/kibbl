@@ -39,6 +39,7 @@ let wakeLock: { release(): Promise<void> } | null = null;
 let saving = false;
 let pending = false;
 let layerClosed: (() => void) | null = null;
+let current = 0; // the card in focus: an exercise, or the workout's own card after the last
 
 /* ----------------------------------------------------------------------- */
 /* Saving                                                                   */
@@ -232,11 +233,6 @@ function exerciseCard(e: GymExerciseLog, ei: number) {
 }
 
 function headerHtml() {
-    const kinds = WORKOUT_KIND_IDS.map((k) => `<option value="${k}"${k === w.kind ? ' selected' : ''}>${WORKOUT_KINDS[k].label}</option>`).join('');
-    const local = (t: number) => {
-        const d = new Date(t - new Date(t).getTimezoneOffset() * 60_000);
-        return d.toISOString().slice(0, 16);
-    };
     return `<div class="gym-log-head">
         <button class="btn btn-icon btn-ghost-secondary" data-act="minimize" aria-label="Back" title="Back (the workout keeps running)"><i class="ti ti-arrow-left"></i></button>
         ${editing ? '' : '<button class="btn btn-ghost-danger btn-sm" data-act="cancel">Cancel</button>'}
@@ -246,8 +242,16 @@ function headerHtml() {
         </div>
         ${editing ? '' : `<button class="btn btn-icon${w.pausedAt ? ' btn-warning' : ''}" data-act="pause" aria-label="${w.pausedAt ? 'Resume' : 'Pause'}" title="${w.pausedAt ? 'Resume' : 'Pause'}"><i class="ti ti-player-${w.pausedAt ? 'play' : 'pause'}"></i></button>`}
         <button class="btn btn-primary" data-act="finish">${editing ? 'Save' : 'Finish'}</button>
-    </div>
-    <div class="gym-log-meta">
+    </div>`;
+}
+
+function metaHtml() {
+    const kinds = WORKOUT_KIND_IDS.map((k) => `<option value="${k}"${k === w.kind ? ' selected' : ''}>${WORKOUT_KINDS[k].label}</option>`).join('');
+    const local = (t: number) => {
+        const d = new Date(t - new Date(t).getTimezoneOffset() * 60_000);
+        return d.toISOString().slice(0, 16);
+    };
+    return `<div class="gym-log-meta">
         <input class="form-control form-control-lg fw-bold" data-meta="name" value="${esc(w.name)}" maxlength="80" />
         <div class="d-flex gap-2 mt-2">
             <select class="form-select" data-meta="kind">${kinds}</select>
@@ -261,19 +265,136 @@ function headerHtml() {
     </div>`;
 }
 
+// the workout's own card, after the exercises: its name and kind, notes, more exercises
+function workoutCard() {
+    return `<div class="card gym-ex gym-ex-end">
+        <div class="card-body p-2 p-sm-3">
+            ${metaHtml()}
+            <button class="btn btn-outline-primary w-100 my-3" data-act="addex"><i class="ti ti-plus me-1"></i>Add exercise</button>
+            <textarea class="form-control mb-3" rows="3" placeholder="Notes on this workout" data-meta="notes" maxlength="2000">${esc(w.notes ?? '')}</textarea>
+            <button class="btn btn-ghost-danger w-100" data-act="discard"><i class="ti ti-trash me-1"></i>${editing ? 'Delete workout' : 'Discard workout'}</button>
+        </div>
+    </div>`;
+}
+
 function render() {
     if (!root) return;
-    const scroll = root.querySelector('.gym-log-body')?.scrollTop ?? 0;
+    const slots = w.exercises.length + 1;
+    current = Math.max(0, Math.min(current, slots - 1));
+    const scroll = root.querySelector(`.gym-slot[data-slot="${current}"] > .card`)?.scrollTop ?? 0;
+    const dots = Array.from({ length: slots }, (_, i) => `<button class="gym-dot${i === slots - 1 ? ' end' : ''}" data-act="goto" data-slot="${i}" aria-label="${i < slots - 1 ? esc(w.exercises[i].name) : 'Workout'}"></button>`).join('');
     root.innerHTML = `${headerHtml()}
-        <div class="gym-log-body">
-            ${w.exercises.map(exerciseCard).join('')}
-            <button class="btn btn-outline-primary w-100 mb-3" data-act="addex"><i class="ti ti-plus me-1"></i>Add exercise</button>
-            <textarea class="form-control mb-3" rows="2" placeholder="Notes on this workout" data-meta="notes" maxlength="2000">${esc(w.notes ?? '')}</textarea>
-            <button class="btn btn-ghost-danger w-100 mb-5" data-act="discard"><i class="ti ti-trash me-1"></i>${editing ? 'Delete workout' : 'Discard workout'}</button>
+        <div class="gym-deck">
+            ${[...w.exercises.map(exerciseCard), workoutCard()].map((c, i) => `<div class="gym-slot" data-slot="${i}">${c}</div>`).join('')}
+            <div class="gym-dots">${dots}</div>
         </div>
         <div class="gym-rest" data-rest hidden></div>`;
-    root.querySelector('.gym-log-body')!.scrollTop = scroll;
+    const card = root.querySelector(`.gym-slot[data-slot="${current}"] > .card`);
+    if (card) card.scrollTop = scroll;
+    layoutDeck();
     drawRest();
+}
+
+/* ----------------------------------------------------------------------- */
+/* The cards: one in focus, the ones before and after peeking above and below; a swipe up or
+ * down goes to the next or the one before once the card in focus is scrolled to its end */
+
+const FLIP_PX = 60;
+
+function layoutDeck(drag = 0) {
+    const deck = root?.querySelector<HTMLElement>('.gym-deck');
+    if (!deck) return;
+    deck.classList.toggle('dragging', drag !== 0);
+    deck.style.setProperty('--drag', `${drag}px`);
+    deck.querySelectorAll<HTMLElement>('.gym-slot').forEach((el) => {
+        const d = Number(el.dataset.slot) - current;
+        el.style.setProperty('--d', String(d));
+        el.classList.toggle('focus', d === 0);
+        el.classList.toggle('far', Math.abs(d) > 1);
+        el.toggleAttribute('aria-hidden', d !== 0);
+    });
+    deck.querySelectorAll<HTMLElement>('.gym-dot').forEach((el) => el.classList.toggle('on', Number(el.dataset.slot) === current));
+}
+
+function goTo(i: number) {
+    const slots = w.exercises.length + 1;
+    if (i < 0 || i >= slots || i === current) return layoutDeck();
+    // the menu of a card left behind closes with it
+    root?.querySelectorAll('.gym-slot .dropdown-menu.show').forEach((m) => m.classList.remove('show'));
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    current = i;
+    layoutDeck();
+}
+
+const scroller = () => root?.querySelector<HTMLElement>(`.gym-slot[data-slot="${current}"] > .card`) ?? null;
+const atTop = (el: HTMLElement) => el.scrollTop <= 0;
+const atBottom = (el: HTMLElement) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+
+function initSwipe(el: HTMLElement) {
+    let y0 = 0;
+    let x0 = 0;
+    let t0 = 0;
+    let mode: 'idle' | 'deck' | 'scroll' = 'idle';
+    let dy = 0;
+    el.addEventListener(
+        'touchstart',
+        (ev) => {
+            if (ev.touches.length !== 1 || !(ev.target as HTMLElement).closest('.gym-deck')) return;
+            y0 = ev.touches[0].clientY;
+            x0 = ev.touches[0].clientX;
+            t0 = Date.now();
+            mode = 'idle';
+            dy = 0;
+        },
+        { passive: true },
+    );
+    el.addEventListener(
+        'touchmove',
+        (ev) => {
+            if (ev.touches.length !== 1 || mode === 'scroll') return;
+            dy = ev.touches[0].clientY - y0;
+            const dx = ev.touches[0].clientX - x0;
+            if (mode === 'idle') {
+                if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+                const card = scroller();
+                const last = w.exercises.length;
+                const flips = Math.abs(dy) > Math.abs(dx) && !!card && (dy < 0 ? current < last && atBottom(card) : current > 0 && atTop(card));
+                mode = flips ? 'deck' : 'scroll';
+                if (!flips) return;
+                y0 = ev.touches[0].clientY;
+                dy = 0;
+            }
+            ev.preventDefault();
+            layoutDeck(dy);
+        },
+        { passive: false },
+    );
+    const end = () => {
+        if (mode !== 'deck') return void (mode = 'idle');
+        mode = 'idle';
+        const fast = Math.abs(dy) / Math.max(1, Date.now() - t0) > 0.5;
+        if (Math.abs(dy) > FLIP_PX || (fast && Math.abs(dy) > 20)) goTo(current + (dy < 0 ? 1 : -1));
+        else layoutDeck();
+    };
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+
+    // a mouse wheel or trackpad: one card per turn, past the end of the card in focus
+    let wheelAt = 0;
+    el.addEventListener(
+        'wheel',
+        (ev) => {
+            const card = scroller();
+            if (!card || !(ev.target as HTMLElement).closest('.gym-deck') || Math.abs(ev.deltaY) < 20) return;
+            const next = ev.deltaY > 0 ? atBottom(card) : atTop(card);
+            if (!next) return;
+            ev.preventDefault();
+            if (Date.now() - wheelAt < 600) return;
+            wheelAt = Date.now();
+            goTo(current + (ev.deltaY > 0 ? 1 : -1));
+        },
+        { passive: false },
+    );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -360,6 +481,7 @@ function syncRest() {
 }
 
 function drawRest() {
+    root?.classList.toggle('resting', !!rest);
     const el = root?.querySelector<HTMLElement>('[data-rest]');
     if (!el) return;
     if (!rest) {
@@ -469,6 +591,8 @@ function summary(done: GymWorkout) {
 
 async function onClick(ev: Event) {
     const target = ev.target as HTMLElement;
+    const slot = target.closest<HTMLElement>('.gym-slot');
+    if (slot && Number(slot.dataset.slot) !== current) return goTo(Number(slot.dataset.slot));
     const btn = target.closest<HTMLElement>('[data-act]');
     if (!btn) return;
     const act = btn.dataset.act!;
@@ -480,6 +604,9 @@ async function onClick(ev: Event) {
     const si = row ? Number(row.dataset.s) : -1;
 
     switch (act) {
+        case 'goto':
+            goTo(Number(btn.dataset.slot));
+            return;
         case 'minimize':
             close(false);
             onDone();
@@ -512,9 +639,9 @@ async function onClick(ev: Event) {
                 const prev = previous(name);
                 const n = prev?.sets.length ?? (x.kind === 'cardio' ? 1 : 3);
                 w.exercises.push({ name, restSeconds: x.kind === 'cardio' ? 0 : 90, sets: Array.from({ length: n }, () => emptySet(x)) });
+                current = w.exercises.length - 1;
                 changed();
                 render();
-                root?.querySelector('.gym-log-body')?.scrollTo({ top: 1e6, behavior: 'smooth' });
             });
             return;
         case 'tick': {
@@ -570,6 +697,7 @@ async function onClick(ev: Event) {
             const to = act === 'up' ? ei - 1 : ei + 1;
             if (to < 0 || to >= w.exercises.length) return;
             [w.exercises[ei], w.exercises[to]] = [w.exercises[to], w.exercises[ei]];
+            current = to;
             changed();
             render();
             return;
@@ -702,7 +830,7 @@ function focusExercise(name: string) {
     const i = w.exercises.findIndex((e) => exerciseKey(e.name) === exerciseKey(name));
     const card = root?.querySelector<HTMLElement>(`.gym-ex[data-e="${i}"]`);
     if (!card) return;
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    goTo(i);
     card.classList.add('gym-focus');
     setTimeout(() => card.classList.remove('gym-focus'), 1600);
 }
@@ -729,6 +857,9 @@ export async function openLogger(workout: GymWorkout, opts: { editing?: boolean;
     if (root) close(false);
     w = structuredClone(workout);
     editing = !!opts.editing;
+    // the first exercise with a set still to do, else the workout's own card
+    current = w.exercises.findIndex((e) => e.sets.some((x) => !x.done));
+    if (current < 0) current = w.exercises.length && editing ? 0 : w.exercises.length;
     onDone = opts.onDone ?? (() => {});
     root = document.createElement('div');
     root.className = 'gym-logger';
@@ -741,6 +872,7 @@ export async function openLogger(workout: GymWorkout, opts: { editing?: boolean;
         onDone();
     });
     root.addEventListener('click', (e) => void onClick(e));
+    initSwipe(root);
     root.addEventListener('change', onInput);
     root.addEventListener('input', (e) => {
         if ((e.target as HTMLElement).matches('input[data-f], [data-meta="notes"], [data-meta="name"]')) onInput(e);

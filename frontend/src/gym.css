@@ -346,23 +346,91 @@ body.gym-logging {
     font-weight: 800;
     font-variant-numeric: tabular-nums;
 }
-.gym-log-meta {
-    padding: 10px 12px 0;
-}
-.gym-log-body {
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 12px 12px calc(96px + env(safe-area-inset-bottom));
-}
-.gym-log-body,
-.gym-log-meta {
-    max-width: 720px;
-    width: 100%;
-    margin: 0 auto;
-}
 .gym-ex {
     margin-bottom: 12px;
+}
+
+/* the exercises as cards, one in focus and the ones next to it peeking above and below */
+.gym-deck {
+    --peek: 34px;
+    --gap: 10px;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto calc(4px + env(safe-area-inset-bottom));
+    overflow: hidden;
+}
+.gym-logger.resting .gym-deck {
+    margin-bottom: calc(68px + env(safe-area-inset-bottom)); /* above the rest timer */
+}
+.gym-slot {
+    position: absolute;
+    left: 12px;
+    right: 30px;
+    top: var(--peek);
+    bottom: var(--peek);
+    transform: translateY(calc(var(--d, 0) * (100% + var(--gap)) + var(--drag, 0px)));
+    transition:
+        transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+        opacity 0.32s;
+}
+.gym-deck.dragging .gym-slot {
+    transition: none;
+}
+.gym-slot:not(.focus) {
+    opacity: 0.45;
+    cursor: pointer;
+}
+.gym-slot:not(.focus) > * {
+    pointer-events: none;
+}
+.gym-slot.far {
+    visibility: hidden;
+}
+.gym-slot > .card {
+    height: 100%;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+.gym-dots {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-height: 90%;
+    overflow: hidden;
+}
+.gym-dot {
+    border: 0;
+    padding: 4px;
+    background: none;
+    line-height: 0;
+}
+.gym-dot::after {
+    content: '';
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tblr-border-color);
+    transition:
+        height 0.2s,
+        background 0.2s;
+}
+.gym-dot.end::after {
+    border-radius: 2px;
+}
+.gym-dot.on::after {
+    height: 20px;
+    border-radius: 4px;
+    background: var(--tblr-primary);
 }
 .gym-set {
     display: grid;
