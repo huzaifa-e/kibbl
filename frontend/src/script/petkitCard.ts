@@ -103,7 +103,7 @@ export function petkitFeederHtml(f: PetkitFeeder, opts: { heading?: string; link
             <input class="form-check-input" type="checkbox" data-petkit-plan="${f.id}" ${f.planPaused ? '' : 'checked'} ${disabled} />
             <span class="form-check-label">Feed on PetKit's plan</span>
         </label>
-        <div class="form-hint">The plan's times and amounts are set in PetKit's app; a portion is about 10 g.</div>
+        <div class="form-hint">The times and amounts are on <a href="/feeder?id=${f.id}">the feeder's page</a>; a portion is about 10 g.</div>
         <div class="petkit-result mt-2" data-petkit-result="${f.id}"></div>
         <div class="text-secondary small mt-2">${f.online ? '' : '<i class="ti ti-wifi-off me-1"></i>offline · '}read ${timeAgo(f.at)}</div>`;
     const badge = `<span class="badge ${!f.online ? 'bg-secondary-lt' : feeding ? 'bg-blue-lt' : 'bg-green-lt'}">${!f.online ? 'offline' : feeding ? 'feeding' : 'online'}</span>`;
