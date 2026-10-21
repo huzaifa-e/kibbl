@@ -19,6 +19,7 @@ import {
 import { heatmapChart } from './activityCharts';
 import { bindControls, controlsHtml } from './controls';
 import { bindEventViewer, eventCardHtml } from './events';
+import { bindPetkit, feederWatchedBy, loadPetkit, petkitFeederHtml } from './petkitCard';
 import { request, socket } from './socket';
 import { bindUpdateInstall, updateNoticeHtml } from './updateNotice';
 import { byId, cameraProblem, emptyState, errorAlert, escapeHtml, formatBytes, formatUptime, signalQuality, successAlert, timeAgo } from './utils';
@@ -48,6 +49,7 @@ const framesizeLabels: Record<string, string> = {
 };
 
 let device: DeviceSummary | undefined;
+let cameras: DeviceSummary[] = []; // the other cameras, whose view this one can take
 let events: MotionEvent[] = [];
 let heatmap: ApexCharts | undefined;
 let rendered = false;
@@ -87,6 +89,7 @@ function layout(d: DeviceSummary) {
                 </div>
             </div>
             <div class="col-lg-4">
+                <div id="petkit-slot"></div>
                 <div class="card mb-3">
                     <div class="card-header"><h3 class="card-title">Status</h3></div>
                     <div class="card-body" id="status"></div>
@@ -123,6 +126,7 @@ function layout(d: DeviceSummary) {
         return event ? { event, device } : undefined;
     });
     bindControls(byId('controls'), () => device);
+    bindPetkit(byId('petkit-slot'), renderFeeder);
     rendered = true;
 }
 
@@ -188,6 +192,15 @@ function renderControls() {
     byId('controls').innerHTML = controlsHtml(d);
 }
 
+// the PetKit feeder this camera watches (set on the devices page)
+function renderFeeder() {
+    const f = feederWatchedBy(deviceId);
+    byId('petkit-slot').innerHTML = f ? `<div class="mb-3">${petkitFeederHtml(f, { title: false })}</div>` : '';
+}
+
+// a kibbl. feeder's own camera, or one that watches a PetKit feeder: the cat comes there to eat
+const atFeeder = () => device!.caps.includes('feeder') || !!feederWatchedBy(deviceId);
+
 function renderMotion() {
     const m = device!.motion;
     const hours = (selected: number) =>
@@ -212,12 +225,12 @@ function renderMotion() {
         <div class="form-hint mb-2">Off: only when and how much something moved is logged, no picture is stored.</div>
         <label class="form-check form-switch mb-1">
             <input class="form-check-input" type="checkbox" id="motion-cat-only" ${m.catOnly ? 'checked' : ''} />
-            <span class="form-check-label">${device!.caps.includes('feeder') ? 'Only count the cat as activity' : 'Only count a cat as activity'}</span>
+            <span class="form-check-label">${atFeeder() ? 'Only count the cat as activity' : 'Only count a cat as activity'}</span>
         </label>
         <div class="form-hint mb-3">The server looks for a cat in what moves; a hand, a person or the light changing is ignored.</div>
         <label class="form-check form-switch mb-1">
             <input class="form-check-input" type="checkbox" id="motion-notify" ${m.notify ? 'checked' : ''} />
-            <span class="form-check-label">${device!.caps.includes('feeder') ? 'E-mail me when the cat comes to eat' : 'E-mail me when a cat comes'}</span>
+            <span class="form-check-label">${atFeeder() ? 'E-mail me when the cat comes to eat' : 'E-mail me when a cat comes'}</span>
         </label>
         <div class="form-hint mb-3">One e-mail a visit, with the picture. Only a cat counts: the server looks for one in what moves.</div>
         <div class="d-flex align-items-center gap-2 mb-3 small" id="saved-pictures"></div>
@@ -339,7 +352,28 @@ function renderPicture() {
             <div class="form-hint">Shows only the middle of the picture, e.g. to hide a housing around the lens. Cut out on the server: the more zoom, the softer.</div>
         </div>
         <button class="btn btn-primary w-100" id="cam-apply" ${d.online ? '' : 'disabled'}><i class="ti ti-check me-1"></i> Apply</button>
-        <div id="cam-result" class="mt-2"></div>`;
+        <div id="cam-result" class="mt-2"></div>
+        ${
+            cameras.length
+                ? `<hr class="my-3" />
+        <label class="form-label">Same view as</label>
+        <div class="d-flex gap-2">
+            <select class="form-select" id="cam-copy-from">${cameras.map((o) => `<option value="${o._id}">${escapeHtml(o.name)}</option>`).join('')}</select>
+            <button class="btn" id="cam-copy" ${d.online ? '' : 'disabled'}><i class="ti ti-copy me-1"></i> Take</button>
+        </div>
+        <div class="form-hint">Takes over the other camera's resolution, quality, levels, turn, mirror and zoom, and its motion detection.</div>`
+                : ''
+        }`;
+
+    document.getElementById('cam-copy')?.addEventListener('click', async () => {
+        const from = cameras.find((o) => o._id === byId<HTMLSelectElement>('cam-copy-from').value);
+        if (!from || !confirm(`Give ${d.name} the picture and motion detection of ${from.name}?`)) return;
+        const button = byId<HTMLButtonElement>('cam-copy');
+        button.classList.add('btn-loading');
+        const resp = await request<{ ok: boolean; error?: string }>('copyCameraView', deviceId, from._id);
+        button.classList.remove('btn-loading');
+        byId('cam-result').innerHTML = resp.ok ? successAlert(`Same view as ${escapeHtml(from.name)}.`) : errorAlert(resp.error ?? 'Not taken over.');
+    });
 
     byId('cam-rotate').addEventListener('click', async () => {
         const button = byId<HTMLButtonElement>('cam-rotate');
@@ -421,6 +455,8 @@ function renderDevice() {
 async function load() {
     const devices = await request<DeviceSummary[]>('getDevices');
     device = devices.find((d) => d._id === deviceId && d.status === 'approved');
+    cameras = devices.filter((d) => d._id !== deviceId && d.status === 'approved' && d.caps.includes('camera') && d.camera);
+    await loadPetkit();
     if (!device) {
         byId('container').innerHTML = errorAlert('This camera does not exist or is not approved yet.');
         return;
@@ -428,6 +464,7 @@ async function load() {
     events = await request<MotionEvent[]>('getEvents', { deviceId, limit: 24 });
     if (!rendered) layout(device);
     renderDevice();
+    renderFeeder();
     renderControls();
     renderMotion();
     renderPicture();
@@ -457,6 +494,16 @@ socket.on('deviceUpdate', (d: DeviceSummary) => {
         renderPicture();
     }
     if (motionChanged) renderMotion();
+});
+
+// the feeder this camera watches was read, fed or given to another camera
+socket.on('petkitUpdate', () => {
+    if (!rendered) return;
+    const before = !!feederWatchedBy(deviceId);
+    void loadPetkit().then(() => {
+        renderFeeder();
+        if (before !== !!feederWatchedBy(deviceId)) renderMotion();
+    });
 });
 
 socket.on('telemetry', (id: string, t: DeviceTelemetry) => {
