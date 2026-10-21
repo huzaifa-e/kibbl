@@ -23,6 +23,7 @@ import { airEvents, airReadings, lastNight, recentAirOf, smokeDays } from '../co
 import { weatherForUser } from '../core/weather';
 import { listRooms } from '../core/rooms';
 import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
+import { registerFeederTools } from './feederTools';
 import { registerWriteTools } from './writeTools';
 import { listWorkouts, lookupFor, suggestions as gymSuggestions, workoutHeartRate } from '../gym/service';
 import {
@@ -214,7 +215,7 @@ export function createMcpServer(session: SessionInfo) {
         { name: 'kibbl', title: 'kibbl.', version },
         {
             instructions:
-                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), the lights (kibbl. light, RGB strips), " +
+                "kibbl. is the user's home: cameras with motion detection, the air of rooms (kibbl. air: CO2, temperature, humidity, cigarettes, windows, fire alerts), the heating (tado), the lights (kibbl. light, RGB strips), the cat's feeder (PetKit: kibbl_feeder, feed now, skip a meal, change the weekly plan), " +
                 'utility meters, the heat used (radiator readings, Techem), health data from a fitness tracker, and the workouts of every kind (gym sets, runs, rides, Pilates; kibbl_gym_workouts, kibbl_gym_progress). ' +
                 "Start with kibbl_overview; kibbl_analysis says what stands out across all of it (alerts, things worth a look, hints). All times are the home's local time; ranges of days include both ends. " +
                 'The *_set and *_edit tools change settings as the app does; the heating set by kibbl_heating_set lasts 60 minutes unless asked otherwise, mode adaptive holds a temperature until changed.',
@@ -981,5 +982,6 @@ export function createMcpServer(session: SessionInfo) {
     );
 
     registerWriteTools(server, session);
+    registerFeederTools(server, session);
     return server;
 }
