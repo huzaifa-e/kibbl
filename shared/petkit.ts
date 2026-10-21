@@ -65,3 +65,52 @@ export function mealTime(seconds: number) {
     const m = Math.floor((seconds % 3600) / 60);
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
+
+/* ----------------------------------------------------------------------- */
+/* The feeding plan: the meals of each weekday, as PetKit's app sets them */
+
+export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const; // days[0] is Monday
+export type Weekday = (typeof WEEKDAYS)[number];
+export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+export const PETKIT_PLAN_PORTIONS = { min: 1, max: 10 }; // a meal of the plan
+export const PETKIT_MEALS_MAX = 10; // a day
+export const PETKIT_MEAL_GAP_S = 300; // PetKit's app keeps meals five minutes apart
+
+export interface PetkitPlanMeal {
+    time: number; // seconds after midnight
+    portions: number;
+    name: string;
+}
+
+export interface PetkitPlan {
+    feederId: number;
+    paused: boolean;
+    days: PetkitPlanMeal[][]; // seven, Monday first
+}
+
+// "07:30" or "7:30" as seconds after midnight
+export function parseMealTime(text: string) {
+    const m = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(text);
+    if (!m) return undefined;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    return h < 24 && min < 60 ? h * 3600 + min * 60 : undefined;
+}
+
+// what is wrong with the meals of a day, or undefined
+export function dayProblem(meals: PetkitPlanMeal[]) {
+    if (meals.length > PETKIT_MEALS_MAX) return `at most ${PETKIT_MEALS_MAX} meals a day`;
+    for (const m of meals) {
+        if (!Number.isInteger(m.time) || m.time < 0 || m.time >= 86400 || m.time % 60) return 'a meal at a whole minute of the day';
+        if (!Number.isInteger(m.portions) || m.portions < PETKIT_PLAN_PORTIONS.min || m.portions > PETKIT_PLAN_PORTIONS.max)
+            return `${PETKIT_PLAN_PORTIONS.min} to ${PETKIT_PLAN_PORTIONS.max} portions a meal`;
+        if (typeof m.name !== 'string' || m.name.length > 20) return 'a name of at most 20 characters';
+    }
+    const times = meals.map((m) => m.time).sort((a, b) => a - b);
+    for (let i = 1; i < times.length; i++) {
+        if (times[i] - times[i - 1] < PETKIT_MEAL_GAP_S)
+            return `meals at least ${PETKIT_MEAL_GAP_S / 60} minutes apart (${mealTime(times[i - 1])} and ${mealTime(times[i])})`;
+    }
+    return undefined;
+}
