@@ -69,3 +69,11 @@ export async function notifyOwner(deviceId: string, alert: Alert) {
         if (r.status === 'rejected') log.warn('alert not sent on one channel', { device: deviceId, title: alert.title }, r.reason);
     }
 }
+
+// to a user, not about a device of theirs (a PetKit feeder): the same channels
+export async function notifyUser(userID: string, alert: Alert) {
+    const results = await Promise.allSettled([sendEmail(userID, alert), sendNtfy(alert)]);
+    for (const r of results) {
+        if (r.status === 'rejected') log.warn('alert not sent on one channel', { user: userID, title: alert.title }, r.reason);
+    }
+}

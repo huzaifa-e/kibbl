@@ -12,6 +12,7 @@ interface HubEvents {
     airEvent: [AirEvent]; // a kibbl. air detected something
     heatingUpdate: [string]; // an account's tado rooms were read or changed
     heatUpdate: [string]; // an account's heat meters or their readings changed
+    petkitUpdate: [string]; // an account's PetKit feeders were read or changed
     devicePublish: [string]; // a device's summary changed outside its own messages (the tado room of its room)
 }
 

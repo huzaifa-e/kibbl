@@ -13,6 +13,7 @@ import { default as initHomeRoutes } from './home';
 import { default as initMcpRoutes } from './mcp';
 import { default as initMeterRoutes } from './meters';
 import { initPageRoutes } from './pages';
+import { default as initPetkitRoutes } from './petkit';
 import { default as initStreamRoutes } from './stream';
 
 export function initRoutes(app: express.Application) {
@@ -26,6 +27,7 @@ export function initRoutes(app: express.Application) {
     initAirRoutes(app);
     initHomeRoutes(app);
     initHeatingRoutes(app);
+    initPetkitRoutes(app);
     initHeatRoutes(app);
     initGymRoutes(app);
     initAnalysisRoutes(app);

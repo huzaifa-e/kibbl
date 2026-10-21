@@ -19,6 +19,7 @@ import { initFirmware } from './core/firmware';
 import { publishDevice } from './core/devices';
 import { hub } from './core/hub';
 import { initTado } from './tado/service';
+import { initPetkit } from './petkit/service';
 import { initWeather } from './core/weather';
 import { closeStaleEvents, initMotionWatchdog } from './core/motion';
 import { initStorageCleanup } from './core/storage';
@@ -59,6 +60,7 @@ async function main() {
     initMeterSync();
     initAir();
     initTado();
+    initPetkit();
     hub.on('devicePublish', (deviceId) => void publishDevice(deviceId));
     initWeather();
 

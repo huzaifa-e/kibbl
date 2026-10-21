@@ -20,6 +20,7 @@ export let HealthAccessRequest: Model<HealthAccessRequestDoc>;
 export let AirReading: Model<AirReadingDoc>;
 export let AirEventModel: Model<AirEventDoc>;
 export let TadoLink: Model<TadoLinkDoc>;
+export let PetkitLink: Model<PetkitLinkDoc>;
 export let Room: Model<RoomDoc>;
 export let TadoReading: Model<TadoReadingDoc>;
 export let FirmwareRelease: Model<FirmwareReleaseDoc>;
@@ -32,7 +33,16 @@ export let GymExerciseModel: Model<GymExerciseDoc>;
 
 let isConnected = false;
 
-const motionDefaults: DeviceDoc['motion'] = { enabled: true, sensitivity: 'medium', quietFrom: 0, quietTo: 0, blink: true, keepPictures: false, notify: false, catOnly: false };
+const motionDefaults: DeviceDoc['motion'] = {
+    enabled: true,
+    sensitivity: 'medium',
+    quietFrom: 0,
+    quietTo: 0,
+    blink: true,
+    keepPictures: false,
+    notify: false,
+    catOnly: false,
+};
 const nightDefaults: NonNullable<DeviceDoc['night']> = { enabled: false, from: 22, to: 7 };
 
 async function init() {
@@ -327,13 +337,42 @@ async function init() {
             rateRemaining: Number,
             rateResetAt: Number,
             auto: {
-                type: [{ id: Number, celsius: Number, since: Number, state: Schema.Types.Mixed, setTo: Number, sentAt: Number, window: Boolean, windowAt: Number, _id: false }],
+                type: [
+                    {
+                        id: Number,
+                        celsius: Number,
+                        since: Number,
+                        state: Schema.Types.Mixed,
+                        setTo: Number,
+                        sentAt: Number,
+                        window: Boolean,
+                        windowAt: Number,
+                        _id: false,
+                    },
+                ],
                 default: undefined,
             },
         },
         { versionKey: false },
     );
     TadoLink = model<TadoLinkDoc>('TadoLink', tadoLinkSchema);
+
+    /* PetKit: an account's login to PetKit's cloud (encrypted, petkit/client.ts) and its feeders,
+     * each with the kibbl. cam that watches it */
+    const petkitLinkSchema = new Schema<PetkitLinkDoc>(
+        {
+            _id: { type: String, required: true },
+            credentials: { type: String, required: true },
+            account: { type: String, required: true },
+            feeders: { type: [{ id: Number, type: { type: String }, name: String, cameraId: String, _id: false }], default: [] },
+            connectedAt: { type: Number, required: true },
+            lastPoll: Number,
+            lastError: String,
+        },
+        { versionKey: false },
+    );
+    petkitLinkSchema.index({ 'feeders.cameraId': 1 });
+    PetkitLink = model<PetkitLinkDoc>('PetkitLink', petkitLinkSchema);
 
     // the rooms of an account's home: devices and tado's rooms in the same one share their readings
     const roomSchema = new Schema<RoomDoc>(
