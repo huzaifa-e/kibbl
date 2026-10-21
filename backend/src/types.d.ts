@@ -78,7 +78,7 @@ declare global {
         _id: string; // the user's id
         credentials: string; // encrypted (petkit/client.ts): the login and the session
         account: string; // the PetKit e-mail, shown in the app
-        feeders: { id: number; type: string; name: string; cameraId?: string }[]; // the kibbl. cam that watches it
+        feeders: { id: number; type: string; typeId?: number; name: string; cameraId?: string }[]; // the kibbl. cam that watches it
         connectedAt: number;
         lastPoll?: number;
         lastError?: string;

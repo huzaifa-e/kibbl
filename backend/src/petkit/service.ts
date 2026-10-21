@@ -1,4 +1,14 @@
-import { PETKIT_PORTION_AMOUNT, PETKIT_PORTIONS, mealTime, type PetkitFeeder, type PetkitMeal, type PetkitStatus } from '../../../shared/petkit';
+import {
+    PETKIT_PORTION_AMOUNT,
+    PETKIT_PORTIONS,
+    dayProblem,
+    mealTime,
+    type PetkitFeeder,
+    type PetkitMeal,
+    type PetkitPlan,
+    type PetkitPlanMeal,
+    type PetkitStatus,
+} from '../../../shared/petkit';
 import { Device, PetkitLink } from '../core/db';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
@@ -39,6 +49,8 @@ interface Session {
     // what was told already, per feeder: no second message while it lasts
     told: Map<number, { low: boolean; error?: string; failed: Set<string> }>;
     zones: Map<number, number | undefined>; // each feeder's offset from UTC, hours: its day
+    factors: Map<number, number>; // what PetKit counts per portion, per feeder
+    plans: Map<number, { plan: PetkitPlan; at: number }>; // read on demand
     first: boolean; // the first read after a start tells nothing: it only learns what is
 }
 
@@ -47,7 +59,18 @@ const sessions = new Map<string, Session>();
 function session(userID: string) {
     let s = sessions.get(userID);
     if (!s) {
-        s = { feeders: new Map(), nextPoll: 0, fastUntil: 0, devicesAt: 0, polling: false, told: new Map(), zones: new Map(), first: true };
+        s = {
+            feeders: new Map(),
+            nextPoll: 0,
+            fastUntil: 0,
+            devicesAt: 0,
+            polling: false,
+            told: new Map(),
+            zones: new Map(),
+            factors: new Map(),
+            plans: new Map(),
+            first: true,
+        };
         sessions.set(userID, s);
     }
     return s;
@@ -143,15 +166,15 @@ export function feederFrom(entry: { id: number; type: string; name: string; came
 // the feeders of an account: its own (family list), else those shared with it (device roster)
 async function listFeeders(userID: string) {
     const groups = await petkitRequest<any[]>(userID, 'group/family/list', {});
-    const found: { id: number; type: string; name: string }[] = [];
+    const found: { id: number; type: string; typeId?: number; name: string }[] = [];
     for (const g of Array.isArray(groups) ? groups : []) {
-        let list: any[] = (g?.deviceList ?? []).map((d: any) => ({ id: d.deviceId, type: d.deviceType, name: d.deviceName }));
+        let list: any[] = (g?.deviceList ?? []).map((d: any) => ({ id: d.deviceId, type: d.deviceType, typeId: d.type, name: d.deviceName }));
         if (!list.length && g?.groupId !== undefined) {
             const today = feederClock(undefined).day;
             const roster = await petkitRequest<{ devices?: any[] }>(userID, 'discovery/device_roster_v2', { form: { day: today, groupId: g.groupId } }).catch(
                 () => ({ devices: [] }),
             );
-            list = (roster.devices ?? []).map((d: any) => ({ id: d.id, type: d.type, name: d.name ?? d.deviceName }));
+            list = (roster.devices ?? []).map((d: any) => ({ id: d.id, type: d.type, typeId: d.deviceTypeId, name: d.name ?? d.deviceName }));
         }
         for (const d of list) {
             const type = String(d.type ?? '').toLowerCase();
@@ -159,7 +182,8 @@ async function listFeeders(userID: string) {
                 if (type) log.debug('PetKit device not taken', { user: userID, type });
                 continue;
             }
-            if (!found.some((f) => f.id === Number(d.id))) found.push({ id: Number(d.id), type, name: String(d.name || 'PetKit feeder') });
+            if (!found.some((f) => f.id === Number(d.id)))
+                found.push({ id: Number(d.id), type, typeId: num(d.typeId), name: String(d.name || 'PetKit feeder') });
         }
     }
     return found;
@@ -188,6 +212,8 @@ async function poll(userID: string) {
         const detail = await petkitRequest(userID, `${entry.type}/device_detail`, { query: { id: entry.id } });
         const zone = (detail as { timezone?: unknown })?.timezone;
         s.zones.set(entry.id, typeof zone === 'number' ? zone : undefined);
+        const factor = (detail as { settings?: { factor?: unknown } })?.settings?.factor;
+        s.factors.set(entry.id, typeof factor === 'number' && factor > 0 ? factor : PETKIT_PORTION_AMOUNT);
         const clock = feederClock(s.zones.get(entry.id));
         const records = await petkitRequest(userID, `${entry.type}/${entry.type === 'd4' ? 'dailyFeeds' : 'getDeviceRecord'}`, {
             query: { days: clock.day, deviceId: entry.id },
@@ -353,6 +379,7 @@ export async function pausePlan(userID: string, feederId: number, paused: boolea
     const f = await feederOf(userID, feederId);
     await petkitRequest(userID, `${f.type}/${paused ? 'suspendFeed' : 'restoreFeed'}`, { form: { deviceId: f.id } });
     log.info(paused ? 'plan paused' : 'plan resumed', { user: who, feeder: f.name, via });
+    session(userID).plans.delete(feederId);
     soon(userID);
 }
 
@@ -378,6 +405,126 @@ export async function watchWith(userID: string, feederId: number, cameraId: stri
     await PetkitLink.updateOne({ _id: userID }, { feeders });
     log.info('feeder camera', { user: userID, feeder: feederId, camera: cameraId ?? 'none' });
     hub.emit('petkitUpdate', userID);
+}
+
+/* ----------------------------------------------------------------------- */
+/* The feeding plan. PetKit's d4 keeps seven days ({prefix}/feed: feedDailyList), each with
+ * its weekday in repeats (1 is Sunday), its meals (time in seconds, amount in PetKit's units)
+ * and suspended. A save sends all seven back ({prefix}/saveFeed) with the meals shaped as
+ * PetKit's app writes them; what else a day carries is kept. */
+
+const PLAN_FRESH_MS = 5 * 60_000;
+const FAMILY_IDS: Record<string, number> = { d4: 11, d4h: 26 };
+let planLogged = false;
+
+// PetKit's weekday (1 Sunday) and ours (index 0 Monday)
+const toIndex = (oem: number) => (oem + 5) % 7;
+const toOem = (index: number) => ((index + 1) % 7) + 1;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function rawDays(raw: any): any[] {
+    if (Array.isArray(raw?.feedDailyList)) return raw.feedDailyList;
+    if (Array.isArray(raw)) return raw;
+    return [];
+}
+
+function weekdaysOf(day: any): number[] {
+    return String(day?.repeats ?? '')
+        .split(',')
+        .map((t) => Number(t.trim()))
+        .filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
+}
+
+// the plan as kibbl. shows it, from what {prefix}/feed answers
+export function planFrom(feederId: number, raw: any, factor = PETKIT_PORTION_AMOUNT): PetkitPlan {
+    const days: PetkitPlanMeal[][] = Array.from({ length: 7 }, () => []);
+    const list = rawDays(raw);
+    for (const day of list) {
+        const meals = ((day?.items ?? []) as any[])
+            .map((i) => ({
+                time: num(i?.time) ?? 0,
+                portions: Math.max(1, Math.round((num(i?.amount) ?? 0) / factor)),
+                name: typeof i?.name === 'string' ? i.name : '',
+            }))
+            .sort((a, b) => a.time - b.time);
+        for (const oem of weekdaysOf(day)) days[toIndex(oem)] = meals;
+    }
+    return { feederId, paused: list.length > 0 && list.every((d) => num(d?.suspended) === 1), days };
+}
+
+// the seven days to save: the meals of each in PetKit's shape, the rest of a day as it was
+export function feedDailyListFor(raw: any, days: PetkitPlanMeal[][], deviceId: number, typeId: number, factor = PETKIT_PORTION_AMOUNT) {
+    const before = rawDays(raw);
+    const paused = before.length > 0 && before.every((d) => num(d?.suspended) === 1);
+    return days.map((meals, index) => {
+        const oem = toOem(index);
+        const old = before.find((d) => weekdaysOf(d).length === 1 && weekdaysOf(d)[0] === oem);
+        const ids = new Map<number, unknown>(((old?.items ?? []) as any[]).map((i) => [num(i?.time) ?? -1, i?.id]));
+        const items = [...meals]
+            .sort((a, b) => a.time - b.time)
+            .map((m) => ({
+                amount: m.portions * factor,
+                amount1: 0,
+                amount2: 0,
+                deviceId,
+                deviceType: typeId,
+                id: ids.get(m.time) || m.time,
+                name: m.name,
+                petAmount: [],
+                time: m.time,
+            }));
+        return {
+            ...(old ?? { repeats: String(oem), suspended: paused ? 1 : 0 }),
+            items,
+            count: items.length,
+            totalAmount: items.reduce((sum, i) => sum + i.amount, 0),
+        };
+    });
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+async function rawPlan(userID: string, entry: { id: number; type: string }) {
+    const raw = await petkitRequest<unknown>(userID, `${entry.type}/feed`, { query: { deviceId: entry.id } });
+    // what PetKit sends for a plan, once per start: for when a value is not where it is expected
+    if (!planLogged) {
+        planLogged = true;
+        log.info('PetKit plan as sent', { first: JSON.stringify(raw ?? null).slice(0, 1500) });
+    }
+    return raw;
+}
+
+export async function getPlan(userID: string, feederId: number, fresh = false) {
+    const s = session(userID);
+    const cached = s.plans.get(feederId);
+    if (!fresh && cached && Date.now() - cached.at < PLAN_FRESH_MS) return cached.plan;
+    const entry = await feederOf(userID, feederId);
+    const plan = planFrom(feederId, await rawPlan(userID, entry), s.factors.get(feederId));
+    s.plans.set(feederId, { plan, at: Date.now() });
+    return plan;
+}
+
+// the meals of all seven days, Monday first; a day's meals are checked as PetKit's app does
+export async function savePlan(userID: string, feederId: number, days: PetkitPlanMeal[][], who: string, via = 'app') {
+    if (!Array.isArray(days) || days.length !== 7) throw new PetkitError('seven days, Monday first', 400);
+    for (const [i, meals] of days.entries()) {
+        const problem = Array.isArray(meals) ? dayProblem(meals) : 'a list of meals';
+        if (problem) throw new PetkitError(`${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i]}: ${problem}`, 400);
+    }
+    const entry = await feederOf(userID, feederId);
+    const s = session(userID);
+    const factor = s.factors.get(feederId) ?? PETKIT_PORTION_AMOUNT;
+    const raw = await rawPlan(userID, entry);
+    const list = feedDailyListFor(raw, days, entry.id, entry.typeId ?? FAMILY_IDS[entry.type] ?? 0, factor);
+    await petkitRequest(userID, `${entry.type}/saveFeed`, { form: { deviceId: entry.id, feedDailyList: JSON.stringify(list) } });
+    s.plans.delete(feederId);
+    log.info('plan saved', {
+        user: who,
+        feeder: entry.name,
+        meals: days.map((d) => d.map((m) => `${mealTime(m.time)}×${m.portions}`).join(' ') || '-').join(' | '),
+        via,
+    });
+    soon(userID);
+    return getPlan(userID, feederId, true);
 }
 
 // the PetKit feeder a camera watches

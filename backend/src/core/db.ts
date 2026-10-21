@@ -364,7 +364,7 @@ async function init() {
             _id: { type: String, required: true },
             credentials: { type: String, required: true },
             account: { type: String, required: true },
-            feeders: { type: [{ id: Number, type: { type: String }, name: String, cameraId: String, _id: false }], default: [] },
+            feeders: { type: [{ id: Number, type: { type: String }, typeId: Number, name: String, cameraId: String, _id: false }], default: [] },
             connectedAt: { type: Number, required: true },
             lastPoll: Number,
             lastError: String,

@@ -3,7 +3,7 @@ import { PETKIT_REGIONS } from '../../../shared/petkit';
 import { checkAuthMiddleware } from '../core/auth';
 import { logger } from '../core/logger';
 import { PetkitError } from '../petkit/client';
-import { cancelFeed, connect, disconnect, feed, pausePlan, resetDesiccant, skipMeal, status, watchWith } from '../petkit/service';
+import { cancelFeed, connect, disconnect, feed, getPlan, pausePlan, resetDesiccant, savePlan, skipMeal, status, watchWith } from '../petkit/service';
 
 const log = logger('petkit');
 
@@ -88,6 +88,24 @@ export default function initPetkitRoutes(app: express.Application) {
         auth,
         run((req) => resetDesiccant(user(req), feederId(req), who(req))),
     );
+    // the feeding plan: the meals of each weekday, Monday first
+    app.get('/api/petkit/feeders/:id/schedule', auth, async (req: RequestWithSessionInfo, res) => {
+        try {
+            res.json(await getPlan(user(req), feederId(req), req.query.fresh === '1'));
+        } catch (err) {
+            fail(res, err);
+        }
+    });
+
+    // { days: [[{ time, portions, name }], ...seven] }
+    app.put('/api/petkit/feeders/:id/schedule', auth, async (req: RequestWithSessionInfo, res) => {
+        try {
+            res.json(await savePlan(user(req), feederId(req), req.body?.days, who(req)));
+        } catch (err) {
+            fail(res, err);
+        }
+    });
+
     // { cameraId } of a kibbl. cam that watches the feeder, or null
     app.put(
         '/api/petkit/feeders/:id/camera',

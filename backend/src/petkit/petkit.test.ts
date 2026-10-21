@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { zoneOffset } from './client';
-import { feederClock, feederFrom, mealFrom } from './service';
+import { dayProblem, parseMealTime } from '../../../shared/petkit';
+import { feedDailyListFor, feederClock, feederFrom, mealFrom, planFrom } from './service';
 
 const NOON = 12 * 3600;
 
@@ -109,4 +110,78 @@ test('a feeder that is offline, with a paused plan', () => {
     assert.equal(f.food, 'enough');
     assert.equal(f.planPaused, true);
     assert.deepEqual(f.meals, []);
+});
+
+const D4_PLAN = {
+    feedDailyList: [
+        { repeats: '1', suspended: 0, count: 1, items: [{ id: 's28800', time: 28800, amount: 20, name: 'Breakfast', deviceId: 42, deviceType: 11 }] },
+        {
+            repeats: '2',
+            suspended: 0,
+            count: 2,
+            items: [
+                { id: 's64800', time: 64800, amount: 10, name: 'Dinner' },
+                { id: 's25200', time: 25200, amount: 30, name: 'Breakfast' },
+            ],
+        },
+        { repeats: '3', suspended: 0, items: [] },
+    ],
+};
+
+test('the plan of a d4 by weekday, Monday first', () => {
+    const plan = planFrom(42, D4_PLAN);
+    assert.equal(plan.paused, false);
+    assert.deepEqual(plan.days[6], [{ time: 28800, portions: 2, name: 'Breakfast' }]); // repeats 1 is Sunday
+    assert.deepEqual(
+        plan.days[0].map((m) => [m.time, m.portions]),
+        [
+            [25200, 3],
+            [64800, 1],
+        ],
+    );
+    assert.deepEqual(plan.days[1], []);
+    assert.deepEqual(plan.days[5], []);
+});
+
+test('a paused plan', () => {
+    assert.equal(planFrom(1, { feedDailyList: [{ repeats: '1', suspended: 1, items: [] }] }).paused, true);
+});
+
+test('the seven days to save keep ids and what else a day has', () => {
+    const days = planFrom(42, D4_PLAN).days;
+    days[0] = [
+        { time: 25200, portions: 2, name: 'Breakfast' },
+        { time: 70200, portions: 1, name: 'Late' },
+    ];
+    const list = feedDailyListFor(D4_PLAN, days, 42, 11);
+    assert.equal(list.length, 7);
+    const monday = list[0] as Record<string, unknown> & { items: { id: unknown; time: number; amount: number; deviceType: number }[] };
+    assert.equal(monday.repeats, '2');
+    assert.deepEqual(
+        monday.items.map((i) => [i.time, i.amount, i.id]),
+        [
+            [25200, 20, 's25200'],
+            [70200, 10, 70200],
+        ],
+    );
+    assert.equal(monday.items[0].deviceType, 11);
+    assert.equal(monday.count, 2);
+    assert.equal(monday.totalAmount, 30);
+    // a day PetKit did not send is made, with its weekday
+    assert.equal((list[3] as { repeats: string }).repeats, '5');
+    assert.equal((list[6] as { repeats: string }).repeats, '1');
+});
+
+test('a day of meals is checked as PetKit does', () => {
+    assert.equal(dayProblem([{ time: 25200, portions: 2, name: '' }]), undefined);
+    assert.match(
+        dayProblem([
+            { time: 25200, portions: 2, name: '' },
+            { time: 25380, portions: 1, name: '' },
+        ]) ?? '',
+        /5 minutes apart/,
+    );
+    assert.match(dayProblem([{ time: 25200, portions: 11, name: '' }]) ?? '', /portions/);
+    assert.equal(parseMealTime('7:30'), 27000);
+    assert.equal(parseMealTime('24:00'), undefined);
 });
