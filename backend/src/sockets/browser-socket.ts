@@ -12,7 +12,7 @@ import {
     type SetupInfo,
 } from '../../../shared/protocol';
 import { removeAirData, setNightSchedule } from '../core/air';
-import { applyMotionSettings, runDeviceCommand } from '../core/control';
+import { applyMotionSettings, copyCameraView, runDeviceCommand } from '../core/control';
 import { AUTH_COOKIE, checkAuthToken, readCookie } from '../core/auth';
 import { Device, Meter, MotionEventModel } from '../core/db';
 import { closeConnection, getSummaries, publishDevice, updateDemand, type DeviceResponse } from '../core/devices';
@@ -56,6 +56,7 @@ interface ClientToServerEvents {
     renameDevice: (deviceId: string, name: string, cb: Callback<Result>) => void;
     removeDevice: (deviceId: string, cb: Callback<Result>) => void;
     setMotionSettings: (deviceId: string, settings: Partial<MotionSettings>, cb: Callback<Result>) => void;
+    copyCameraView: (deviceId: string, fromId: string, cb: Callback<Result>) => void;
     setNightSchedule: (deviceId: string, schedule: NightSchedule, cb: Callback<Result>) => void;
     getEvents: (query: EventQuery, cb: Callback<MotionEvent[]>) => void;
     deleteEvent: (eventId: string, cb: Callback<Result>) => void;
@@ -209,6 +210,17 @@ function registerEvents(socket: BrowserSocket) {
         }
         await applyMotionSettings(doc, settings, socket.data.session.email);
         cb({ ok: true });
+    });
+
+    // the picture and motion detection of another camera of this person
+    socket.on('copyCameraView', async (deviceId, fromId, cb) => {
+        if (!isCallback(cb)) return;
+        const [target, source] = await Promise.all([usableDevice(socket, deviceId), usableDevice(socket, fromId)]);
+        if (!target || !source || target._id === source._id) {
+            cb({ ok: false, error: 'device not found' });
+            return;
+        }
+        cb(await copyCameraView(target, source, socket.data.session.email));
     });
 
     socket.on('setNightSchedule', async (deviceId, schedule, cb) => {

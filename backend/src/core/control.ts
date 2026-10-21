@@ -15,7 +15,7 @@ import {
     type MotionSettings,
 } from '../../../shared/protocol';
 import { setNightOverride } from './air';
-import { Device } from './db';
+import db, { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
 import { setFrameTransform } from './frames';
 import { logger } from './logger';
@@ -318,4 +318,51 @@ export async function applyMotionSettings(doc: DeviceDoc, settings: Partial<Moti
     await updateDemand(doc._id);
     await publishDevice(doc._id);
     return motion;
+}
+
+/* One camera takes the view of another: its picture (size, quality, levels, turn, mirror, zoom)
+ * and its motion detection, e.g. a new camera over the feeder that should see what the old one
+ * saw. The camera has to be online for its part of the picture; the rest is the server's. */
+export async function copyCameraView(target: DeviceDoc, source: DeviceDoc, who: string, via = 'app'): Promise<DeviceResponse> {
+    if (!target.caps?.includes('camera') || !source.caps?.includes('camera')) return { ok: false, error: 'both have to be cameras' };
+    if (!source.camera) return { ok: false, error: `${source.name} has not reported its picture yet` };
+    const c = source.camera;
+    const resp = await runDeviceCommand(
+        target,
+        {
+            cmd: 'camera',
+            framesize: c.framesize,
+            quality: c.quality,
+            brightness: c.brightness,
+            contrast: c.contrast,
+            saturation: c.saturation,
+            vflip: c.vflip,
+            hmirror: c.hmirror,
+            turn90: !!source.turn90,
+            view: source.view ?? { zoom: 1, x: 0.5, y: 0.5 },
+        },
+        who,
+        via,
+    );
+    if (!resp.ok) return resp;
+    const m = { ...db.motionDefaults, ...(source.motion ?? {}) };
+    const fresh = await Device.findById(target._id).lean();
+    if (fresh) {
+        await applyMotionSettings(
+            fresh,
+            {
+                enabled: m.enabled,
+                sensitivity: m.sensitivity,
+                quietFrom: m.quietFrom,
+                quietTo: m.quietTo,
+                keepPictures: m.keepPictures,
+                notify: m.notify,
+                catOnly: m.catOnly,
+            },
+            who,
+            via,
+        );
+    }
+    log.info('camera view copied', { device: target._id, from: source._id, user: who, via });
+    return { ok: true };
 }
