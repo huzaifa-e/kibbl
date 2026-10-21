@@ -57,8 +57,8 @@ function mealRow(f: PetkitFeeder, m: PetkitMeal) {
     </div>`;
 }
 
-// a feeder's card: on the home page with its name, on its camera's page without
-export function petkitFeederHtml(f: PetkitFeeder, opts: { title?: boolean } = {}) {
+// a feeder's card, with its name or another heading, leading to its page
+export function petkitFeederHtml(f: PetkitFeeder, opts: { heading?: string; link?: boolean } = {}) {
     const chosen = portionsChosen.get(f.id) ?? 1;
     const feeding = f.feeding || f.meals.some((m) => m.state === 'feeding');
     const disabled = f.online ? '' : 'disabled';
@@ -108,7 +108,11 @@ export function petkitFeederHtml(f: PetkitFeeder, opts: { title?: boolean } = {}
         <div class="text-secondary small mt-2">${f.online ? '' : '<i class="ti ti-wifi-off me-1"></i>offline · '}read ${timeAgo(f.at)}</div>`;
     const badge = `<span class="badge ${!f.online ? 'bg-secondary-lt' : feeding ? 'bg-blue-lt' : 'bg-green-lt'}">${!f.online ? 'offline' : feeding ? 'feeding' : 'online'}</span>`;
     return `<div class="card" data-petkit-card="${f.id}">
-        <div class="card-header"><h3 class="card-title"><i class="ti ti-bowl me-1 text-orange"></i> ${opts.title === false ? 'Feeder' : escapeHtml(f.name)}</h3><div class="card-actions">${badge}</div></div>
+        <div class="card-header"><h3 class="card-title"><i class="ti ti-bowl me-1 text-orange"></i> ${
+            opts.link === false
+                ? escapeHtml(opts.heading ?? f.name)
+                : `<a href="/feeder?id=${f.id}" class="text-reset">${escapeHtml(opts.heading ?? f.name)} <i class="ti ti-chevron-right"></i></a>`
+        }</h3><div class="card-actions">${badge}</div></div>
         <div class="card-body">${body}</div>
     </div>`;
 }

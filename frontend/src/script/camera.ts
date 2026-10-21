@@ -195,7 +195,7 @@ function renderControls() {
 // the PetKit feeder this camera watches (set on the devices page)
 function renderFeeder() {
     const f = feederWatchedBy(deviceId);
-    byId('petkit-slot').innerHTML = f ? `<div class="mb-3">${petkitFeederHtml(f, { title: false })}</div>` : '';
+    byId('petkit-slot').innerHTML = f ? `<div class="mb-3">${petkitFeederHtml(f, { heading: 'Feeder' })}</div>` : '';
 }
 
 // a kibbl. feeder's own camera, or one that watches a PetKit feeder: the cat comes there to eat
