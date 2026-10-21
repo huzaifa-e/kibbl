@@ -3,6 +3,7 @@ import { productName, type DeviceSummary } from '../../../shared/protocol';
 import { request, socket } from './socket';
 import { knownPorts, onUsbPlugged, usbSupported, usbUnsupportedReason } from './usbSerial';
 import { byId, emptyState, errorAlert, escapeHtml, successAlert, timeAgo } from './utils';
+import { bindPetkit, loadPetkit, petkitPanelHtml } from './petkitCard';
 import { bindRoomsPanel, heatingCardHtml, loadHeating, loadRooms, roomSelectHtml, roomsCardHtml } from './roomsPanel';
 import { changeWifiRemotely, setupOverUsb } from './wifiSetup';
 
@@ -138,6 +139,7 @@ function render() {
                     : `<div class="card-body">${emptyState('cpu', 'No devices yet', 'A new device appears above once it reaches the server.')}</div>`
             }
         </div>
+        <div id="petkit"></div>
         <div id="heating"></div>
         <div id="rooms"></div>
         <div id="meters"></div>
@@ -159,7 +161,6 @@ function render() {
                 <div class="card">
                     <div class="card-header"><h3 class="card-title">Coming to the home network</h3></div>
                     <div class="list-group list-group-flush">
-                        <div class="list-group-item"><i class="ti ti-bowl me-2 text-orange"></i> Pet feeder: feed on a schedule or from the app</div>
                         <div class="list-group-item"><i class="ti ti-flame me-2 text-red"></i> Heating: radiator valve or relay with a target temperature</div>
                         <div class="list-group-item"><i class="ti ti-plug me-2 text-blue"></i> Switches: any device behind a relay</div>
                     </div>
@@ -428,11 +429,18 @@ function renderRoomsPanel() {
     const heatingSlot = document.getElementById('heating');
     const roomsSlot = document.getElementById('rooms');
     if (heatingSlot) heatingSlot.innerHTML = heatingCardHtml();
+    renderPetkit();
     if (roomsSlot) roomsSlot.innerHTML = roomsCardHtml();
 }
 
+// PetKit's feeders, each with the camera that watches it
+function renderPetkit() {
+    const slot = document.getElementById('petkit');
+    if (slot) slot.innerHTML = petkitPanelHtml(devices.filter((d) => d.status === 'approved' && d.caps.includes('camera')));
+}
+
 async function loadRoomsPanel() {
-    await Promise.all([loadRooms(), loadHeating()]);
+    await Promise.all([loadRooms(), loadHeating(), loadPetkit()]);
 }
 
 async function load() {
@@ -466,6 +474,8 @@ document.addEventListener('DOMContentLoaded', () => {
         await loadRoomsPanel();
         render();
     });
+
+    bindPetkit(byId('container'), renderPetkit);
 
     // a device set up over its own Wi-Fi: the code its setup page showed
     byId('container').addEventListener('submit', async (e) => {
@@ -532,6 +542,9 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
     renderUnlessMenuOpen(); // keeps a message the user is reading
 });
 socket.on('meterUpdate', () => loadMeters());
+socket.on('petkitUpdate', () => {
+    void loadPetkit().then(renderPetkit);
+});
 // tado read its rooms, or the sign-in finished: the heating card shows it
 socket.on('heatingUpdate', () => {
     void loadRoomsPanel().then(renderRoomsPanel);

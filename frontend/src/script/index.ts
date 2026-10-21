@@ -5,6 +5,7 @@ import { airSensorError, type ActivityBucket, type AirEvent, type DeviceSummary,
 import { hourlyChart } from './activityCharts';
 import { airCardHtml, loadAirHistory, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
+import { bindPetkit, loadPetkit, petkitFeederHtml, petkitStatus } from './petkitCard';
 import { bindControls, controlsHtml } from './controls';
 import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
@@ -176,11 +177,14 @@ function renderOthers() {
                     ? `<div class="col-md-6 col-xl-4">${airCardHtml(d, weather, lastOpen.get(d._id))}</div>`
                     : `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`,
             )
-            .join('') + heatingCardHtml();
+            .join('') +
+        (petkitStatus()?.feeders ?? []).map((f) => `<div class="col-md-6 col-xl-4">${petkitFeederHtml(f)}</div>`).join('') +
+        heatingCardHtml();
     // the controls listen on the container: bound once, not on every redraw
     if (!othersBound) {
         bindControls(byId('other-devices'), (id) => devices.find((d) => d._id === id));
         bindHeatingCard(byId('other-devices'), renderOthers);
+        bindPetkit(byId('other-devices'), renderOthers);
         othersBound = true;
     }
 }
@@ -250,7 +254,13 @@ async function load() {
     void renderHomeCards(byId('camera-grid'));
     void loadAirExtras();
     void loadHeatingCard().then(() => rendered && renderOthers());
+    void loadPetkit().then(() => rendered && renderOthers());
 }
+
+// a PetKit feeder was read or fed: its card shows it
+socket.on('petkitUpdate', () => {
+    void loadPetkit().then(() => rendered && renderOthers());
+});
 
 // tado read its rooms or a change went through: the heating card shows it
 socket.on('heatingUpdate', () => {
