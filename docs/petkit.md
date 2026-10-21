@@ -13,7 +13,7 @@ Devices page → *Pet feeder · PetKit*: e-mail, password and region of a PetKit
 ## What the server does
 
 - Reads each feeder every minute (`d4/device_detail`, `d4/dailyFeeds` for today), every 5 s for 90 s after a command and while it feeds. The list of feeders (`group/family/list`, else `discovery/device_roster_v2` for shared ones) every 6 hours.
-- Feed now (1–5 portions, `saveDailyFeed`, amount = portions × 10), stop (`cancelRealtimeFeed`), skip or restore a meal of today (`removeDailyFeed` / `restoreDailyFeed`), pause the plan (`suspendFeed` / `restoreFeed`), desiccant replaced (`desiccantReset`). The plan itself is edited in PetKit's app.
+- Feed now (1–5 portions, `saveDailyFeed`, amount = portions × 10), stop (`cancelRealtimeFeed`), skip or restore a meal of today (`removeDailyFeed` / `restoreDailyFeed`), pause the plan (`suspendFeed` / `restoreFeed`), desiccant replaced (`desiccantReset`). The weekly plan: below.
 - Tells the owner (e-mail and ntfy) when the hopper runs low, the feeder reports an error, or a meal was not given.
 
 ## Feeder page and weekly plan
