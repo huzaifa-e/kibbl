@@ -424,13 +424,19 @@ async function send(userID: string, roomId: number, cmd: Exclude<HeatingCommand,
             room.heating = 0;
         }
         // the schedule's own setting is known only from the next read: soon
-        if (cmd.mode === 'schedule') session(userID).nextPoll = Math.min(session(userID).nextPoll, Date.now() + 2 * 60_000);
+        if (cmd.mode === 'schedule') readSoon(userID);
     }
     // what tado answered: a refusal throws in tadoRequest, an accepted command may still differ
     log.info('heating command', { user: userID, room: roomId, ...cmd, answer: JSON.stringify(answer ?? null).slice(0, 300) });
     hub.emit('heatingUpdate', userID);
     await publishPaired(userID);
     confirmSoon(userID, link.rateRemaining);
+}
+
+// the rooms are read again within 2 minutes, for a setting known only from tado (its schedule)
+export function readSoon(userID: string) {
+    const s = session(userID);
+    s.nextPoll = Math.min(s.nextPoll, Date.now() + 2 * 60_000);
 }
 
 /* After a command the room is read again in a while, so the app shows what tado really does

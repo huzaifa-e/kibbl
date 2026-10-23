@@ -24,6 +24,7 @@ import { weatherForUser } from '../core/weather';
 import { listRooms } from '../core/rooms';
 import { readings as heatingReadings, status as heatingStatus } from '../tado/service';
 import { registerFeederTools } from './feederTools';
+import { registerHeatingScheduleTools } from './heatingScheduleTools';
 import { registerWriteTools } from './writeTools';
 import { listWorkouts, lookupFor, suggestions as gymSuggestions, workoutHeartRate } from '../gym/service';
 import {
@@ -983,5 +984,6 @@ export function createMcpServer(session: SessionInfo) {
 
     registerWriteTools(server, session);
     registerFeederTools(server, session);
+    registerHeatingScheduleTools(server, session);
     return server;
 }

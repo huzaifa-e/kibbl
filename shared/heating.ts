@@ -69,3 +69,26 @@ export interface RoomOverview<Device> {
 export interface PairedRoom extends HeatingRoom {
     source: 'tado';
 }
+
+/* A room's weekly schedule in tado. Classic homes choose one of three layouts (the same every
+ * day, Mon-Fri / Sat / Sun, or each day), tado X keeps the layout its app made. A day is a run
+ * of blocks from 00:00 to 24:00, each with the temperature it heats to (null: off). */
+export const SCHEDULE_LAYOUTS = {
+    one_day: ['MONDAY_TO_SUNDAY'],
+    three_day: ['MONDAY_TO_FRIDAY', 'SATURDAY', 'SUNDAY'],
+    seven_day: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+} as const;
+
+export type ScheduleLayout = keyof typeof SCHEDULE_LAYOUTS;
+export type ScheduleDay = (typeof SCHEDULE_LAYOUTS)[ScheduleLayout][number];
+
+export interface ScheduleBlock {
+    start: string; // HH:MM, home time
+    end: string; // HH:MM, 24:00 for midnight
+    celsius: number | null;
+}
+
+export interface HeatingSchedule {
+    layout: ScheduleLayout;
+    days: { day: ScheduleDay; blocks: ScheduleBlock[] }[];
+}
