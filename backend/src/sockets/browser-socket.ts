@@ -17,6 +17,30 @@ import { AUTH_COOKIE, checkAuthToken, readCookie } from '../core/auth';
 import { Device, Meter, MotionEventModel } from '../core/db';
 import { closeConnection, getSummaries, publishDevice, updateDemand, type DeviceResponse } from '../core/devices';
 import { forgetFrames } from '../core/frames';
+import {
+    cleanAction,
+    cleanAlerts,
+    cleanTimer,
+    flash,
+    nextStart,
+    planOf,
+    runAction,
+    saveAlerts,
+    saveTimers,
+    setMood,
+    showOf,
+    stopShow,
+} from '../core/lightShow';
+import {
+    ALERT_INFO,
+    LIGHT_ALERT_KINDS,
+    LIGHT_TIMERS_MAX,
+    type LightAlertKind,
+    type LightAlerts,
+    type LightPlan,
+    type LightShowState,
+    type LightTimer,
+} from '../../../shared/light';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
 import { canUse, deviceOwner, forgetOwner, isAdmin, maySetUp, ownedDeviceIds, visibleDeviceFilter } from '../core/owners';
@@ -65,6 +89,13 @@ interface ClientToServerEvents {
     getActivity: (query: { deviceId?: string; days: number }, cb: Callback<ActivityBucket[]>) => void;
     getSetupInfo: (cb: Callback<SetupInfo>) => void;
     expectDevice: (deviceId: string, name: string, cb: Callback<Result>) => void;
+    // kibbl. light: moods, effects, timers and alerts (core/lightShow.ts)
+    getLightPlan: (deviceId: string, cb: Callback<Result & { plan?: LightPlan; show?: LightShowState | null; next?: Record<string, number | null> }>) => void;
+    setLightTimers: (deviceId: string, timers: unknown[], cb: Callback<Result & { timers?: LightTimer[] }>) => void;
+    setLightAlerts: (deviceId: string, alerts: Partial<LightAlerts>, cb: Callback<Result & { alerts?: LightAlerts }>) => void;
+    lightMood: (deviceId: string, mood: string, cb: Callback<Result>) => void;
+    lightEffect: (deviceId: string, effect: Record<string, unknown>, cb: Callback<Result>) => void;
+    lightFlash: (deviceId: string, kind: string, cb: Callback<Result>) => void;
 }
 
 type BrowserSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, { session: SessionInfo }>;
@@ -238,6 +269,80 @@ function registerEvents(socket: BrowserSocket) {
         await setNightSchedule(deviceId, { enabled: schedule.enabled, from: schedule.from, to: schedule.to });
         log.info('night schedule', { device: deviceId, night: schedule.enabled ? `${schedule.from}-${schedule.to}h` : 'off', user: socket.data.session.email });
         await publishDevice(deviceId);
+        cb({ ok: true });
+    });
+
+    const ownLight = async (deviceId: unknown) => {
+        const doc = await usableDevice(socket, deviceId);
+        return doc?.status === 'approved' && doc.caps.includes('rgb') ? doc : null;
+    };
+
+    socket.on('getLightPlan', async (deviceId, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await ownLight(deviceId);
+        if (!doc) return cb({ ok: false, error: 'device not found' });
+        const plan = planOf(doc);
+        cb({ ok: true, plan, show: showOf(doc._id) ?? null, next: Object.fromEntries(plan.timers.map((t) => [t.id, nextStart(t) ?? null])) });
+    });
+
+    socket.on('setLightTimers', async (deviceId, timers, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await ownLight(deviceId);
+        if (!doc) return cb({ ok: false, error: 'device not found' });
+        if (!Array.isArray(timers) || timers.length > LIGHT_TIMERS_MAX) return cb({ ok: false, error: `at most ${LIGHT_TIMERS_MAX} timers` });
+        const clean: LightTimer[] = [];
+        for (const raw of timers) {
+            const id = (raw as { id?: unknown })?.id;
+            const t = cleanTimer(raw, typeof id === 'string' && /^[0-9a-f]{8}$/.test(id) ? id : crypto.randomBytes(4).toString('hex'));
+            if (typeof t === 'string') return cb({ ok: false, error: t });
+            clean.push(t);
+        }
+        await saveTimers(doc._id, clean);
+        log.info('light timers', { device: doc._id, timers: clean.length, user: socket.data.session.email });
+        cb({ ok: true, timers: clean });
+    });
+
+    socket.on('setLightAlerts', async (deviceId, alerts, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await ownLight(deviceId);
+        if (!doc) return cb({ ok: false, error: 'device not found' });
+        const clean = cleanAlerts(alerts, planOf(doc).alerts);
+        if (typeof clean === 'string') return cb({ ok: false, error: clean });
+        await saveAlerts(doc._id, clean);
+        log.info('light alerts', { device: doc._id, enabled: clean.enabled, kinds: clean.kinds.join(','), user: socket.data.session.email });
+        cb({ ok: true, alerts: clean });
+    });
+
+    socket.on('lightMood', async (deviceId, mood, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await ownLight(deviceId);
+        if (!doc || typeof mood !== 'string') return cb({ ok: false, error: 'device not found' });
+        const r = await setMood(doc._id, mood, socket.data.session.email, 'app');
+        cb(r.ok ? { ok: true } : r);
+    });
+
+    // {kind: 'effect', effect, ...} as a timer has it, or {stop: true}
+    socket.on('lightEffect', async (deviceId, effect, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await ownLight(deviceId);
+        if (!doc) return cb({ ok: false, error: 'device not found' });
+        if (effect?.stop === true) {
+            stopShow(doc._id);
+            return cb({ ok: true });
+        }
+        const action = cleanAction({ ...effect, kind: 'effect' });
+        if (typeof action === 'string') return cb({ ok: false, error: action });
+        const r = await runAction(doc._id, action, socket.data.session.email, 'app');
+        cb(r.ok ? { ok: true } : r);
+    });
+
+    // the flash of an alert, to see its colour
+    socket.on('lightFlash', async (deviceId, kind, cb) => {
+        if (!isCallback(cb)) return;
+        const doc = await ownLight(deviceId);
+        if (!doc || !LIGHT_ALERT_KINDS.includes(kind as LightAlertKind)) return cb({ ok: false, error: 'device not found' });
+        const info = ALERT_INFO[kind as LightAlertKind];
+        await flash(doc._id, info.color, Math.min(info.flashes, 3));
         cb({ ok: true });
     });
 
