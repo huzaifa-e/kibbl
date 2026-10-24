@@ -160,6 +160,11 @@ function rgbHtml(d: DeviceSummary, disabled: string) {
             <input class="form-check-input" type="checkbox" data-control="rgb-vivid" data-device="${d._id}" ${s?.vivid ? 'checked' : ''} ${disabled} />
             <span class="form-check-label">Vivid colours <span class="text-secondary small">· mixed colours brighter</span></span>
         </label>
+        ${
+            window.location.pathname.startsWith('/light')
+                ? ''
+                : `<a href="/light/${d._id}" class="btn btn-sm w-100 mt-2">${d.lightShow ? `<span class="status-dot status-dot-animated status-green me-2"></span>${escapeHtml(d.lightShow.name)} · ` : ''}Moods, effects &amp; timers <i class="ti ti-chevron-right ms-1"></i></a>`
+        }
         <details class="mt-2">
             <summary class="text-secondary small">Strip wiring</summary>
             <div class="text-secondary small my-1">If red shows another colour: the colours the strip shows for red, green and blue.</div>

@@ -17,6 +17,8 @@ const pages = [
     { name: 'meter', path: 'meter/:meterID', auth: true },
     { name: 'heat', path: 'heat', auth: true },
     { name: 'feeder', path: 'feeder', auth: true },
+    { name: 'light', path: 'light', auth: true },
+    { name: 'light', path: 'light/:deviceID', auth: true },
     { name: 'analysis', path: 'analysis', auth: true },
     { name: 'rooms', path: 'rooms', auth: true },
     { name: 'rooms', path: 'rooms/:roomID', auth: true },
