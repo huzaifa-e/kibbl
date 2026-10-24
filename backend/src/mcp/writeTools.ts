@@ -230,7 +230,8 @@ export function registerWriteTools(server: McpServer, session: SessionInfo) {
             description:
                 'Changes a kibbl. light (an RGB strip, one colour for all of it): on or off, the colour as #rrggbb or a name (' +
                 Object.keys(rgbPresets).join(', ') +
-                '), the brightness in %, and how long the change fades. blink flashes it white to find it. Only the fields given change; the light comes back like this after a power cut.',
+                '), the brightness in %, and how long the change fades. blink flashes it white to find it. Only the fields given change; the light comes back like this after a power cut. ' +
+                'A change of on, colour or brightness ends an effect playing on it. Moods, effects, flashes in a colour and timers: kibbl_light_mood, kibbl_light_effect, kibbl_light_flash, kibbl_light_timer_set.',
             inputSchema: {
                 light: z.string().default('').describe('the kibbl. light by name or id; the only one if left empty'),
                 on: z.boolean().optional(),
