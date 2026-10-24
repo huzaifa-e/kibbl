@@ -241,8 +241,8 @@ function tell(userID: string, s: Session, f: PetkitFeeder) {
         if (s.first) return;
     }
     const send = (title: string, text: string, email = true) =>
-        void notifyUser(userID, { title, text, email, tag: 'bowl_with_spoon', path: f.cameraId ? `/camera/${f.cameraId}` : '/' }).catch((err) =>
-            log.warn('feeder alert not sent', { user: userID, feeder: f.id }, err),
+        void notifyUser(userID, { title, text, email, tag: 'bowl_with_spoon', light: 'feeder', path: f.cameraId ? `/camera/${f.cameraId}` : '/' }).catch(
+            (err) => log.warn('feeder alert not sent', { user: userID, feeder: f.id }, err),
         );
     if (f.food === 'low' && !told.low) send(`${f.name}: food is running low`, `The hopper of ${f.name} is nearly empty. Fill it up before the next meal.`);
     told.low = f.food === 'low';

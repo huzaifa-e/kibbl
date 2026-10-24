@@ -48,6 +48,8 @@ declare global {
         fanSettings?: FanSettings;
         lamp?: LampSettings;
         night?: NightSchedule;
+        // kibbl. light: the weekly timers and the alerts that flash it (core/lightShow.ts)
+        lightPlan?: { timers?: import('../../shared/light').LightTimer[]; alerts?: Partial<import('../../shared/light').LightAlerts> };
         // sha256 of the pairing code the device shows on its setup page (KL_portal)
         claimHash?: string;
         // the room of the home it stands in (rooms); with a tado room in the same room a kibbl. air shows tado's temperature and humidity

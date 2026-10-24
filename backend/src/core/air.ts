@@ -106,6 +106,7 @@ async function alertFor(deviceId: string, event: AirEvent) {
             urgent: true,
             email: true,
             path,
+            light: 'fire',
         });
     } else if (event.kind === 'window' && event.state === 'open' && !event.atStart) {
         const temp = event.temperatureChange ? `, ${event.temperatureChange > 0 ? '+' : ''}${event.temperatureChange} °C` : '';
@@ -113,6 +114,7 @@ async function alertFor(deviceId: string, event: AirEvent) {
             title: `Window open: ${name}`,
             text: `${name}: a window seems open, the CO2 fell from ${event.co2Before} to ${event.co2} ppm in 3 minutes${temp}.`,
             path,
+            light: 'window',
         });
     }
 }
@@ -374,6 +376,7 @@ async function checkWindow(deviceId: string, state: AirState) {
             text: `${name}: a window has been open for ${minutes} minutes${air}. Close it: the room and its walls cool down, airing longer brings no fresher air.`,
             email: true,
             path: `/air/${deviceId}`,
+            light: 'window',
         });
         log.info('window open too long', { device: deviceId, minutes, outside });
     } finally {
@@ -409,7 +412,9 @@ async function checkClimate(deviceId: string, state: AirState) {
         climateSent.set(key, now);
         Device.findById(deviceId, { name: 1 })
             .lean()
-            .then((doc) => notifyOwner(deviceId, { title: `${hint.title}: ${doc?.name ?? deviceId}`, text: hint.text, path: `/air/${deviceId}` }))
+            .then((doc) =>
+                notifyOwner(deviceId, { title: `${hint.title}: ${doc?.name ?? deviceId}`, text: hint.text, path: `/air/${deviceId}`, light: 'climate' }),
+            )
             .then(() => log.info('climate alert', { device: deviceId, hint: hint.id }))
             .catch((err) => log.warn('climate alert failed', { device: deviceId, hint: hint.id }, err));
     }

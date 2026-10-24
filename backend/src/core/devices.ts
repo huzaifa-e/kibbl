@@ -21,6 +21,7 @@ import { installing, updateFor } from './firmware';
 import { nightSchedule, parseAirState } from './airState';
 import db, { Device } from './db';
 import { hub } from './hub';
+import { showOf } from './lightShow';
 import { logger } from './logger';
 
 const log = logger('device');
@@ -117,6 +118,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         light: typeof info.light === 'number' ? info.light : undefined,
         feeder: dev ? parseFeederState(info.feeder) : undefined,
         rgb: dev ? parseRgbState(info.rgb) : undefined,
+        lightShow: doc.caps?.includes('rgb') ? showOf(doc._id) : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         air: airSummary(doc, dev),
         update: updateSummary(doc),
@@ -418,7 +420,8 @@ export function commandAllowed(doc: DeviceDoc, cmd: string) {
     return doc.caps.some((cap) => capabilityCommands[cap]?.includes(cmd));
 }
 
-export async function applyCommandResult(deviceId: string, cmd: string, resp: DeviceResponse) {
+// quiet: a step of an effect of the light (core/lightShow.ts), neither logged nor always shown
+export async function applyCommandResult(deviceId: string, cmd: string, resp: DeviceResponse, opts: { quiet?: boolean; publish?: boolean } = {}) {
     if (!resp.ok) {
         return;
     }
@@ -439,7 +442,7 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
     } else if (cmd === 'rgb' && dev) {
         const rgb = parseRgbState(resp.rgb);
         if (rgb) {
-            logRgb(deviceId, parseRgbState(dev.info.rgb), rgb, 'command');
+            if (!opts.quiet) logRgb(deviceId, parseRgbState(dev.info.rgb), rgb, 'command');
             dev.info.rgb = rgb;
         }
     } else if (cmd === 'night' && typeof resp.night === 'boolean' && dev) {
@@ -447,7 +450,7 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
         dev.info.night = resp.night;
         if (dev.telemetry?.air) dev.telemetry.air.night = resp.night;
     }
-    await publishDevice(deviceId);
+    if (opts.publish !== false) await publishDevice(deviceId);
 }
 
 export function closeConnection(deviceId: string) {

@@ -14,6 +14,7 @@ import { assignUnowned } from './core/owners';
 
 const log = logger('server');
 import { initAir } from './core/air';
+import { initLightShow } from './core/lightShow';
 import { initRooms } from './core/rooms';
 import { initFirmware } from './core/firmware';
 import { publishDevice } from './core/devices';
@@ -59,6 +60,7 @@ async function main() {
     initHealthSync();
     initMeterSync();
     initAir();
+    initLightShow();
     initTado();
     initPetkit();
     hub.on('devicePublish', (deviceId) => void publishDevice(deviceId));

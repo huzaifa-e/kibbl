@@ -94,6 +94,8 @@ async function init() {
         air: { type: Schema.Types.Mixed },
         fanSettings: { type: Schema.Types.Mixed },
         lamp: { type: Schema.Types.Mixed },
+        // kibbl. light: timers and alerts (core/lightShow.ts)
+        lightPlan: { type: Schema.Types.Mixed },
         claimHash: String,
         roomId: { type: String, index: true },
         // the last update offered to it (core/firmware.ts): attempts set to 0 tries again

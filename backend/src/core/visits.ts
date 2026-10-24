@@ -54,6 +54,6 @@ async function check(deviceId: string, jpeg: Buffer, time: number) {
         ? `${title}: ${doc.name} saw her at ${when} (${Math.round(cat.score * 100)} % sure).${given}`
         : `Something moved in front of ${doc.name} at ${when}.`;
     const picture = cat ? await markCat(jpeg, cat) : jpeg;
-    await notifyOwner(deviceId, { title, text, email: true, picture, tag: 'cat', path: `/camera/${deviceId}` });
+    await notifyOwner(deviceId, { title, text, email: true, picture, tag: 'cat', path: `/camera/${deviceId}`, light: 'cat' });
     log.info('visit told', { device: deviceId, cat: cat ? cat.score.toFixed(2) : 'no detector' });
 }

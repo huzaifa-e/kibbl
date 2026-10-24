@@ -18,6 +18,7 @@ import { setNightOverride } from './air';
 import db, { Device } from './db';
 import { applyCommandResult, commandAllowed, publishDevice, sendCommand, updateDemand, type DeviceResponse } from './devices';
 import { setFrameTransform } from './frames';
+import { stopShow } from './lightShow';
 import { logger } from './logger';
 import { invalidateMotionSettings } from './motion';
 
@@ -281,6 +282,8 @@ export async function runDeviceCommand(doc: DeviceDoc, command: Record<string, u
         // nothing for the camera itself
         if (Object.keys(clean).length === 1 && (command.turn90 !== undefined || command.view !== undefined)) return { ok: true };
     }
+    // a light set by hand: the effect the server played on it ends
+    if (clean.cmd === 'rgb' && (clean.on !== undefined || clean.color !== undefined || clean.brightness !== undefined)) stopShow(doc._id);
     // a scan holds the radio for a few seconds, longer than other commands
     const resp = await sendCommand(doc._id, clean, clean.cmd === 'wifi_scan' ? 15000 : undefined);
     await applyCommandResult(doc._id, clean.cmd as string, resp);

@@ -1,6 +1,8 @@
 import { Device, User } from './db';
 import { appUrl, mailConfigured, sendMail } from './mail';
+import { alertLights } from './lightShow';
 import { logger } from './logger';
+import type { LightAlertKind } from '../../../shared/light';
 
 /*
  * Alerts for the owner of a device: a push message through ntfy (free, an app on the phone) when NTFY_URL names a topic,
@@ -19,6 +21,7 @@ export interface Alert {
     path?: string; // the page of the app it is about
     picture?: Buffer; // a jpeg shown in the e-mail
     tag?: string; // the emoji of the push message (ntfy tag), e.g. cat
+    light?: LightAlertKind; // the kibbl. lights of the user flash for it, as they are set (core/lightShow.ts)
 }
 
 function escapeHtml(s: string) {
@@ -53,6 +56,10 @@ async function sendEmail(ownerID: string, alert: Alert) {
     await sendMail(user.email, `${alert.urgent ? '⚠ ' : ''}${alert.title}`, text, html, pictures);
 }
 
+async function flashLights(userID: string, alert: Alert) {
+    if (alert.light) await alertLights(userID, alert.light);
+}
+
 // a push message alone, not about a device (the gym's rest timer); false when ntfy is not set up
 export async function pushMessage(alert: Alert) {
     if (!process.env.NTFY_URL) return false;
@@ -64,7 +71,7 @@ export async function pushMessage(alert: Alert) {
 export async function notifyOwner(deviceId: string, alert: Alert) {
     const doc = await Device.findById(deviceId, { ownerID: 1 }).lean();
     if (!doc?.ownerID) return;
-    const results = await Promise.allSettled([sendEmail(doc.ownerID, alert), sendNtfy(alert)]);
+    const results = await Promise.allSettled([sendEmail(doc.ownerID, alert), sendNtfy(alert), flashLights(doc.ownerID, alert)]);
     for (const r of results) {
         if (r.status === 'rejected') log.warn('alert not sent on one channel', { device: deviceId, title: alert.title }, r.reason);
     }
@@ -72,7 +79,7 @@ export async function notifyOwner(deviceId: string, alert: Alert) {
 
 // to a user, not about a device of theirs (a PetKit feeder): the same channels
 export async function notifyUser(userID: string, alert: Alert) {
-    const results = await Promise.allSettled([sendEmail(userID, alert), sendNtfy(alert)]);
+    const results = await Promise.allSettled([sendEmail(userID, alert), sendNtfy(alert), flashLights(userID, alert)]);
     for (const r of results) {
         if (r.status === 'rejected') log.warn('alert not sent on one channel', { user: userID, title: alert.title }, r.reason);
     }

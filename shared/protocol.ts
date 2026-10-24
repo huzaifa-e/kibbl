@@ -1,3 +1,4 @@
+import type { LightShowState } from './light';
 import type { RoomKind } from './roomKind';
 
 /*
@@ -397,6 +398,7 @@ export interface DeviceSummary {
     light?: number;
     feeder?: FeederState; // a kibbl. feeder
     rgb?: RgbState; // a kibbl. light, while online
+    lightShow?: LightShowState; // the effect the server plays on it now
     motion: MotionSettings;
     air?: AirDevice; // a kibbl. air
     roomId?: string; // the room of the home it stands in
