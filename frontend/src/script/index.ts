@@ -7,6 +7,7 @@ import { airCardHtml, loadAirHistory, type WindowEvents } from './airCard';
 import { bindHeatingCard, heatingCardHtml, loadHeatingCard } from './heatingCard';
 import { bindPetkit, loadPetkit, petkitFeederHtml, petkitStatus } from './petkitCard';
 import { bindControls, controlsHtml } from './controls';
+import { editingPrinter, printerCardHtml, updatePrinterLive } from './printerCard';
 import { loadSetup } from './healthGuide';
 import { renderHomeCards } from './homeCards';
 import { bindEventViewer, eventCardHtml } from './events';
@@ -178,6 +179,11 @@ function renderOthers() {
                     : `<div class="col-md-6 col-xl-4">${otherCardHtml(d)}</div>`,
             )
             .join('') +
+        // a printer a camera reaches: a card of its own, the camera has its tile above
+        cameras()
+            .filter((d) => d.printer?.configured)
+            .map((d) => `<div class="col-md-6 col-xl-4">${printerCardHtml(d)}</div>`)
+            .join('') +
         (petkitStatus()?.feeders ?? []).map((f) => `<div class="col-md-6 col-xl-4">${petkitFeederHtml(f)}</div>`).join('') +
         heatingCardHtml();
     // the controls listen on the container: bound once, not on every redraw
@@ -306,6 +312,7 @@ socket.on('deviceUpdate', (device: DeviceSummary) => {
     // the colour picker of a light is open: a redraw would close it under the finger
     const active = document.activeElement as HTMLElement | null;
     if (active?.dataset.control?.startsWith('rgb-') && active.dataset.device === device._id) return;
+    if (editingPrinter(device._id)) return;
     if (rendered) {
         renderStats();
         renderCameras();
@@ -321,6 +328,10 @@ socket.on('meterUpdate', () => {
 // a kibbl. air reports its air every 10 s: the home card shows it without redrawing the controls
 socket.on('telemetry', (deviceId: string, telemetry: DeviceTelemetry) => {
     const d = devices.find((x) => x._id === deviceId);
+    if (d && telemetry.printer) {
+        d.printer = telemetry.printer;
+        updatePrinterLive(byId('other-devices'), d);
+    }
     if (!d?.air || !telemetry.air) return;
     d.air.state = telemetry.air;
     d.air.sensorError = airSensorError(telemetry.air, d.air.sensorError);

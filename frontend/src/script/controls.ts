@@ -12,6 +12,7 @@ import {
     type DeviceSummary,
 } from '../../../shared/protocol';
 import { feedLevelAnimHtml, followFeeder, irisSvg, previewIris } from './iris';
+import { armPrinterStop, disarmPrinterStop, printerHtml, printerStopArmed } from './printerCard';
 import { request } from './socket';
 import { escapeHtml } from './utils';
 
@@ -216,6 +217,9 @@ export function controlsHtml(d: DeviceSummary, airNow = true) {
     if (d.caps.includes('rgb')) {
         blocks.push(rgbHtml(d, disabled));
     }
+    if (d.caps.includes('printer')) {
+        blocks.push(printerHtml(d, disabled));
+    }
     if (d.caps.includes('switch')) {
         blocks.push(`<div class="mb-3">
             <label class="form-check form-switch">
@@ -320,6 +324,10 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
             send(deviceId, { cmd: 'feeder_config', speed: Number(el.value) });
         } else if (el.dataset.control === 'feeder-accel') {
             send(deviceId, { cmd: 'feeder_config', accel: Number(el.value) });
+        } else if (el.dataset.control === 'printer-light') {
+            send(deviceId, { cmd: 'printer', light: el.checked });
+        } else if (el.dataset.control === 'printer-speed') {
+            send(deviceId, { cmd: 'printer', speed: Number(el.value) });
         }
     });
 
@@ -356,6 +364,35 @@ export function bindControls(root: HTMLElement, lookup: (id: string) => DeviceSu
         } else if (el.dataset.control === 'rgb-preset') {
             const color = rgbPresets[el.dataset.color ?? ''];
             if (color) send(deviceId, { cmd: 'rgb', on: true, color });
+        } else if (el.dataset.control === 'printer-action') {
+            send(deviceId, { cmd: 'printer', action: el.dataset.action });
+        } else if (el.dataset.control === 'printer-stop') {
+            // a print stopped cannot go on: a second tap within a few seconds
+            if (printerStopArmed(deviceId)) {
+                disarmPrinterStop(deviceId);
+                send(deviceId, { cmd: 'printer', action: 'stop' });
+            } else {
+                armPrinterStop(deviceId);
+                el.classList.add('btn-danger');
+                el.innerHTML = '<i class="ti ti-player-stop me-1"></i> Tap again to stop';
+                window.setTimeout(() => {
+                    el.classList.remove('btn-danger');
+                    el.innerHTML = '<i class="ti ti-player-stop me-1"></i> Stop';
+                }, 4000);
+            }
+        } else if (el.dataset.control === 'printer-save' || el.dataset.control === 'printer-remove') {
+            const value = (key: string) => root.querySelector<HTMLInputElement>(`[data-printer-field="${key}"][data-device="${deviceId}"]`)?.value.trim() ?? '';
+            const command =
+                el.dataset.control === 'printer-remove'
+                    ? { cmd: 'printer_config', enabled: false }
+                    : { cmd: 'printer_config', host: value('host'), serial: value('serial'), code: value('code') };
+            const result = root.querySelector<HTMLElement>(`[data-control-result="${deviceId}"]`);
+            if (command.cmd === 'printer_config' && 'host' in command && (!command.host || !command.serial)) {
+                if (result) result.innerHTML = '<div class="text-danger small mt-1">The IP address and the serial number of the printer</div>';
+                return;
+            }
+            el.disabled = true;
+            void send(deviceId, command).finally(() => (el.disabled = false));
         } else if (el.dataset.control === 'thermostat') {
             const input = root.querySelector<HTMLInputElement>(`[data-thermostat-input="${deviceId}"]`);
             send(deviceId, { cmd: 'thermostat', target: Number(input?.value) });

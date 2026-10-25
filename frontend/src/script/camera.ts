@@ -18,6 +18,7 @@ import {
 } from '../../../shared/protocol';
 import { heatmapChart } from './activityCharts';
 import { bindControls, controlsHtml } from './controls';
+import { editingPrinter, printerControlsKey, updatePrinterLive } from './printerCard';
 import { bindEventViewer, eventCardHtml } from './events';
 import { bindPetkit, feederWatchedBy, loadPetkit, petkitFeederHtml } from './petkitCard';
 import { request, socket } from './socket';
@@ -487,9 +488,10 @@ socket.on('deviceUpdate', (d: DeviceSummary) => {
     const wasOnline = device?.online;
     const settingsChanged = JSON.stringify(device?.camera) !== JSON.stringify(d.camera) || device?.light !== d.light;
     const motionChanged = JSON.stringify(device?.motion) !== JSON.stringify(d.motion);
+    const printerChanged = printerControlsKey(device?.printer) !== printerControlsKey(d.printer) && !editingPrinter(d._id);
     device = d;
     renderDevice();
-    if (wasOnline !== d.online || settingsChanged) {
+    if (wasOnline !== d.online || settingsChanged || printerChanged) {
         renderControls();
         renderPicture();
     }
@@ -509,6 +511,10 @@ socket.on('petkitUpdate', () => {
 socket.on('telemetry', (id: string, t: DeviceTelemetry) => {
     if (id !== deviceId || !device || !rendered) return;
     device.telemetry = t;
+    if (t.printer) {
+        device.printer = t.printer;
+        updatePrinterLive(byId('controls'), device);
+    }
     renderBadges();
     renderStatus();
 });
