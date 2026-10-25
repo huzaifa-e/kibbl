@@ -2,7 +2,17 @@ import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { productName, roomClimate, isMirrored, rotationOf, type RgbState } from '../../../shared/protocol';
+import {
+    productName,
+    roomClimate,
+    isMirrored,
+    printActive,
+    printSpeeds,
+    printStateLabels,
+    rotationOf,
+    type PrinterState,
+    type RgbState,
+} from '../../../shared/protocol';
 import { version } from '../../../shared/version';
 import { Device, HealthLink, Meter, MotionEventModel } from '../core/db';
 import { getLive, summarize } from '../core/devices';
@@ -154,9 +164,38 @@ function deviceInfo(doc: DeviceDoc) {
             : null,
         camera_error: s.cameraError ?? null,
         light: s.caps.includes('rgb') ? (s.rgb ? lightInfo(s.rgb) : null) : undefined,
+        printer: s.printer?.configured ? printerInfo(s.printer) : undefined,
         signal_dbm: s.telemetry?.rssi ?? null,
         uptime_s: s.telemetry?.uptime ?? null,
         viewers: s.viewers,
+    };
+}
+
+// the 3D printer a camera reaches: the print, its time left, temperatures and the AMS spools
+function printerInfo(p: PrinterState) {
+    return {
+        connected: !!p.connected,
+        error: p.error ?? null,
+        state: p.state ? printStateLabels[p.state] : null,
+        job: p.job || null,
+        percent: p.percent ?? null,
+        minutes_left: printActive(p.state) ? (p.remainingMin ?? null) : null,
+        layer: p.layers ? `${p.layer ?? 0} of ${p.layers}` : null,
+        nozzle_c: p.nozzle ?? null,
+        bed_c: p.bed ?? null,
+        chamber_c: p.chamber ?? undefined,
+        speed: printSpeeds.find((x) => x.level === p.speed)?.label ?? null,
+        light: p.light ?? null,
+        health_messages: p.hms?.length ? p.hms : undefined,
+        spools: p.ams
+            ?.filter((t) => t.type)
+            .map((t) => ({
+                slot: t.slot + 1,
+                type: t.type,
+                color: t.color ? `#${t.color}` : null,
+                remain_percent: t.remain ?? null,
+                printing: t.slot === p.trayNow,
+            })),
     };
 }
 
@@ -274,7 +313,8 @@ export function createMcpServer(session: SessionInfo) {
         'kibbl_devices',
         {
             title: 'Devices',
-            description: 'The cameras and other kibbl. devices: online state, last seen, firmware, motion and camera settings, signal.',
+            description: 'The cameras and other kibbl. devices: online state, last seen, firmware, motion and camera settings, signal, ' +
+                'and the 3D printer a camera reaches (the print, minutes left, temperatures, spools).',
             annotations: readOnly,
         },
         async () => {
