@@ -23,7 +23,8 @@ export type Capability =
     | 'smoke'
     | 'window'
     | 'fire'
-    | 'rgb';
+    | 'rgb'
+    | 'printer';
 
 export const capabilityCommands: Record<string, string[]> = {
     camera: ['camera'],
@@ -46,6 +47,8 @@ export const capabilityCommands: Record<string, string[]> = {
     fire: [], // events and the alarm on the device
     // kibbl. light (an RGB strip, one colour for all of it)
     rgb: ['rgb'],
+    // a 3D printer on the home network, reached through a kibbl. cam there (docs/printer.md)
+    printer: ['printer_config', 'printer'],
 };
 
 // any device may get these: every device is on the Wi-Fi
@@ -141,6 +144,67 @@ export const feedLevels: FeedLevel[] = [
     { id: 'large', label: 'Large', portions: 3, opening: 30, openMs: 1500 },
 ];
 
+/* ----------------------------------------------------------------------- */
+/* A Bambu Lab printer, logged into by a kibbl. cam on its network (docs/printer.md) */
+
+// the printer's gcode_state, lower case
+export type PrintState = 'idle' | 'prepare' | 'slicing' | 'running' | 'pause' | 'finish' | 'failed' | 'unknown';
+
+export const printStateLabels: Record<PrintState, string> = {
+    idle: 'Idle',
+    prepare: 'Preparing',
+    slicing: 'Slicing',
+    running: 'Printing',
+    pause: 'Paused',
+    finish: 'Finished',
+    failed: 'Failed',
+    unknown: 'Unknown',
+};
+
+// the printer's speed levels (spd_lvl)
+export const printSpeeds = [
+    { level: 1, label: 'Silent' },
+    { level: 2, label: 'Standard' },
+    { level: 3, label: 'Sport' },
+    { level: 4, label: 'Ludicrous' },
+] as const;
+
+export interface PrinterTray {
+    slot: number; // AMS unit × 4 + its slot
+    type?: string; // PLA, PETG, ...; none: the slot is empty
+    color?: string; // RRGGBB
+    remain?: number; // %, when the AMS knows it
+}
+
+// what the camera reports of its printer (hello, telemetry, the answer to printer commands); the access code stays on the device
+export interface PrinterState {
+    configured: boolean;
+    host?: string;
+    serial?: string;
+    connected?: boolean;
+    error?: string; // why it is not connected: access code refused, printer not reachable
+    // from the printer's report, once one arrived
+    state?: PrintState;
+    percent?: number;
+    remainingMin?: number;
+    layer?: number;
+    layers?: number;
+    job?: string;
+    nozzle?: number;
+    nozzleTarget?: number;
+    bed?: number;
+    bedTarget?: number;
+    chamber?: number; // the X1 only
+    speed?: number; // 1-4
+    light?: boolean; // the chamber light
+    printError?: number;
+    hms?: string[]; // the printer's health messages, as AAAA-BBBB-CCCC-DDDD
+    ams?: PrinterTray[];
+    trayNow?: number; // the slot it prints from; 254 the spool outside, 255 none
+}
+
+export const printActive = (s: PrintState | undefined) => s === 'running' || s === 'pause' || s === 'prepare' || s === 'slicing';
+
 export interface DeviceTelemetry {
     uptime: number;
     rssi?: number;
@@ -152,6 +216,7 @@ export interface DeviceTelemetry {
     air?: AirState; // a kibbl. air
     feeder?: FeederState; // a kibbl. feeder: several a second while the iris moves
     rgb?: RgbState; // a kibbl. light
+    printer?: PrinterState; // a kibbl. cam with a printer
     time: number; // server time it arrived
 }
 
@@ -399,6 +464,7 @@ export interface DeviceSummary {
     feeder?: FeederState; // a kibbl. feeder
     rgb?: RgbState; // a kibbl. light, while online
     lightShow?: LightShowState; // the effect the server plays on it now
+    printer?: PrinterState; // a printer it reaches, while online
     motion: MotionSettings;
     air?: AirDevice; // a kibbl. air
     roomId?: string; // the room of the home it stands in

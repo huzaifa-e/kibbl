@@ -19,6 +19,7 @@ import { pairedRoom } from '../tado/service';
 import { roomKindOf } from './rooms';
 import { installing, updateFor } from './firmware';
 import { nightSchedule, parseAirState } from './airState';
+import { parsePrinterState, printerChanged, printerShown } from './printer';
 import db, { Device } from './db';
 import { hub } from './hub';
 import { showOf } from './lightShow';
@@ -118,6 +119,7 @@ export function summarize(doc: DeviceDoc): DeviceSummary {
         light: typeof info.light === 'number' ? info.light : undefined,
         feeder: dev ? parseFeederState(info.feeder) : undefined,
         rgb: dev ? parseRgbState(info.rgb) : undefined,
+        printer: dev ? parsePrinterState(info.printer) : undefined,
         lightShow: doc.caps?.includes('rgb') ? showOf(doc._id) : undefined,
         motion: { ...db.motionDefaults, ...(doc.motion ?? {}) } as MotionSettings,
         air: airSummary(doc, dev),
@@ -351,6 +353,16 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
             void publishDevice(deviceId);
         }
     }
+    // a camera with a printer: a new state, layer or error is shown at once, an ended print alerts
+    const printer = parsePrinterState(msg.printer);
+    if (printer) {
+        const before = parsePrinterState(dev.info.printer);
+        dev.info.printer = printer;
+        if (printerShown(before) !== printerShown(printer)) {
+            printerChanged(deviceId, before, printer).catch((err) => log.warn('print alert not sent', { device: deviceId }, err));
+            void publishDevice(deviceId);
+        }
+    }
     const num = (key: string) => (typeof msg[key] === 'number' ? (msg[key] as number) : 0);
     dev.telemetry = {
         uptime: num('uptime'),
@@ -363,6 +375,7 @@ export function handleTelemetry(deviceId: string, msg: Record<string, unknown>) 
         air: parseAirState(msg),
         feeder,
         rgb,
+        printer,
         time: Date.now(),
     };
     hub.emit('telemetry', deviceId, dev.telemetry);
@@ -445,6 +458,9 @@ export async function applyCommandResult(deviceId: string, cmd: string, resp: De
             if (!opts.quiet) logRgb(deviceId, parseRgbState(dev.info.rgb), rgb, 'command');
             dev.info.rgb = rgb;
         }
+    } else if ((cmd === 'printer' || cmd === 'printer_config') && dev) {
+        const printer = parsePrinterState(resp.printer);
+        if (printer) dev.info.printer = printer;
     } else if (cmd === 'night' && typeof resp.night === 'boolean' && dev) {
         // shown at once, not only with the next telemetry
         dev.info.night = resp.night;

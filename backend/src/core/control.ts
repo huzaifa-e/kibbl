@@ -128,6 +128,25 @@ export function cleanCommand(command: Record<string, unknown>): Record<string, u
         // the iris of a feeder to an opening, the closed one included
         case 'iris':
             return mm(command.opening, FEEDER_MIN_MM, FEEDER_MAX_MM) ? { cmd, opening: Math.round((command.opening as number) * 10) / 10 } : undefined;
+        // the printer a camera logs into: the access code passes through to the device and is neither stored nor logged
+        case 'printer_config': {
+            if (command.enabled === false) return { cmd, enabled: false };
+            const host = command.host;
+            const serial = command.serial;
+            if (typeof host !== 'string' || !/^[A-Za-z0-9.-]{1,63}$/.test(host)) return undefined;
+            if (typeof serial !== 'string' || !/^[A-Za-z0-9]{1,23}$/.test(serial)) return undefined;
+            const out: Record<string, unknown> = { cmd, host, serial: serial.toUpperCase() };
+            if (command.code !== undefined && command.code !== '') {
+                if (typeof command.code !== 'string' || !/^[A-Za-z0-9]{1,15}$/.test(command.code)) return undefined;
+                out.code = command.code;
+            }
+            return out;
+        }
+        case 'printer':
+            if (command.action !== undefined)
+                return ['pause', 'resume', 'stop'].includes(command.action as string) ? { cmd, action: command.action } : undefined;
+            if (command.light !== undefined) return typeof command.light === 'boolean' ? { cmd, light: command.light } : undefined;
+            return int(command.speed, 1, 4) ? { cmd, speed: command.speed } : undefined;
         case 'blink':
             return int(command.count ?? 2, 1, 10) && int(command.level ?? 30, 1, 100)
                 ? { cmd, count: command.count ?? 2, level: command.level ?? 30 }
