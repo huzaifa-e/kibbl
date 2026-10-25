@@ -49,3 +49,6 @@ backend/models/
 # kibbl. light (arduino-cli): the setup page made from kibbl_core's portal.html
 firmware/light/build/
 firmware/light/main/portal_html.h
+
+# the TV app: build output
+tv/build/
