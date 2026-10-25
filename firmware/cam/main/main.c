@@ -29,6 +29,7 @@
 #include "KL_local_http.h"
 #include "KL_nvs.h"
 #include "KL_ota.h"
+#include "KL_printer.h"
 #include "KL_serial.h"
 #include "KL_status_led.h"
 #include "KL_stream.h"
@@ -115,6 +116,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     wifi_start();
     quick_reset_check();
+    printer_setup(); // tries until the network is there
 
     xTaskCreate(serial_cmd_task, "serial_cmd", SERIAL_STACK_SIZE, NULL, 3, NULL);
     xTaskCreate(network_task, "network", NETWORK_STACK_SIZE, NULL, 3, NULL);

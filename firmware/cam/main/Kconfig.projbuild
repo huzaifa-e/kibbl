@@ -18,6 +18,17 @@ menu "kibbl. cam"
             depends on IDF_TARGET_ESP32S3
     endchoice
 
+    config KIBBL_PRINTER
+        bool "A 3D printer on the home network (Bambu Lab, local MQTT)"
+        default y if KIBBL_BOARD_AI_THINKER
+        select ESP_TLS_INSECURE
+        select ESP_TLS_SKIP_SERVER_CERT_VERIFY
+        help
+            The camera logs into a Bambu Lab printer on the same network (its access
+            code, set from the app) and passes its state and commands through the
+            server link (docs/printer.md). The printer's own certificate is not
+            checked; the server's and the updates' still are.
+
     config KIBBL_LOCAL_HTTP
         bool "Local stream on the home network"
         default y

@@ -19,6 +19,7 @@
 #include "KL_frame.h"
 #include "KL_hw.h"
 #include "KL_light.h"
+#include "KL_printer.h"
 #include "KL_serial.h"
 #include "KL_stream.h"
 #include "KL_time.h"
@@ -59,6 +60,10 @@ void product_add_info(cJSON *json, cmd_source_t source) {
 #if KIBBL_FEEDER
     cJSON_AddItemToArray(caps, cJSON_CreateString("feeder"));
     feeder_add_state(json);
+#endif
+#if CONFIG_KIBBL_PRINTER
+    cJSON_AddItemToArray(caps, cJSON_CreateString("printer"));
+    printer_add_state(json);
 #endif
     cJSON_AddItemToArray(caps, cJSON_CreateString("ota"));
 
@@ -140,7 +145,7 @@ static const char *cmd_stream(const cJSON *req, cJSON *resp) {
 }
 
 bool product_command(const char *cmd, const cJSON *req, cJSON *resp, cmd_source_t source, const char **error) {
-    if (feeder_command(cmd, req, resp, error)) {
+    if (feeder_command(cmd, req, resp, error) || printer_command(cmd, req, resp, error)) {
         return true;
     }
     if (strcmp(cmd, "camera") == 0) {
@@ -166,6 +171,9 @@ void product_add_telemetry(cJSON *json) {
     cJSON_AddNumberToObject(json, "frameBytes", frame_last_size());
 #if KIBBL_FEEDER
     feeder_add_state(json);
+#endif
+#if CONFIG_KIBBL_PRINTER
+    printer_add_state(json);
 #endif
 }
 
@@ -201,6 +209,7 @@ void product_stream_disconnected(void) {
 
 void product_ota_prepare(void) {
     feeder_stop();
+    printer_stop(); // its TLS memory goes to the download
     // the stream competes for the same link and PSRAM
     for (int i = 0; i < FRAME_CONSUMERS; i++) {
         frame_set_demand((frame_consumer_t)i, 0);
@@ -215,4 +224,5 @@ void product_ota_prepare(void) {
 void product_reset(void) {
     config_camera_reset();
     feeder_reset();
+    printer_reset();
 }
