@@ -98,7 +98,7 @@ export default function initMcpRoutes(app: express.Application) {
         ]);
         res.json({
             connectorUrl: publicUrl ? `${publicUrl}/mcp` : null,
-            tokens: tokens.map((t) => ({ id: t._id, name: t.name, createdAt: t.createdAt, lastUsedAt: t.lastUsedAt ?? null })),
+            tokens: tokens.map((t) => ({ id: t._id, name: t.name, scope: t.scope ?? null, createdAt: t.createdAt, lastUsedAt: t.lastUsedAt ?? null })),
             connectors: grants.map((g) => ({ id: g._id, name: g.clientName, createdAt: g.createdAt, lastUsedAt: g.lastUsedAt ?? null })),
         });
     });

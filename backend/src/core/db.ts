@@ -232,6 +232,7 @@ async function init() {
             _id: { type: String, required: true }, // sha256 of the token, hex
             userID: { type: String, required: true, index: true },
             name: { type: String, required: true },
+            scope: String, // only this: light (routes/tv.ts); none: everything
             createdAt: { type: Number, required: true },
             lastUsedAt: Number,
         },

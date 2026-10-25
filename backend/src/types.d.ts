@@ -312,6 +312,7 @@ declare global {
         _id: string;
         userID: string;
         name: string;
+        scope?: 'light';
         createdAt: number;
         lastUsedAt?: number;
     }
