@@ -9,6 +9,7 @@ import { errorAlert, escapeHtml, timeAgo } from './utils';
 interface Entry {
     id: string;
     name: string;
+    scope?: string | null; // light: the light controls of a TV only
     createdAt: number;
     lastUsedAt: number | null;
 }
@@ -48,7 +49,7 @@ function list(entries: Entry[], kind: 'connector' | 'token', empty: string) {
             (e) => `<div class="list-group-item px-0 d-flex align-items-center gap-2">
                 <i class="ti ti-${kind === 'connector' ? 'plug-connected' : 'key'} text-secondary"></i>
                 <div class="flex-fill text-truncate">
-                    <div class="text-truncate">${escapeHtml(e.name)}</div>
+                    <div class="text-truncate">${escapeHtml(e.name)}${e.scope === 'light' ? ' <span class="badge bg-secondary-lt ms-1">light only</span>' : ''}</div>
                     <div class="text-secondary small">${kind === 'connector' ? 'signed in' : 'created'} ${timeAgo(e.createdAt)} · ${used(e)}</div>
                 </div>
                 <button class="btn btn-sm btn-outline-danger" data-revoke="${kind}" data-id="${escapeHtml(e.id)}" data-name="${escapeHtml(e.name)}">
