@@ -15,6 +15,7 @@ import { default as initMeterRoutes } from './meters';
 import { initPageRoutes } from './pages';
 import { default as initPetkitRoutes } from './petkit';
 import { default as initStreamRoutes } from './stream';
+import { default as initTvRoutes } from './tv';
 
 export function initRoutes(app: express.Application) {
     initAuthRoutes(app);
@@ -32,5 +33,6 @@ export function initRoutes(app: express.Application) {
     initGymRoutes(app);
     initAnalysisRoutes(app);
     initMcpRoutes(app);
+    initTvRoutes(app);
     initPageRoutes(app);
 }
