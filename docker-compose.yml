@@ -36,7 +36,7 @@ services:
     # that changes on every start of this container. Not started by deploy.sh, so a deploy keeps
     # the address: docker compose --profile tunnel up -d tunnel, url in docker compose logs tunnel
     tunnel:
-        image: cloudflare/cloudflared:latest
+        image: cloudflare/cloudflared:2026.10.4
         container_name: kibbl-tunnel
         profiles: ['tunnel']
         restart: unless-stopped
@@ -44,12 +44,14 @@ services:
         logging: *logging
         depends_on:
             - app
+    # cloudflared pinned to 2026.10.2 or later: older ones trust the compromised eMudhra (emSign)
+    # intermediates (Cloudflare, 2026-10-20); bump the tag on both services, pull, then up -d
     # the public https address of kibbl. on its own domain: a Cloudflare named tunnel, its public
     # hostnames (https://kibbl.uk -> http://app:8790) set in the Cloudflare dashboard. Not started
     # by deploy.sh; CLOUDFLARE_TUNNEL_TOKEN in .env:
     # docker compose --profile cloudflare up -d cloudflare
     cloudflare:
-        image: cloudflare/cloudflared:latest
+        image: cloudflare/cloudflared:2026.10.4
         container_name: kibbl-cloudflare
         profiles: ['cloudflare']
         restart: unless-stopped
