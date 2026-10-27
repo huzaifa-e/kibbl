@@ -13,7 +13,7 @@ import { Device, PetkitLink } from '../core/db';
 import { hub } from '../core/hub';
 import { logger } from '../core/logger';
 import { notifyUser } from '../core/notify';
-import { PetkitError, forgetSession, login, petkitRequest, seal } from './client';
+import { PetkitError, forgetSession, login, petkitRequest, seal, zoneOffset } from './client';
 
 /*
  * PetKit feeders of each account that connected PetKit (Devices). The server reads every
@@ -124,7 +124,21 @@ export function mealFrom(item: any, nowS: number, factor = PETKIT_PORTION_AMOUNT
     };
 }
 
-// the feeder's clock: PetKit reports its offset from UTC in hours
+/* The feeder's offset from UTC in hours, from its time zone (locale, "Europe/Berlin") at that
+ * moment: PetKit's timezone keeps the offset of when the feeder was set up, so after the clocks
+ * change it is an hour off while the feeder itself keeps the right time. */
+export function feederOffset(detail: any, now = Date.now()) {
+    if (typeof detail?.locale === 'string' && detail.locale) {
+        try {
+            return Number(zoneOffset(detail.locale, new Date(now)));
+        } catch {
+            // not a time zone
+        }
+    }
+    return num(detail?.timezone);
+}
+
+// the feeder's clock, from its offset from UTC in hours
 export function feederClock(offsetHours: number | undefined, now = Date.now()) {
     const local = new Date(now + (offsetHours ?? -new Date(now).getTimezoneOffset() / 60) * 3600_000);
     const day = `${local.getUTCFullYear()}${String(local.getUTCMonth() + 1).padStart(2, '0')}${String(local.getUTCDate()).padStart(2, '0')}`;
@@ -135,7 +149,7 @@ export function feederClock(offsetHours: number | undefined, now = Date.now()) {
 export function feederFrom(entry: { id: number; type: string; name: string; cameraId?: string }, detail: any, records: any, now = Date.now()): PetkitFeeder {
     const state = detail?.state ?? {};
     const factor = num(detail?.settings?.factor) || PETKIT_PORTION_AMOUNT;
-    const clock = feederClock(num(detail?.timezone), now);
+    const clock = feederClock(feederOffset(detail, now), now);
     const days: any[] = Array.isArray(records?.feed) ? records.feed : Array.isArray(records) ? records : [];
     const today = days.find((d) => String(d?.day) === clock.day) ?? (days.length === 1 ? days[0] : undefined);
     const meals = ((today?.items ?? []) as any[]).map((i) => mealFrom(i, clock.seconds, factor)).sort((a, b) => a.time - b.time);
@@ -210,8 +224,7 @@ async function poll(userID: string) {
     const seen = new Set<number>();
     for (const entry of link.feeders) {
         const detail = await petkitRequest(userID, `${entry.type}/device_detail`, { query: { id: entry.id } });
-        const zone = (detail as { timezone?: unknown })?.timezone;
-        s.zones.set(entry.id, typeof zone === 'number' ? zone : undefined);
+        s.zones.set(entry.id, feederOffset(detail));
         const factor = (detail as { settings?: { factor?: unknown } })?.settings?.factor;
         s.factors.set(entry.id, typeof factor === 'number' && factor > 0 ? factor : PETKIT_PORTION_AMOUNT);
         const clock = feederClock(s.zones.get(entry.id));

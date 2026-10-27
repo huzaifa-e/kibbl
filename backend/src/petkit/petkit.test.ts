@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { zoneOffset } from './client';
 import { dayProblem, parseMealTime } from '../../../shared/petkit';
-import { feedDailyListFor, feederClock, feederFrom, mealFrom, planFrom } from './service';
+import { feedDailyListFor, feederClock, feederFrom, feederOffset, mealFrom, planFrom } from './service';
 
 const NOON = 12 * 3600;
 
@@ -46,6 +46,22 @@ test('the feeder clock is that of its offset', () => {
     const at = Date.parse('2026-10-21T22:30:00Z');
     assert.deepEqual(feederClock(2, at), { day: '20261022', seconds: 30 * 60 });
     assert.deepEqual(feederClock(0, at), { day: '20261021', seconds: 22.5 * 3600 });
+});
+
+test('the feeder offset follows its zone, not the timezone PetKit kept from summer', () => {
+    const winter = Date.parse('2026-10-27T10:50:00Z');
+    assert.equal(feederOffset({ timezone: 2, locale: 'Europe/Berlin' }, winter), 1);
+    assert.equal(feederOffset({ timezone: 2, locale: 'Europe/Berlin' }, Date.parse('2026-07-01T12:00:00Z')), 2);
+    assert.equal(feederOffset({ timezone: 2, locale: 'not a zone' }, winter), 2);
+    assert.equal(feederOffset({ timezone: 2 }, winter), 2);
+    // 11:50 CET: breakfast at 12:00 is still to come
+    const f = feederFrom(
+        { id: 1, type: 'd4', name: 'solo' },
+        { timezone: 2, locale: 'Europe/Berlin', state: {} },
+        { feed: [{ day: 20261027, items: [{ id: 's43200', time: 43200, amount: 10, src: 1, status: 0 }] }] },
+        winter,
+    );
+    assert.equal(f.meals[0].state, 'planned');
 });
 
 test('the offset of a zone, as PetKit writes it', () => {
